@@ -26,10 +26,14 @@ pub enum GroupManagementMode {
         new_name: String,
         /// Whether this group is for shared accounts
         is_shared: bool,
+        /// Original shared-account flag at time of edit.
+        original_is_shared: bool,
         /// Number of members (determines if is_shared can be toggled)
         member_count: u32,
         /// Group permissions (editable)
         permissions: Vec<(String, bool)>,
+        /// Original permissions at time of edit.
+        original_permissions: Vec<(String, bool)>,
         /// Bandwidth weight (subject to the delegation rule on the server:
         /// non-admins can set it only at or below their own resolved
         /// weight; admins bypass).
@@ -46,6 +50,91 @@ pub enum GroupManagementMode {
         /// Group name (for display in confirmation dialog)
         name: String,
     },
+}
+
+/// Sparse `GroupUpdate` payload computed from an edit baseline.
+pub struct GroupUpdateFields {
+    pub id: i64,
+    pub name: Option<String>,
+    pub is_shared: Option<bool>,
+    pub permissions: Option<Vec<String>>,
+    pub bandwidth_weight: Option<u16>,
+}
+
+impl GroupManagementMode {
+    /// Returns true when the edit form contains at least one field the
+    /// client would send in a `GroupUpdate`.
+    pub fn has_effective_group_update_changes(&self) -> bool {
+        let Self::Edit {
+            original_name,
+            new_name,
+            is_shared,
+            original_is_shared,
+            member_count,
+            permissions,
+            original_permissions,
+            bandwidth_weight,
+            original_bandwidth_weight,
+            ..
+        } = self
+        else {
+            return false;
+        };
+
+        new_name != original_name
+            || (member_count == &0 && is_shared != original_is_shared)
+            || permissions != original_permissions
+            || bandwidth_weight != original_bandwidth_weight
+    }
+
+    /// Build a sparse update payload. The caller supplies permission
+    /// delegation rules so panel state stays independent from connections.
+    pub fn group_update_fields<F>(
+        &self,
+        mut can_delegate_permission: F,
+    ) -> Option<GroupUpdateFields>
+    where
+        F: FnMut(&str) -> bool,
+    {
+        let Self::Edit {
+            id,
+            original_name,
+            new_name,
+            is_shared,
+            original_is_shared,
+            member_count,
+            permissions,
+            original_permissions,
+            bandwidth_weight,
+            original_bandwidth_weight,
+            ..
+        } = self
+        else {
+            return None;
+        };
+
+        let fields = GroupUpdateFields {
+            id: *id,
+            name: (new_name != original_name).then_some(new_name.clone()),
+            is_shared: (*member_count == 0 && is_shared != original_is_shared)
+                .then_some(*is_shared),
+            permissions: (permissions != original_permissions).then(|| {
+                permissions
+                    .iter()
+                    .filter(|(perm_name, enabled)| *enabled && can_delegate_permission(perm_name))
+                    .map(|(name, _)| name.clone())
+                    .collect()
+            }),
+            bandwidth_weight: (bandwidth_weight != original_bandwidth_weight)
+                .then_some(*bandwidth_weight),
+        };
+
+        (fields.name.is_some()
+            || fields.is_shared.is_some()
+            || fields.permissions.is_some()
+            || fields.bandwidth_weight.is_some())
+        .then_some(fields)
+    }
 }
 
 /// Sort column for the Groups table
@@ -170,8 +259,10 @@ impl GroupManagementState {
             original_name: name.clone(),
             new_name: name,
             is_shared,
+            original_is_shared: is_shared,
             member_count,
-            permissions: perm_map,
+            permissions: perm_map.clone(),
+            original_permissions: perm_map,
             bandwidth_weight,
             original_bandwidth_weight: bandwidth_weight,
         };
@@ -183,5 +274,55 @@ impl GroupManagementState {
         self.mode = GroupManagementMode::ConfirmDelete { id, name };
         self.delete_error = None;
         self.is_delete_submitting = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn edit_state() -> GroupManagementState {
+        let mut state = GroupManagementState::default();
+        state.enter_edit_mode(
+            7,
+            "Staff".to_string(),
+            false,
+            0,
+            vec!["chat_send".to_string()],
+            nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+        );
+        state
+    }
+
+    #[test]
+    fn edit_mode_has_no_effective_update_changes_initially() {
+        let state = edit_state();
+
+        assert!(!state.mode.has_effective_group_update_changes());
+    }
+
+    #[test]
+    fn edit_mode_detects_effective_update_changes() {
+        let mut state = edit_state();
+        if let GroupManagementMode::Edit { new_name, .. } = &mut state.mode {
+            *new_name = "Staff 2".to_string();
+        }
+
+        assert!(state.mode.has_effective_group_update_changes());
+    }
+
+    #[test]
+    fn edit_mode_toggle_back_is_not_an_effective_update() {
+        let mut state = edit_state();
+        if let GroupManagementMode::Edit { permissions, .. } = &mut state.mode
+            && let Some((_, enabled)) = permissions
+                .iter_mut()
+                .find(|(permission, _)| permission == "chat_send")
+        {
+            *enabled = false;
+            *enabled = true;
+        }
+
+        assert!(!state.mode.has_effective_group_update_changes());
     }
 }

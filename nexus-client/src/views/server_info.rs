@@ -486,6 +486,7 @@ fn config_row<'a>(label: String, value: String) -> Element<'a, Message> {
 /// Render the server info edit view (editable form)
 fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, Message> {
     let title = panel_title(t("title-server-info-edit"));
+    let can_save = edit_state.has_changes_from_original() && !edit_state.is_submitting;
 
     let mut form_items: Vec<Element<'static, Message>> = vec![title.into()];
 
@@ -508,11 +509,15 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     let name_label = shaped_text(t("label-name")).size(TEXT_SIZE);
     let name_input = text_input(&t("placeholder-server-name"), &edit_state.name)
         .on_input(Message::EditServerInfoNameChanged)
-        .on_submit(Message::UpdateServerInfoPressed)
         .id(Id::from(InputId::EditServerInfoName))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .width(Fill);
+    let name_input = if can_save {
+        name_input.on_submit(Message::UpdateServerInfoPressed)
+    } else {
+        name_input
+    };
     form_items.push(
         row![name_label, Space::new().width(ELEMENT_SPACING), name_input]
             .align_y(Center)
@@ -526,11 +531,15 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         &edit_state.description,
     )
     .on_input(Message::EditServerInfoDescriptionChanged)
-    .on_submit(Message::UpdateServerInfoPressed)
     .id(Id::from(InputId::EditServerInfoDescription))
     .padding(INPUT_PADDING)
     .size(TEXT_SIZE)
     .width(Fill);
+    let desc_input = if can_save {
+        desc_input.on_submit(Message::UpdateServerInfoPressed)
+    } else {
+        desc_input
+    };
     form_items.push(
         row![desc_label, Space::new().width(ELEMENT_SPACING), desc_input]
             .align_y(Center)
@@ -542,11 +551,15 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     let public_address_input =
         text_input(&t("placeholder-public-address"), &edit_state.public_address)
             .on_input(Message::EditServerInfoPublicAddressChanged)
-            .on_submit(Message::UpdateServerInfoPressed)
             .id(Id::from(InputId::EditServerInfoPublicAddress))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
             .width(Fill);
+    let public_address_input = if can_save {
+        public_address_input.on_submit(Message::UpdateServerInfoPressed)
+    } else {
+        public_address_input
+    };
     form_items.push(
         row![
             public_address_label,
@@ -758,11 +771,15 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         &edit_state.auto_join_channels,
     )
     .on_input(Message::EditServerInfoAutoJoinChannelsChanged)
-    .on_submit(Message::UpdateServerInfoPressed)
     .id(Id::from(InputId::EditServerInfoAutoJoinChannels))
     .padding(INPUT_PADDING)
     .size(TEXT_SIZE)
     .width(Fill);
+    let auto_join_input = if can_save {
+        auto_join_input.on_submit(Message::UpdateServerInfoPressed)
+    } else {
+        auto_join_input
+    };
     form_items.push(
         row![
             auto_join_label,
@@ -814,11 +831,15 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         &edit_state.persistent_channels,
     )
     .on_input(Message::EditServerInfoPersistentChannelsChanged)
-    .on_submit(Message::UpdateServerInfoPressed)
     .id(Id::from(InputId::EditServerInfoPersistentChannels))
     .padding(INPUT_PADDING)
     .size(TEXT_SIZE)
     .width(Fill);
+    let persistent_input = if can_save {
+        persistent_input.on_submit(Message::UpdateServerInfoPressed)
+    } else {
+        persistent_input
+    };
     form_items.push(
         row![
             persistent_label,
@@ -878,7 +899,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
             .padding(BUTTON_PADDING)
             .style(btn::secondary),
         button(shaped_text(t("button-save")).size(TEXT_SIZE))
-            .on_press_maybe((!edit_state.is_submitting).then_some(Message::UpdateServerInfoPressed))
+            .on_press_maybe(can_save.then_some(Message::UpdateServerInfoPressed))
             .padding(BUTTON_PADDING),
     ]
     .spacing(ELEMENT_SPACING);

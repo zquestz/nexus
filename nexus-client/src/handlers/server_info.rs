@@ -183,142 +183,28 @@ impl NexusApp {
             return Task::none();
         }
 
-        // Check if there are any changes
-        if !edit_state.has_changes(&ServerInfoParams {
-            auto_join_channels: conn.auto_join_channels.as_deref(),
-            chat_burst_limit: conn.chat_burst_limit,
-            chat_rate_limit: conn.chat_rate_limit,
-            description: conn.server_description.as_deref(),
-            file_reindex_interval: conn.file_reindex_interval,
-            image: &conn.server_image,
-            max_connections_per_ip: conn.max_connections_per_ip,
-            max_outbound_rate: conn.max_outbound_rate,
-            max_transfers_per_ip: conn.max_transfers_per_ip,
-            min_password_strength: conn.min_password_strength,
-            name: conn.server_name.as_deref(),
-            persistent_channels: conn.persistent_channels.as_deref(),
-            public_address: conn.public_address.as_deref(),
-            scheduler_chunk_size: conn.scheduler_chunk_size,
-        }) {
-            // No changes, just close the edit view
-            conn.server_info_edit = None;
+        // Diff against the baseline captured when the form opened, not live
+        // connection state. ServerInfoUpdated/PermissionsUpdated can arrive
+        // while the form is open; live diffs would resend stale form values.
+        let Some(fields) = edit_state.update_fields() else {
             return Task::none();
-        }
-
-        // Build the update message with only changed fields
-        let name = if edit_state.name != conn.server_name.as_deref().unwrap_or("") {
-            Some(edit_state.name.clone())
-        } else {
-            None
-        };
-
-        let description =
-            if edit_state.description != conn.server_description.as_deref().unwrap_or("") {
-                Some(edit_state.description.clone())
-            } else {
-                None
-            };
-
-        let public_address =
-            if edit_state.public_address != conn.public_address.as_deref().unwrap_or("") {
-                Some(edit_state.public_address.clone())
-            } else {
-                None
-            };
-
-        let max_connections_per_ip =
-            if edit_state.max_connections_per_ip != conn.max_connections_per_ip {
-                edit_state.max_connections_per_ip
-            } else {
-                None
-            };
-
-        let max_transfers_per_ip = if edit_state.max_transfers_per_ip != conn.max_transfers_per_ip {
-            edit_state.max_transfers_per_ip
-        } else {
-            None
-        };
-
-        let image = if edit_state.image != conn.server_image {
-            Some(edit_state.image.clone())
-        } else {
-            None
-        };
-
-        let file_reindex_interval =
-            if edit_state.file_reindex_interval != conn.file_reindex_interval {
-                edit_state.file_reindex_interval
-            } else {
-                None
-            };
-
-        let persistent_channels = if edit_state.persistent_channels
-            != conn.persistent_channels.as_deref().unwrap_or("")
-        {
-            Some(edit_state.persistent_channels.clone())
-        } else {
-            None
-        };
-
-        let auto_join_channels =
-            if edit_state.auto_join_channels != conn.auto_join_channels.as_deref().unwrap_or("") {
-                Some(edit_state.auto_join_channels.clone())
-            } else {
-                None
-            };
-
-        let chat_burst_limit = if edit_state.chat_burst_limit != conn.chat_burst_limit.unwrap_or(0)
-        {
-            Some(edit_state.chat_burst_limit)
-        } else {
-            None
-        };
-
-        let chat_rate_limit = if edit_state.chat_rate_limit != conn.chat_rate_limit.unwrap_or(0) {
-            Some(edit_state.chat_rate_limit)
-        } else {
-            None
-        };
-
-        let min_password_strength =
-            if edit_state.min_password_strength != conn.min_password_strength {
-                Some(edit_state.min_password_strength.score())
-            } else {
-                None
-            };
-
-        // Bandwidth section: convert the Mbps NumberInput value to
-        // bytes/sec; only send when it differs from the stored connection
-        // value (0 = unlimited).
-        let new_bytes_per_sec = edit_state.max_outbound_rate_bytes_per_sec();
-        let max_outbound_rate = if new_bytes_per_sec != conn.max_outbound_rate.unwrap_or(0) {
-            Some(new_bytes_per_sec)
-        } else {
-            None
-        };
-
-        // Scheduler chunk size: bytes Option<u32>; send when changed.
-        let scheduler_chunk_size = if edit_state.scheduler_chunk_size != conn.scheduler_chunk_size {
-            edit_state.scheduler_chunk_size
-        } else {
-            None
         };
 
         let msg = ClientMessage::ServerInfoUpdate {
-            name,
-            description,
-            public_address,
-            max_connections_per_ip,
-            max_transfers_per_ip,
-            image,
-            file_reindex_interval,
-            persistent_channels,
-            auto_join_channels,
-            chat_burst_limit,
-            chat_rate_limit,
-            min_password_strength,
-            max_outbound_rate,
-            scheduler_chunk_size,
+            name: fields.name,
+            description: fields.description,
+            public_address: fields.public_address,
+            max_connections_per_ip: fields.max_connections_per_ip,
+            max_transfers_per_ip: fields.max_transfers_per_ip,
+            image: fields.image,
+            file_reindex_interval: fields.file_reindex_interval,
+            persistent_channels: fields.persistent_channels,
+            auto_join_channels: fields.auto_join_channels,
+            chat_burst_limit: fields.chat_burst_limit,
+            chat_rate_limit: fields.chat_rate_limit,
+            min_password_strength: fields.min_password_strength,
+            max_outbound_rate: fields.max_outbound_rate,
+            scheduler_chunk_size: fields.scheduler_chunk_size,
         };
 
         // Mark as submitting to prevent double-submit
@@ -680,5 +566,115 @@ impl NexusApp {
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
         self.focus_field(next)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use nexus_common::framing::MessageId;
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "admin".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: "Original".to_string(),
+                address: "example.com".to_string(),
+                port: 7500,
+                transfer_port: 7501,
+                certificate_fingerprint: String::new(),
+                username: "admin".to_string(),
+                password: String::new(),
+                nickname: "admin".to_string(),
+            },
+            display_name: "Original".to_string(),
+            connection_id,
+            is_admin: true,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: Some("Original".to_string()),
+            server_description: Some("v1".to_string()),
+            public_address: Some("bbs.example.com".to_string()),
+            server_version: Some("0.9.0".to_string()),
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: Some(10),
+            chat_rate_limit: Some(20),
+            max_connections_per_ip: Some(30),
+            max_outbound_rate: Some(40),
+            max_transfers_per_ip: Some(50),
+            file_reindex_interval: Some(60),
+            persistent_channels: Some("#general".to_string()),
+            auto_join_channels: Some("#general".to_string()),
+            min_password_strength: PasswordStrength::Good,
+            log_level: Some("info".to_string()),
+            scheduler_chunk_size: Some(4096),
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        (conn, rx)
+    }
+
+    #[test]
+    fn update_server_info_diffs_against_edit_baseline_not_live_state() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+
+        conn.server_info_edit = Some(ServerInfoEditState::new(ServerInfoParams {
+            auto_join_channels: conn.auto_join_channels.as_deref(),
+            chat_burst_limit: conn.chat_burst_limit,
+            chat_rate_limit: conn.chat_rate_limit,
+            description: conn.server_description.as_deref(),
+            file_reindex_interval: conn.file_reindex_interval,
+            image: &conn.server_image,
+            max_connections_per_ip: conn.max_connections_per_ip,
+            max_outbound_rate: conn.max_outbound_rate,
+            max_transfers_per_ip: conn.max_transfers_per_ip,
+            min_password_strength: conn.min_password_strength,
+            name: conn.server_name.as_deref(),
+            persistent_channels: conn.persistent_channels.as_deref(),
+            public_address: conn.public_address.as_deref(),
+            scheduler_chunk_size: conn.scheduler_chunk_size,
+        }));
+
+        conn.server_description = Some("v2".to_string());
+        conn.server_info_edit.as_mut().unwrap().name = "Renamed".to_string();
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_update_server_info_pressed();
+
+        match rx.try_recv() {
+            Ok((
+                _,
+                ClientMessage::ServerInfoUpdate {
+                    name,
+                    description,
+                    public_address,
+                    ..
+                },
+            )) => {
+                assert_eq!(name.as_deref(), Some("Renamed"));
+                assert!(description.is_none());
+                assert!(public_address.is_none());
+            }
+            other => panic!("expected ServerInfoUpdate, got {other:?}"),
+        }
     }
 }

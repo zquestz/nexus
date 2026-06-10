@@ -414,13 +414,13 @@ impl NexusApp {
                     }
                 }
             }
-            NewsManagementMode::Edit { id } => {
-                let id = *id;
-                let msg = ClientMessage::NewsUpdate {
-                    id,
-                    body: Some(body),
-                    image: Some(image),
+            NewsManagementMode::Edit { id, .. } => {
+                let Some((body, image)) = conn.news_management.mode.news_update_fields(body, image)
+                else {
+                    return Task::none();
                 };
+                let id = *id;
+                let msg = ClientMessage::NewsUpdate { id, body, image };
 
                 conn.news_management.is_submitting = true;
                 match conn.send(msg) {

@@ -411,30 +411,25 @@ impl NexusApp {
         if conn.tracker_management.is_submitting {
             return Task::none();
         }
-
-        // Snapshot Edit-mode payload.
-        let (id, name, address, port, fingerprint, password, enabled) =
-            match &conn.tracker_management.mode {
-                TrackerManagementMode::Edit {
-                    id,
-                    name,
-                    address,
-                    port,
-                    fingerprint,
-                    password,
-                    enabled,
-                    ..
-                } => (
-                    *id,
-                    name.clone(),
-                    address.clone(),
-                    *port,
-                    fingerprint.clone(),
-                    password.clone(),
-                    *enabled,
-                ),
-                _ => return Task::none(),
-            };
+        let (id, name, address, port, fingerprint, password) = match &conn.tracker_management.mode {
+            TrackerManagementMode::Edit {
+                id,
+                name,
+                address,
+                port,
+                fingerprint,
+                password,
+                ..
+            } => (
+                *id,
+                name.clone(),
+                address.clone(),
+                *port,
+                fingerprint.clone(),
+                password.clone(),
+            ),
+            _ => return Task::none(),
+        };
 
         let existing = conn
             .tracker_management
@@ -456,16 +451,18 @@ impl NexusApp {
             return Task::none();
         }
 
-        let fingerprint = super::tracker_browser::optional_string(&fingerprint).unwrap_or_default();
+        let Some(fields) = conn.tracker_management.mode.tracker_update_fields() else {
+            return Task::none();
+        };
 
         let msg = ClientMessage::TrackerUpdate {
-            id,
-            address: Some(address),
-            port: Some(port),
-            fingerprint: Some(fingerprint),
-            password: Some(password),
-            name: Some(name),
-            enabled: Some(enabled),
+            id: fields.id,
+            address: fields.address,
+            port: fields.port,
+            fingerprint: fields.fingerprint,
+            password: fields.password,
+            name: fields.name,
+            enabled: fields.enabled,
         };
 
         conn.tracker_management.form_error = None;
@@ -912,6 +909,152 @@ mod tests {
     }
 
     #[test]
+    fn edit_mode_has_no_effective_update_changes_initially() {
+        let mut state = crate::types::TrackerManagementState::default();
+        state.enter_edit_mode(crate::types::TrackerEditInit {
+            id: 7,
+            name: "Public Tracker".to_string(),
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: Some(VALID_FINGERPRINT.to_string()),
+            password: Some("secret".to_string()),
+            enabled: true,
+            last_error: None,
+        });
+
+        assert!(!state.mode.has_effective_tracker_update_changes());
+    }
+
+    #[test]
+    fn edit_mode_detects_effective_update_changes() {
+        let mut state = crate::types::TrackerManagementState::default();
+        state.enter_edit_mode(crate::types::TrackerEditInit {
+            id: 7,
+            name: "Public Tracker".to_string(),
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: Some(VALID_FINGERPRINT.to_string()),
+            password: Some("secret".to_string()),
+            enabled: true,
+            last_error: None,
+        });
+        if let TrackerManagementMode::Edit { enabled, .. } = &mut state.mode {
+            *enabled = false;
+        }
+
+        assert!(state.mode.has_effective_tracker_update_changes());
+    }
+
+    #[test]
+    fn edit_mode_ignores_tracker_fingerprint_and_password_whitespace_only_changes() {
+        let mut state = crate::types::TrackerManagementState::default();
+        state.enter_edit_mode(crate::types::TrackerEditInit {
+            id: 7,
+            name: "Public Tracker".to_string(),
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: Some(VALID_FINGERPRINT.to_string()),
+            password: Some("secret".to_string()),
+            enabled: true,
+            last_error: None,
+        });
+        if let TrackerManagementMode::Edit {
+            fingerprint,
+            password,
+            ..
+        } = &mut state.mode
+        {
+            *fingerprint = format!("  {VALID_FINGERPRINT}  ");
+            *password = "  secret  ".to_string();
+        }
+
+        assert!(!state.mode.has_effective_tracker_update_changes());
+    }
+
+    #[test]
+    fn update_submit_does_not_send_for_normalized_empty_tracker_password() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.tracker_management.all_trackers = Some(Ok(vec![tracker(
+            7,
+            "Public Tracker",
+            "tracker.example.com",
+            7510,
+        )]));
+        conn.tracker_management.mode = TrackerManagementMode::Edit {
+            id: 7,
+            original_name: "Public Tracker".to_string(),
+            original_address: "tracker.example.com".to_string(),
+            original_port: 7510,
+            original_fingerprint: String::new(),
+            original_password: String::new(),
+            original_enabled: true,
+            last_error: None,
+            name: "Public Tracker".to_string(),
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: String::new(),
+            password: "   ".to_string(),
+            enabled: true,
+        };
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_edit_tracker_submit();
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn update_submit_does_not_rewrite_legacy_padded_tracker_password() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.tracker_management.all_trackers = Some(Ok(vec![tracker(
+            7,
+            "Public Tracker",
+            "tracker.example.com",
+            7510,
+        )]));
+        conn.tracker_management.mode = TrackerManagementMode::Edit {
+            id: 7,
+            original_name: "Public Tracker".to_string(),
+            original_address: "tracker.example.com".to_string(),
+            original_port: 7510,
+            original_fingerprint: String::new(),
+            original_password: " secret ".to_string(),
+            original_enabled: true,
+            last_error: None,
+            name: "Public Tracker".to_string(),
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: String::new(),
+            password: " secret ".to_string(),
+            enabled: false,
+        };
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_edit_tracker_submit();
+
+        match rx.try_recv() {
+            Ok((
+                _,
+                ClientMessage::TrackerUpdate {
+                    password, enabled, ..
+                },
+            )) => {
+                assert!(password.is_none());
+                assert_eq!(enabled, Some(false));
+            }
+            other => panic!("expected TrackerUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn update_submit_trims_fingerprint_before_send() {
         let mut app = NexusApp {
             active_connection: Some(1),
@@ -927,6 +1070,11 @@ mod tests {
         conn.tracker_management.mode = TrackerManagementMode::Edit {
             id: 7,
             original_name: "Public Tracker".to_string(),
+            original_address: "tracker.example.com".to_string(),
+            original_port: 7510,
+            original_fingerprint: String::new(),
+            original_password: String::new(),
+            original_enabled: true,
             last_error: None,
             name: "Public Tracker".to_string(),
             address: "tracker.example.com".to_string(),
@@ -942,6 +1090,63 @@ mod tests {
         match rx.try_recv() {
             Ok((_, ClientMessage::TrackerUpdate { fingerprint, .. })) => {
                 assert_eq!(fingerprint.as_deref(), Some(VALID_FINGERPRINT));
+            }
+            other => panic!("expected TrackerUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn update_submit_sends_only_changed_fields() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.tracker_management.all_trackers = Some(Ok(vec![tracker(
+            7,
+            "Public Tracker",
+            "tracker.example.com",
+            7510,
+        )]));
+        conn.tracker_management.mode = TrackerManagementMode::Edit {
+            id: 7,
+            original_name: "Public Tracker".to_string(),
+            original_address: "tracker.example.com".to_string(),
+            original_port: 7510,
+            original_fingerprint: String::new(),
+            original_password: String::new(),
+            original_enabled: true,
+            last_error: None,
+            name: "Public Tracker 2".to_string(),
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: String::new(),
+            password: "  secret  ".to_string(),
+            enabled: true,
+        };
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_edit_tracker_submit();
+
+        match rx.try_recv() {
+            Ok((
+                _,
+                ClientMessage::TrackerUpdate {
+                    name,
+                    password,
+                    address,
+                    port,
+                    fingerprint,
+                    enabled,
+                    ..
+                },
+            )) => {
+                assert_eq!(name.as_deref(), Some("Public Tracker 2"));
+                assert_eq!(password.as_deref(), Some("secret"));
+                assert!(address.is_none());
+                assert!(port.is_none());
+                assert!(fingerprint.is_none());
+                assert!(enabled.is_none());
             }
             other => panic!("expected TrackerUpdate, got {other:?}"),
         }

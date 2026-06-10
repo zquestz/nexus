@@ -278,7 +278,8 @@ impl NexusApp {
                 // If from news panel, populate the edit form
                 if matches!(routing, Some(ResponseRouting::PopulateNewsEdit)) {
                     // Set up the image in form state
-                    conn.news_management.enter_edit_mode(item.id, item.image);
+                    conn.news_management
+                        .enter_edit_mode(item.id, item.body.clone(), item.image);
 
                     // Initialize the text editor content with the body and focus it
                     return self.init_news_edit_content(connection_id, item.body);

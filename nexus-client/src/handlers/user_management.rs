@@ -3,7 +3,6 @@
 use iced::Task;
 use iced::widget::Id;
 use nexus_common::is_shared_account_permission;
-use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
     self, BanReasonError, KickReasonError, PasswordError, UsernameError, resolve_bandwidth_weight,
@@ -739,10 +738,14 @@ impl NexusApp {
             && let Some(conn) = self.connections.get_mut(&conn_id)
             && let UserManagementMode::Edit {
                 bandwidth_weight_inherit: ref mut bwi,
+                bandwidth_weight_override: ref mut bw,
                 ..
             } = conn.user_management.mode
         {
             *bwi = inherit;
+            if inherit {
+                *bw = None;
+            }
         }
         Task::none()
     }
@@ -779,53 +782,20 @@ impl NexusApp {
         if conn.user_management.is_submitting || conn.user_management.edit_stale {
             return Task::none();
         }
+        if !conn
+            .user_management
+            .mode
+            .has_effective_user_update_changes(&conn.connection_info.username, conn.is_admin)
+        {
+            return Task::none();
+        }
 
-        let (
-            id,
-            original_username,
-            new_username,
-            new_password,
-            is_admin,
-            enabled,
-            permissions,
-            original_group_id,
-            edit_group_id,
-            edit_group_permissions,
-            edit_bandwidth_weight_override,
-            edit_bandwidth_weight_inherit,
-            original_bandwidth_weight_override,
-        ) = match &conn.user_management.mode {
+        let (new_username, new_password) = match &conn.user_management.mode {
             UserManagementMode::Edit {
-                id,
-                original_username,
                 new_username,
                 new_password,
-                is_admin,
-                is_shared: _, // is_shared is immutable, not sent in update
-                enabled,
-                permissions,
-                original_group_id,
-                group_id,
-                group_permissions,
-                bandwidth_weight_override,
-                bandwidth_weight_inherit,
-                original_bandwidth_weight_override,
                 ..
-            } => (
-                *id,
-                original_username.clone(),
-                new_username.clone(),
-                new_password.clone(),
-                *is_admin,
-                *enabled,
-                permissions.clone(),
-                *original_group_id,
-                *group_id,
-                group_permissions.clone(),
-                *bandwidth_weight_override,
-                *bandwidth_weight_inherit,
-                *original_bandwidth_weight_override,
-            ),
+            } => (new_username.clone(), new_password.clone()),
             _ => return Task::none(),
         };
 
@@ -844,7 +814,7 @@ impl NexusApp {
 
         // Validate new password if provided
         let min_strength = conn.min_password_strength;
-        if !new_password.is_empty()
+        if !new_password.trim().is_empty()
             && let Err(e) =
                 validators::validate_password(&new_password, min_strength, &[new_username.as_str()])
         {
@@ -862,127 +832,43 @@ impl NexusApp {
             return Task::none();
         }
 
-        let requested_username = if new_username != original_username {
-            Some(new_username)
-        } else {
-            None
-        };
-
-        let requested_password = if !new_password.is_empty() {
-            Some(new_password)
-        } else {
-            None
-        };
-
-        // Self-edit is identity-based: this request targets the logged-in
-        // account. Strip fields the server rejects on any self-edit:
-        // is_admin, enabled, permissions, revokes, remove_group, and group_id.
-        let is_self_edit =
-            fold_name(&original_username) == fold_name(&conn.connection_info.username);
-
-        // Only send admin flag if current user is admin and it's not a self-edit
-        let requested_is_admin = if conn.is_admin && !is_self_edit {
-            Some(is_admin)
-        } else {
-            None
-        };
-
-        // Only send enabled flag if current user is admin and it's not a self-edit
-        let requested_enabled = if conn.is_admin && !is_self_edit {
-            Some(enabled)
-        } else {
-            None
-        };
-
-        // Only send permissions that the current user has (or all if admin).
-        // Stripped entirely for self-edits.
-        let requested_permissions: Option<Vec<String>> = if is_self_edit {
-            None
-        } else {
-            Some(
-                permissions
+        let requester_username = conn.connection_info.username.clone();
+        let requester_is_admin = conn.is_admin;
+        let requester_permissions = conn.permissions.clone();
+        let loaded_groups = conn
+            .user_management
+            .loaded_groups()
+            .map(|groups| groups.to_vec())
+            .unwrap_or_default();
+        let Some(fields) = conn.user_management.mode.user_update_fields(
+            &requester_username,
+            requester_is_admin,
+            |permission| {
+                requester_is_admin || requester_permissions.iter().any(|p| p == permission)
+            },
+            |gid| {
+                loaded_groups
                     .iter()
-                    .filter(|(perm_name, perm_enabled)| {
-                        *perm_enabled && conn.has_permission(perm_name)
-                    })
-                    .map(|(name, _)| name.clone())
-                    .collect(),
-            )
-        };
-
-        // Compute group assignment and revokes. Self-edit never sends group
-        // fields: admin self-edit rejects group_id via admin-XOR-group, and
-        // non-admin self-edit is password-only.
-        let (requested_group_id, requested_remove_group, requested_revokes) = if is_self_edit {
-            (None, None, None)
-        } else if let Some(gid) = edit_group_id {
-            // User has a group selected — compute revokes (group perms that are unchecked)
-            let revoke_list: Vec<String> = edit_group_permissions
-                .iter()
-                .filter(|gp| {
-                    permissions
-                        .iter()
-                        .any(|(p, enabled)| p.as_str() == gp.as_str() && !*enabled)
-                })
-                .cloned()
-                .collect();
-            let revokes = if revoke_list.is_empty() {
-                None
-            } else {
-                Some(revoke_list)
-            };
-            (Some(gid), None, revokes)
-        } else {
-            // No group selected — only send remove_group if user originally had one
-            let remove = if original_group_id.is_some() {
-                Some(true)
-            } else {
-                None
-            };
-            (None, remove, None)
-        };
-
-        // Bandwidth-weight diff. We compare both the inherit state and the
-        // override value against what was loaded from the server. When
-        // anything changed we send both fields explicitly (the form's full
-        // intent) so the server gets an unambiguous signal:
-        //  - Inherit checked   → bandwidth_weight=None, inherit=Some(true)
-        //  - Inherit unchecked → pin to the typed override, or to the
-        //    displayed baseline if no value was typed (unchecking Inherit
-        //    is an explicit "pin this user" gesture).
-        let original_inherit = original_bandwidth_weight_override.is_none();
-        let bandwidth_changed = edit_bandwidth_weight_inherit != original_inherit
-            || edit_bandwidth_weight_override != original_bandwidth_weight_override;
-        let (requested_bandwidth_weight, requested_inherit_bandwidth_weight) = if !bandwidth_changed
-        {
-            (None, None)
-        } else if edit_bandwidth_weight_inherit {
-            (None, Some(true))
-        } else {
-            let group_weight = edit_group_id.and_then(|gid| {
-                conn.user_management
-                    .loaded_groups()
-                    .and_then(|groups| groups.iter().find(|g| g.id == gid))
-                    .map(|g| g.bandwidth_weight)
-            });
-            let baseline = resolve_bandwidth_weight(None, group_weight, is_admin);
-            let pinned = edit_bandwidth_weight_override.unwrap_or(baseline);
-            (Some(pinned), Some(false))
+                    .find(|group| group.id == gid)
+                    .map(|group| group.bandwidth_weight)
+            },
+        ) else {
+            return Task::none();
         };
 
         let msg = ClientMessage::UserUpdate {
-            id,
-            username: requested_username,
+            id: fields.id,
+            username: fields.username,
             current_password: None,
-            password: requested_password,
-            is_admin: requested_is_admin,
-            enabled: requested_enabled,
-            permissions: requested_permissions,
-            group_id: requested_group_id,
-            remove_group: requested_remove_group,
-            revokes: requested_revokes,
-            bandwidth_weight: requested_bandwidth_weight,
-            inherit_bandwidth_weight: requested_inherit_bandwidth_weight,
+            password: fields.password,
+            is_admin: fields.is_admin,
+            enabled: fields.enabled,
+            permissions: fields.permissions,
+            group_id: fields.group_id,
+            remove_group: fields.remove_group,
+            revokes: fields.revokes,
+            bandwidth_weight: fields.bandwidth_weight,
+            inherit_bandwidth_weight: fields.inherit_bandwidth_weight,
         };
 
         // Clear any previous error on new submission
@@ -1576,5 +1462,269 @@ impl NexusApp {
             }
         }
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use nexus_common::framing::MessageId;
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams, UserEditInit};
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: Some(1),
+            nickname: "admin".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "admin".to_string(),
+                password: String::new(),
+                nickname: "admin".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: true,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        (conn, rx)
+    }
+
+    fn edit_init(id: i64, username: &str) -> UserEditInit {
+        UserEditInit {
+            id,
+            username: username.to_string(),
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: Vec::new(),
+            group_id: None,
+            group_permissions: Vec::new(),
+            revoked_permissions: Vec::new(),
+            bandwidth_weight: None,
+        }
+    }
+
+    #[test]
+    fn update_submit_does_not_send_whitespace_only_password_change() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.user_management.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit { new_password, .. } = &mut conn.user_management.mode {
+            *new_password = "   ".to_string();
+        }
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_update_pressed();
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn update_submit_does_not_send_hidden_bandwidth_override_while_inheriting() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.user_management.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit {
+            new_username,
+            bandwidth_weight_override,
+            bandwidth_weight_inherit,
+            ..
+        } = &mut conn.user_management.mode
+        {
+            *new_username = "alice2".to_string();
+            *bandwidth_weight_override = Some(25);
+            *bandwidth_weight_inherit = true;
+        }
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_update_pressed();
+
+        match rx.try_recv() {
+            Ok((
+                _,
+                ClientMessage::UserUpdate {
+                    username,
+                    bandwidth_weight,
+                    inherit_bandwidth_weight,
+                    ..
+                },
+            )) => {
+                assert_eq!(username.as_deref(), Some("alice2"));
+                assert!(bandwidth_weight.is_none());
+                assert!(inherit_bandwidth_weight.is_none());
+            }
+            other => panic!("expected UserUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn edit_inherit_bandwidth_toggle_clears_hidden_override() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.user_management.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit {
+            bandwidth_weight_override,
+            bandwidth_weight_inherit,
+            ..
+        } = &mut conn.user_management.mode
+        {
+            *bandwidth_weight_override = Some(25);
+            *bandwidth_weight_inherit = false;
+        }
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_edit_inherit_bandwidth_weight_toggled(true);
+
+        let conn = app.connections.get(&1).unwrap();
+        match &conn.user_management.mode {
+            UserManagementMode::Edit {
+                bandwidth_weight_override,
+                bandwidth_weight_inherit,
+                ..
+            } => {
+                assert_eq!(*bandwidth_weight_override, None);
+                assert!(*bandwidth_weight_inherit);
+            }
+            other => panic!("expected edit mode, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn update_submit_does_not_send_unchanged_edit() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.user_management.enter_edit_mode(edit_init(42, "alice"));
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_update_pressed();
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn update_submit_group_change_sends_permission_state_and_revokes() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        let mut init = edit_init(42, "alice");
+        init.permissions = vec!["chat_send".to_string()];
+        conn.user_management.enter_edit_mode(init);
+        if let UserManagementMode::Edit {
+            group_id,
+            group_permissions,
+            ..
+        } = &mut conn.user_management.mode
+        {
+            *group_id = Some(7);
+            *group_permissions = vec!["chat_send".to_string(), "file_list".to_string()];
+        }
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_update_pressed();
+
+        match rx.try_recv() {
+            Ok((
+                _,
+                ClientMessage::UserUpdate {
+                    username,
+                    permissions,
+                    group_id,
+                    remove_group,
+                    revokes,
+                    ..
+                },
+            )) => {
+                assert!(username.is_none());
+                assert_eq!(permissions, Some(vec!["chat_send".to_string()]));
+                assert_eq!(group_id, Some(7));
+                assert!(remove_group.is_none());
+                assert_eq!(revokes, Some(vec!["file_list".to_string()]));
+            }
+            other => panic!("expected UserUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn update_submit_filters_revokes_to_delegated_permissions() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_admin = false;
+        conn.permissions = vec!["user_edit".to_string(), "chat_send".to_string()];
+        conn.connection_info.username = "editor".to_string();
+        let mut init = edit_init(42, "alice");
+        init.permissions = vec!["chat_send".to_string()];
+        init.group_id = Some(7);
+        init.group_permissions = vec!["chat_send".to_string(), "user_kick".to_string()];
+        conn.user_management.enter_edit_mode(init);
+        if let UserManagementMode::Edit { permissions, .. } = &mut conn.user_management.mode
+            && let Some((_, enabled)) = permissions
+                .iter_mut()
+                .find(|(permission, _)| permission == "chat_send")
+        {
+            *enabled = false;
+        }
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_update_pressed();
+
+        match rx.try_recv() {
+            Ok((_, ClientMessage::UserUpdate { revokes, .. })) => {
+                assert_eq!(revokes, Some(vec!["chat_send".to_string()]));
+            }
+            other => panic!("expected UserUpdate, got {other:?}"),
+        }
     }
 }

@@ -60,6 +60,8 @@ struct EditGroupContext<'a> {
     permissions: &'a [(String, bool)],
     /// Bandwidth weight for the scheduler (1..=65535)
     bandwidth_weight: u16,
+    /// Whether the current form contains an effective update.
+    has_effective_changes: bool,
     /// Whether a submit request is in flight
     is_submitting: bool,
 }
@@ -579,7 +581,8 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
         .align_x(Center)
         .style(muted_text_style);
 
-    let can_update = !ctx.new_name.trim().is_empty() && !ctx.is_submitting;
+    let can_update =
+        ctx.has_effective_changes && !ctx.new_name.trim().is_empty() && !ctx.is_submitting;
 
     // Helper for on_submit
     let submit_action = if can_update {
@@ -775,8 +778,10 @@ pub fn group_form_view<'a>(
             original_name,
             new_name,
             is_shared,
+            original_is_shared: _,
             member_count,
             permissions,
+            original_permissions: _,
             bandwidth_weight,
             original_bandwidth_weight: _,
         } => edit_view(EditGroupContext {
@@ -788,6 +793,10 @@ pub fn group_form_view<'a>(
             member_count: *member_count,
             permissions,
             bandwidth_weight: *bandwidth_weight,
+            has_effective_changes: user_management
+                .group_management
+                .mode
+                .has_effective_group_update_changes(),
             is_submitting: user_management.group_management.is_submitting,
         }),
         GroupManagementMode::ConfirmDelete { id: _, name } => confirm_delete_modal(

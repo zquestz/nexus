@@ -22,12 +22,61 @@ pub enum NewsManagementMode {
     Edit {
         /// News item ID being edited
         id: i64,
+        /// Original body at time of edit.
+        original_body: String,
+        /// Original image at time of edit (empty = no image).
+        original_image: String,
     },
     /// Confirming deletion of a news item
     ConfirmDelete {
         /// News item ID to delete
         id: i64,
     },
+}
+
+impl NewsManagementMode {
+    /// Returns true when the edit form contains at least one field the
+    /// client would send in a `NewsUpdate`.
+    pub fn has_effective_news_update_changes(&self, body: &str, image: &str) -> bool {
+        let Self::Edit {
+            original_body,
+            original_image,
+            ..
+        } = self
+        else {
+            return false;
+        };
+
+        body != original_body || image != original_image
+    }
+
+    /// Return the sparse `NewsUpdate` body/image fields for an edit.
+    ///
+    /// Unchanged fields are omitted. Changed fields are sent explicitly,
+    /// including `Some("")` when the user cleared a field.
+    pub fn news_update_fields(
+        &self,
+        body: String,
+        image: String,
+    ) -> Option<(Option<String>, Option<String>)> {
+        let Self::Edit {
+            original_body,
+            original_image,
+            ..
+        } = self
+        else {
+            return None;
+        };
+
+        let body = (body != *original_body).then_some(body);
+        let image = (image != *original_image).then_some(image);
+
+        if body.is_none() && image.is_none() {
+            None
+        } else {
+            Some((body, image))
+        }
+    }
 }
 
 /// News management panel state (per-connection)
@@ -123,8 +172,10 @@ impl NewsManagementState {
     }
 
     /// Enter edit mode for a news item (image pre-populated, body handled by text_editor)
-    pub fn enter_edit_mode(&mut self, id: i64, image: Option<String>) {
-        self.form_image = image.clone().unwrap_or_default();
+    pub fn enter_edit_mode(&mut self, id: i64, body: Option<String>, image: Option<String>) {
+        let original_body = body.unwrap_or_default();
+        let original_image = image.unwrap_or_default();
+        self.form_image = original_image.clone();
         self.cached_form_image = if self.form_image.is_empty() {
             None
         } else {
@@ -132,7 +183,11 @@ impl NewsManagementState {
         };
         self.form_error = None;
 
-        self.mode = NewsManagementMode::Edit { id };
+        self.mode = NewsManagementMode::Edit {
+            id,
+            original_body,
+            original_image,
+        };
     }
 
     /// Enter confirm delete mode for a news item
@@ -215,5 +270,68 @@ mod tests {
         assert!(items[0].author_is_admin);
         assert_eq!(items[1].author.as_deref(), Some("bob"));
         assert!(items[1].author_is_admin);
+    }
+
+    #[test]
+    fn edit_mode_has_no_effective_update_changes_initially() {
+        let mut state = NewsManagementState::default();
+        state.enter_edit_mode(7, Some("body".to_string()), Some("image".to_string()));
+
+        assert!(
+            !state
+                .mode
+                .has_effective_news_update_changes("body", "image")
+        );
+    }
+
+    #[test]
+    fn edit_mode_detects_effective_update_changes() {
+        let mut state = NewsManagementState::default();
+        state.enter_edit_mode(7, Some("body".to_string()), Some("image".to_string()));
+
+        assert!(
+            state
+                .mode
+                .has_effective_news_update_changes("updated", "image")
+        );
+    }
+
+    #[test]
+    fn edit_mode_toggle_back_is_not_an_effective_update() {
+        let mut state = NewsManagementState::default();
+        state.enter_edit_mode(7, Some("body".to_string()), None);
+
+        assert!(!state.mode.has_effective_news_update_changes("body", ""));
+    }
+
+    #[test]
+    fn edit_mode_news_update_fields_are_sparse() {
+        let mut state = NewsManagementState::default();
+        state.enter_edit_mode(7, Some("body".to_string()), Some("image".to_string()));
+
+        assert_eq!(
+            state
+                .mode
+                .news_update_fields("updated".to_string(), "image".to_string()),
+            Some((Some("updated".to_string()), None))
+        );
+        assert_eq!(
+            state
+                .mode
+                .news_update_fields("body".to_string(), "new-image".to_string()),
+            Some((None, Some("new-image".to_string())))
+        );
+        assert_eq!(
+            state
+                .mode
+                .news_update_fields("body".to_string(), "".to_string()),
+            Some((None, Some(String::new())))
+        );
+        assert_eq!(
+            state
+                .mode
+                .news_update_fields("body".to_string(), "image".to_string()),
+            None
+        );
     }
 }

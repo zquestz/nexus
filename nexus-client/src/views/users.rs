@@ -234,6 +234,8 @@ struct EditUserContext<'a> {
     bandwidth_weight_override: Option<u16>,
     /// "Inherit from group" checkbox state.
     bandwidth_weight_inherit: bool,
+    /// Whether the current form contains an effective update.
+    has_effective_changes: bool,
 }
 
 /// Build permission checkboxes split into two columns.
@@ -934,7 +936,8 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
     let is_self_edit =
         fold_name(ctx.original_username) == fold_name(&ctx.conn.connection_info.username);
 
-    let can_update = !ctx.new_username.trim().is_empty()
+    let can_update = ctx.has_effective_changes
+        && !ctx.new_username.trim().is_empty()
         && !ctx.user_management.is_submitting
         && !ctx.user_management.edit_stale;
 
@@ -1254,6 +1257,10 @@ pub fn users_view<'a>(
                     group_permissions,
                     bandwidth_weight_override: *bandwidth_weight_override,
                     bandwidth_weight_inherit: *bandwidth_weight_inherit,
+                    has_effective_changes: user_management.mode.has_effective_user_update_changes(
+                        &conn.connection_info.username,
+                        conn.is_admin,
+                    ),
                 },
                 theme,
             ),

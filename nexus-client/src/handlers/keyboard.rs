@@ -306,7 +306,12 @@ impl NexusApp {
                             return self.update(msg);
                         }
                         GroupManagementMode::Edit { new_name, .. } => {
-                            let can_save = !new_name.trim().is_empty()
+                            let can_save = conn
+                                .user_management
+                                .group_management
+                                .mode
+                                .has_effective_group_update_changes()
+                                && !new_name.trim().is_empty()
                                 && !conn.user_management.group_management.is_submitting;
                             let msg = if can_save {
                                 Message::GroupManagementUpdatePressed
@@ -333,9 +338,13 @@ impl NexusApp {
                             return self.update(msg);
                         }
                         UserManagementMode::Edit { new_username, .. } => {
-                            let can_save = !new_username.trim().is_empty()
-                                && !conn.user_management.is_submitting
-                                && !conn.user_management.edit_stale;
+                            let can_save =
+                                conn.user_management.mode.has_effective_user_update_changes(
+                                    &conn.connection_info.username,
+                                    conn.is_admin,
+                                ) && !new_username.trim().is_empty()
+                                    && !conn.user_management.is_submitting
+                                    && !conn.user_management.edit_stale;
                             let msg = if can_save {
                                 Message::UserManagementUpdatePressed
                             } else {
@@ -386,8 +395,14 @@ impl NexusApp {
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
                 {
-                    if conn.server_info_edit.is_some() {
-                        return self.update(Message::UpdateServerInfoPressed);
+                    if let Some(edit_state) = conn.server_info_edit.as_ref() {
+                        if edit_state.is_submitting {
+                            return Task::none();
+                        }
+                        if edit_state.has_changes_from_original() {
+                            return self.update(Message::UpdateServerInfoPressed);
+                        }
+                        return Task::none();
                     }
                     match &conn.tracker_management.mode {
                         TrackerManagementMode::Add => {
@@ -402,7 +417,11 @@ impl NexusApp {
                             return self.update(msg);
                         }
                         TrackerManagementMode::Edit { name, address, .. } => {
-                            let can_submit = !name.trim().is_empty()
+                            let can_submit = conn
+                                .tracker_management
+                                .mode
+                                .has_effective_tracker_update_changes()
+                                && !name.trim().is_empty()
                                 && !address.trim().is_empty()
                                 && !conn.tracker_management.is_submitting;
                             let msg = if can_submit {

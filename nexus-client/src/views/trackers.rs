@@ -688,6 +688,11 @@ pub fn add_tracker_view(state: &TrackerManagementState) -> Element<'_, Message> 
 pub fn edit_tracker_view(state: &TrackerManagementState) -> Element<'_, Message> {
     let TrackerManagementMode::Edit {
         original_name,
+        original_address: _,
+        original_port: _,
+        original_fingerprint: _,
+        original_password: _,
+        original_enabled: _,
         last_error,
         name,
         address,
@@ -709,7 +714,10 @@ pub fn edit_tracker_view(state: &TrackerManagementState) -> Element<'_, Message>
         .align_x(Center)
         .style(muted_text_style);
 
-    let can_submit = !name.trim().is_empty() && !address.trim().is_empty() && !state.is_submitting;
+    let can_submit = state.mode.has_effective_tracker_update_changes()
+        && !name.trim().is_empty()
+        && !address.trim().is_empty()
+        && !state.is_submitting;
 
     let submit_action = if can_submit {
         Message::EditTrackerSubmit

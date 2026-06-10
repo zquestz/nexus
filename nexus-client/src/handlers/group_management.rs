@@ -593,34 +593,8 @@ impl NexusApp {
         if conn.user_management.group_management.is_submitting {
             return Task::none();
         }
-
-        let (
-            id,
-            original_name,
-            new_name,
-            is_shared,
-            permissions,
-            bandwidth_weight,
-            original_bandwidth_weight,
-        ) = match &conn.user_management.group_management.mode {
-            GroupManagementMode::Edit {
-                id,
-                original_name,
-                new_name,
-                is_shared,
-                permissions,
-                bandwidth_weight,
-                original_bandwidth_weight,
-                ..
-            } => (
-                *id,
-                original_name.clone(),
-                new_name.clone(),
-                *is_shared,
-                permissions.clone(),
-                *bandwidth_weight,
-                *original_bandwidth_weight,
-            ),
+        let new_name = match &conn.user_management.group_management.mode {
+            GroupManagementMode::Edit { new_name, .. } => new_name.clone(),
             _ => return Task::none(),
         };
 
@@ -637,47 +611,25 @@ impl NexusApp {
             return Task::none();
         }
 
-        // Only send name if it changed
-        let requested_name = if new_name != original_name {
-            Some(new_name)
-        } else {
-            None
-        };
-
-        // Only send permissions that the current user has (non-admin delegation)
-        let requested_permissions: Vec<String> = permissions
-            .iter()
-            .filter(|(perm_name, perm_enabled)| *perm_enabled && conn.has_permission(perm_name))
-            .map(|(name, _)| name.clone())
-            .collect();
-
-        // Only send is_shared when it could have been toggled (member_count == 0).
-        // When member_count > 0, the UI disables the checkbox so the value is unchanged.
-        let requested_is_shared = match &conn.user_management.group_management.mode {
-            GroupManagementMode::Edit { member_count, .. } => {
-                if *member_count > 0 {
-                    None
-                } else {
-                    Some(is_shared)
-                }
-            }
-            _ => None,
-        };
-
-        // Only send bandwidth_weight when the user changed it (mirrors the
-        // `requested_name` diff pattern above).
-        let requested_bandwidth_weight = if bandwidth_weight != original_bandwidth_weight {
-            Some(bandwidth_weight)
-        } else {
-            None
+        let requester_is_admin = conn.is_admin;
+        let requester_permissions = conn.permissions.clone();
+        let Some(fields) = conn
+            .user_management
+            .group_management
+            .mode
+            .group_update_fields(|permission| {
+                requester_is_admin || requester_permissions.iter().any(|p| p == permission)
+            })
+        else {
+            return Task::none();
         };
 
         let msg = ClientMessage::GroupUpdate {
-            id,
-            name: requested_name,
-            is_shared: requested_is_shared,
-            permissions: Some(requested_permissions),
-            bandwidth_weight: requested_bandwidth_weight,
+            id: fields.id,
+            name: fields.name,
+            is_shared: fields.is_shared,
+            permissions: fields.permissions,
+            bandwidth_weight: fields.bandwidth_weight,
         };
 
         // Clear any previous error on new submission
@@ -752,5 +704,132 @@ impl NexusApp {
         const CYCLE: &[InputId] = &[InputId::EditGroupName];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
         self.focus_field(next)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use nexus_common::framing::MessageId;
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: Some(1),
+            nickname: "admin".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "admin".to_string(),
+                password: String::new(),
+                nickname: "admin".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: true,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        (conn, rx)
+    }
+
+    #[test]
+    fn update_group_does_not_send_unchanged_edit() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.user_management.group_management.enter_edit_mode(
+            7,
+            "Staff".to_string(),
+            false,
+            0,
+            vec!["chat_send".to_string()],
+            1,
+        );
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_group_management_update_pressed();
+
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn update_group_name_change_sends_only_name() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.user_management.group_management.enter_edit_mode(
+            7,
+            "Staff".to_string(),
+            false,
+            0,
+            vec!["chat_send".to_string()],
+            1,
+        );
+        if let GroupManagementMode::Edit { new_name, .. } =
+            &mut conn.user_management.group_management.mode
+        {
+            *new_name = "Staff2".to_string();
+        }
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_group_management_update_pressed();
+
+        match rx.try_recv() {
+            Ok((
+                _,
+                ClientMessage::GroupUpdate {
+                    name,
+                    is_shared,
+                    permissions,
+                    bandwidth_weight,
+                    ..
+                },
+            )) => {
+                assert_eq!(name.as_deref(), Some("Staff2"));
+                assert!(is_shared.is_none());
+                assert!(permissions.is_none());
+                assert!(bandwidth_weight.is_none());
+            }
+            other => panic!("expected GroupUpdate, got {other:?}"),
+        }
     }
 }

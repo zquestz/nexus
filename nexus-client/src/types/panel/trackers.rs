@@ -43,6 +43,16 @@ pub enum TrackerManagementMode {
         id: i64,
         /// Original name (immutable, used for the form subtitle).
         original_name: String,
+        /// Original address at time of edit.
+        original_address: String,
+        /// Original port at time of edit.
+        original_port: u16,
+        /// Original fingerprint pin at time of edit (empty = unpinned).
+        original_fingerprint: String,
+        /// Original registration password at time of edit (empty = open tracker).
+        original_password: String,
+        /// Original enabled flag at time of edit.
+        original_enabled: bool,
         /// Most recent operational error reported by the server, surfaced
         /// in the form banner so admins see context while editing.
         last_error: Option<String>,
@@ -86,6 +96,114 @@ pub enum TrackerManagementMode {
     },
 }
 
+/// Sparse `TrackerUpdate` payload computed from an edit baseline.
+pub struct TrackerUpdateFields {
+    pub id: i64,
+    pub address: Option<String>,
+    pub port: Option<u16>,
+    pub fingerprint: Option<String>,
+    pub password: Option<String>,
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+impl TrackerManagementMode {
+    /// Returns true when the edit form contains at least one field the
+    /// client would send in a `TrackerUpdate`.
+    pub fn has_effective_tracker_update_changes(&self) -> bool {
+        let Self::Edit {
+            original_name,
+            original_address,
+            original_port,
+            original_fingerprint,
+            original_password,
+            original_enabled,
+            name,
+            address,
+            port,
+            fingerprint,
+            password,
+            enabled,
+            ..
+        } = self
+        else {
+            return false;
+        };
+
+        let fingerprint = normalize_optional_string(fingerprint).unwrap_or_default();
+        let original_fingerprint =
+            normalize_optional_string(original_fingerprint).unwrap_or_default();
+        let password = normalize_optional_string(password).unwrap_or_default();
+        let original_password = normalize_optional_string(original_password).unwrap_or_default();
+
+        name != original_name
+            || address != original_address
+            || port != original_port
+            || fingerprint != original_fingerprint
+            || password != original_password
+            || enabled != original_enabled
+    }
+
+    /// Build a sparse update payload by diffing normalized form values
+    /// against the baseline captured when edit mode opened.
+    pub fn tracker_update_fields(&self) -> Option<TrackerUpdateFields> {
+        let Self::Edit {
+            id,
+            original_name,
+            original_address,
+            original_port,
+            original_fingerprint,
+            original_password,
+            original_enabled,
+            name,
+            address,
+            port,
+            fingerprint,
+            password,
+            enabled,
+            ..
+        } = self
+        else {
+            return None;
+        };
+
+        let fingerprint = normalize_optional_string(fingerprint).unwrap_or_default();
+        let original_fingerprint =
+            normalize_optional_string(original_fingerprint).unwrap_or_default();
+        let password = normalize_optional_string(password).unwrap_or_default();
+        let original_password = normalize_optional_string(original_password).unwrap_or_default();
+
+        let fields = TrackerUpdateFields {
+            id: *id,
+            address: (address != original_address).then_some(address.clone()),
+            port: (port != original_port).then_some(*port),
+            fingerprint: (fingerprint != original_fingerprint).then_some(fingerprint),
+            password: (password != original_password).then_some(password),
+            name: (name != original_name).then_some(name.clone()),
+            enabled: (enabled != original_enabled).then_some(*enabled),
+        };
+
+        (fields.address.is_some()
+            || fields.port.is_some()
+            || fields.fingerprint.is_some()
+            || fields.password.is_some()
+            || fields.name.is_some()
+            || fields.enabled.is_some())
+        .then_some(fields)
+    }
+}
+
+/// Trim a freeform optional tracker field (password, fingerprint); empty after
+/// trim collapses to `None` so edit-change detection and wire payloads agree.
+pub fn normalize_optional_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 impl std::fmt::Debug for TrackerManagementMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -94,6 +212,11 @@ impl std::fmt::Debug for TrackerManagementMode {
             Self::Edit {
                 id,
                 original_name,
+                original_address: _,
+                original_port: _,
+                original_fingerprint: _,
+                original_password: _,
+                original_enabled: _,
                 last_error,
                 name,
                 address,
@@ -295,6 +418,11 @@ impl TrackerManagementState {
         self.mode = TrackerManagementMode::Edit {
             id: init.id,
             original_name: init.name.clone(),
+            original_address: init.address.clone(),
+            original_port: init.port,
+            original_fingerprint: init.fingerprint.clone().unwrap_or_default(),
+            original_password: init.password.clone().unwrap_or_default(),
+            original_enabled: init.enabled,
             last_error: init.last_error,
             name: init.name,
             address: init.address,

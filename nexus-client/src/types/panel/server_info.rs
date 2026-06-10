@@ -51,6 +51,64 @@ pub struct ServerInfoParams<'a> {
     pub scheduler_chunk_size: Option<u32>,
 }
 
+/// Owned baseline captured when the server-info edit form opens.
+#[derive(Clone)]
+pub struct ServerInfoOriginal {
+    pub auto_join_channels: String,
+    pub chat_burst_limit: Option<u32>,
+    pub chat_rate_limit: Option<u32>,
+    pub description: String,
+    pub file_reindex_interval: Option<u32>,
+    pub image: String,
+    pub max_connections_per_ip: Option<u32>,
+    pub max_outbound_rate: Option<u64>,
+    pub max_transfers_per_ip: Option<u32>,
+    pub min_password_strength: PasswordStrength,
+    pub name: String,
+    pub persistent_channels: String,
+    pub public_address: String,
+    pub scheduler_chunk_size: Option<u32>,
+}
+
+/// Sparse `ServerInfoUpdate` payload computed from an edit baseline.
+pub struct ServerInfoUpdateFields {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub public_address: Option<String>,
+    pub max_connections_per_ip: Option<u32>,
+    pub max_transfers_per_ip: Option<u32>,
+    pub image: Option<String>,
+    pub file_reindex_interval: Option<u32>,
+    pub persistent_channels: Option<String>,
+    pub auto_join_channels: Option<String>,
+    pub chat_burst_limit: Option<u32>,
+    pub chat_rate_limit: Option<u32>,
+    pub min_password_strength: Option<u8>,
+    pub max_outbound_rate: Option<u64>,
+    pub scheduler_chunk_size: Option<u32>,
+}
+
+impl ServerInfoOriginal {
+    fn from_params(params: &ServerInfoParams<'_>) -> Self {
+        Self {
+            auto_join_channels: params.auto_join_channels.unwrap_or("").to_string(),
+            chat_burst_limit: params.chat_burst_limit,
+            chat_rate_limit: params.chat_rate_limit,
+            description: params.description.unwrap_or("").to_string(),
+            file_reindex_interval: params.file_reindex_interval,
+            image: params.image.to_string(),
+            max_connections_per_ip: params.max_connections_per_ip,
+            max_outbound_rate: params.max_outbound_rate,
+            max_transfers_per_ip: params.max_transfers_per_ip,
+            min_password_strength: params.min_password_strength,
+            name: params.name.unwrap_or("").to_string(),
+            persistent_channels: params.persistent_channels.unwrap_or("").to_string(),
+            public_address: params.public_address.unwrap_or("").to_string(),
+            scheduler_chunk_size: params.scheduler_chunk_size,
+        }
+    }
+}
+
 impl Default for ServerInfoParams<'_> {
     fn default() -> Self {
         Self {
@@ -108,6 +166,8 @@ pub struct ServerInfoEditState {
     pub min_password_strength: PasswordStrength,
     /// Server name (editable)
     pub name: String,
+    /// Original values captured when the edit form opened.
+    pub original: ServerInfoOriginal,
     /// Persistent channels (space-separated)
     pub persistent_channels: String,
     /// Public address for `nexus://` URI sharing (editable; empty = unset)
@@ -137,6 +197,7 @@ impl std::fmt::Debug for ServerInfoEditState {
             .field("max_transfers_per_ip", &self.max_transfers_per_ip)
             .field("min_password_strength", &self.min_password_strength)
             .field("name", &self.name)
+            .field("original", &"<baseline>")
             .field("persistent_channels", &self.persistent_channels)
             .field("public_address", &self.public_address)
             .field("scheduler_chunk_size", &self.scheduler_chunk_size)
@@ -147,6 +208,8 @@ impl std::fmt::Debug for ServerInfoEditState {
 impl ServerInfoEditState {
     /// Create a new server info edit state with current values
     pub fn new(params: ServerInfoParams<'_>) -> Self {
+        let original = ServerInfoOriginal::from_params(&params);
+
         // Decode image for preview
         let cached_image = if params.image.is_empty() {
             None
@@ -172,6 +235,7 @@ impl ServerInfoEditState {
             max_transfers_per_ip: params.max_transfers_per_ip,
             min_password_strength: params.min_password_strength,
             name: params.name.unwrap_or("").to_string(),
+            original,
             persistent_channels: params.persistent_channels.unwrap_or("").to_string(),
             public_address: params.public_address.unwrap_or("").to_string(),
             scheduler_chunk_size: params.scheduler_chunk_size,
@@ -222,6 +286,73 @@ impl ServerInfoEditState {
             || max_outbound_rate_changed
             || scheduler_chunk_size_changed
     }
+
+    /// Check if the form has any changes compared to the baseline captured
+    /// when the edit form opened.
+    pub fn has_changes_from_original(&self) -> bool {
+        let original = ServerInfoParams {
+            auto_join_channels: Some(&self.original.auto_join_channels),
+            chat_burst_limit: self.original.chat_burst_limit,
+            chat_rate_limit: self.original.chat_rate_limit,
+            description: Some(&self.original.description),
+            file_reindex_interval: self.original.file_reindex_interval,
+            image: &self.original.image,
+            max_connections_per_ip: self.original.max_connections_per_ip,
+            max_outbound_rate: self.original.max_outbound_rate,
+            max_transfers_per_ip: self.original.max_transfers_per_ip,
+            min_password_strength: self.original.min_password_strength,
+            name: Some(&self.original.name),
+            persistent_channels: Some(&self.original.persistent_channels),
+            public_address: Some(&self.original.public_address),
+            scheduler_chunk_size: self.original.scheduler_chunk_size,
+        };
+        self.has_changes(&original)
+    }
+
+    /// Build a sparse update payload by diffing against the baseline
+    /// captured when the edit form opened.
+    pub fn update_fields(&self) -> Option<ServerInfoUpdateFields> {
+        if !self.has_changes_from_original() {
+            return None;
+        }
+
+        let original = &self.original;
+        let max_outbound_rate_bytes = self.max_outbound_rate_bytes_per_sec();
+
+        Some(ServerInfoUpdateFields {
+            name: (self.name != original.name).then_some(self.name.clone()),
+            description: (self.description != original.description)
+                .then_some(self.description.clone()),
+            public_address: (self.public_address != original.public_address)
+                .then_some(self.public_address.clone()),
+            max_connections_per_ip: (self.max_connections_per_ip
+                != original.max_connections_per_ip)
+                .then_some(self.max_connections_per_ip)
+                .flatten(),
+            max_transfers_per_ip: (self.max_transfers_per_ip != original.max_transfers_per_ip)
+                .then_some(self.max_transfers_per_ip)
+                .flatten(),
+            image: (self.image != original.image).then_some(self.image.clone()),
+            file_reindex_interval: (self.file_reindex_interval != original.file_reindex_interval)
+                .then_some(self.file_reindex_interval)
+                .flatten(),
+            persistent_channels: (self.persistent_channels != original.persistent_channels)
+                .then_some(self.persistent_channels.clone()),
+            auto_join_channels: (self.auto_join_channels != original.auto_join_channels)
+                .then_some(self.auto_join_channels.clone()),
+            chat_burst_limit: (self.chat_burst_limit != original.chat_burst_limit.unwrap_or(0))
+                .then_some(self.chat_burst_limit),
+            chat_rate_limit: (self.chat_rate_limit != original.chat_rate_limit.unwrap_or(0))
+                .then_some(self.chat_rate_limit),
+            min_password_strength: (self.min_password_strength != original.min_password_strength)
+                .then_some(self.min_password_strength.score()),
+            max_outbound_rate: (max_outbound_rate_bytes != original.max_outbound_rate.unwrap_or(0))
+                .then_some(max_outbound_rate_bytes),
+            scheduler_chunk_size: (self.scheduler_chunk_size != original.scheduler_chunk_size)
+                .then_some(self.scheduler_chunk_size)
+                .flatten(),
+        })
+    }
 }
 
 /// Format a bytes/sec rate as Mbps (decimal, no trailing zeros). Used by the
@@ -242,6 +373,22 @@ pub fn format_bytes_per_sec_as_mbps(bytes_per_sec: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edit_state_tracks_changes_from_original() {
+        let mut state = ServerInfoEditState::new(ServerInfoParams {
+            name: Some("Nexus"),
+            description: Some("Original description"),
+            max_outbound_rate: Some(125_000),
+            ..ServerInfoParams::default()
+        });
+
+        assert!(!state.has_changes_from_original());
+
+        state.description = "Updated description".to_string();
+
+        assert!(state.has_changes_from_original());
+    }
 
     /// Normal-range caps render with no trailing zeros — the precision
     /// bump from {:.4} to {:.6} must NOT add visual noise to common values.

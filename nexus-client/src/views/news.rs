@@ -480,7 +480,11 @@ fn form_view<'a>(
     // Submit button
     let submit_label = shaped_text(t("button-save")).size(TEXT_SIZE);
 
-    let submit_button = if has_content && !news_management.is_submitting {
+    let has_effective_changes = !is_edit
+        || news_management
+            .mode
+            .has_effective_news_update_changes(body_text.trim(), &news_management.form_image);
+    let submit_button = if has_content && has_effective_changes && !news_management.is_submitting {
         button(submit_label)
             .on_press(Message::NewsSubmitPressed)
             .padding(BUTTON_PADDING)

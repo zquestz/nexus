@@ -1,7 +1,9 @@
 //! User management panel state
 
 use nexus_common::ALL_PERMISSIONS;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{GroupInfo, UserInfo};
+use nexus_common::validators::resolve_bandwidth_weight;
 
 use super::super::ActivePanel;
 use super::groups::GroupManagementState;
@@ -78,12 +80,18 @@ pub enum UserManagementMode {
         new_password: String,
         /// Is admin flag (editable)
         is_admin: bool,
+        /// Original admin flag at time of edit.
+        original_is_admin: bool,
         /// Is shared account flag (immutable - display only)
         is_shared: bool,
         /// Enabled flag (editable)
         enabled: bool,
+        /// Original enabled flag at time of edit.
+        original_enabled: bool,
         /// Permissions (editable) — effective permissions (checked = on for user)
         permissions: Vec<(String, bool)>,
+        /// Original effective permissions at time of edit.
+        original_permissions: Vec<(String, bool)>,
         /// Original group ID at time of edit (for detecting whether remove_group is needed)
         original_group_id: Option<i64>,
         /// Assigned group ID (None = no group)
@@ -112,6 +120,186 @@ pub enum UserManagementMode {
         /// Username to delete (for display in confirmation dialog)
         username: String,
     },
+}
+
+/// Sparse `UserUpdate` payload computed from an edit baseline.
+pub struct UserUpdateFields {
+    pub id: i64,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub is_admin: Option<bool>,
+    pub enabled: Option<bool>,
+    pub permissions: Option<Vec<String>>,
+    pub group_id: Option<i64>,
+    pub remove_group: Option<bool>,
+    pub revokes: Option<Vec<String>>,
+    pub bandwidth_weight: Option<u16>,
+    pub inherit_bandwidth_weight: Option<bool>,
+}
+
+impl UserManagementMode {
+    /// Returns true when the edit form contains at least one field the
+    /// client would send in a `UserUpdate`.
+    pub fn has_effective_user_update_changes(
+        &self,
+        requester_username: &str,
+        requester_is_admin: bool,
+    ) -> bool {
+        let Self::Edit {
+            original_username,
+            new_username,
+            new_password,
+            is_admin,
+            original_is_admin,
+            enabled,
+            original_enabled,
+            permissions,
+            original_permissions,
+            original_group_id,
+            group_id,
+            bandwidth_weight_override,
+            bandwidth_weight_inherit,
+            original_bandwidth_weight_override,
+            ..
+        } = self
+        else {
+            return false;
+        };
+
+        let is_self_edit = fold_name(original_username) == fold_name(requester_username);
+        let identity_and_bandwidth_allowed = !is_self_edit || requester_is_admin;
+        let original_bandwidth_inherit = original_bandwidth_weight_override.is_none();
+
+        (identity_and_bandwidth_allowed && new_username != original_username)
+            || (!is_self_edit && !new_password.trim().is_empty())
+            || (!is_self_edit && requester_is_admin && is_admin != original_is_admin)
+            || (!is_self_edit && requester_is_admin && enabled != original_enabled)
+            || (!is_self_edit && permissions != original_permissions)
+            || (!is_self_edit && group_id != original_group_id)
+            || (identity_and_bandwidth_allowed
+                && (*bandwidth_weight_inherit != original_bandwidth_inherit
+                    || (!*bandwidth_weight_inherit
+                        && bandwidth_weight_override != original_bandwidth_weight_override)))
+    }
+
+    /// Build a sparse update payload. Permission delegation and group-weight
+    /// lookup are supplied by the caller so panel state stays connection-free.
+    pub fn user_update_fields<CanPerm, GroupWeight>(
+        &self,
+        requester_username: &str,
+        requester_is_admin: bool,
+        mut can_delegate_permission: CanPerm,
+        mut group_weight_for: GroupWeight,
+    ) -> Option<UserUpdateFields>
+    where
+        CanPerm: FnMut(&str) -> bool,
+        GroupWeight: FnMut(i64) -> Option<u16>,
+    {
+        if !self.has_effective_user_update_changes(requester_username, requester_is_admin) {
+            return None;
+        }
+
+        let Self::Edit {
+            id,
+            original_username,
+            new_username,
+            new_password,
+            is_admin,
+            original_is_admin,
+            enabled,
+            original_enabled,
+            permissions,
+            original_permissions,
+            original_group_id,
+            group_id,
+            group_permissions,
+            bandwidth_weight_override,
+            bandwidth_weight_inherit,
+            original_bandwidth_weight_override,
+            ..
+        } = self
+        else {
+            return None;
+        };
+
+        let is_self_edit = fold_name(original_username) == fold_name(requester_username);
+        let permissions_changed = permissions != original_permissions;
+        let group_changed = group_id != original_group_id;
+        let send_permission_state = !is_self_edit
+            && (permissions_changed || group_changed || (*original_is_admin && !*is_admin));
+
+        let requested_permissions = if send_permission_state {
+            Some(
+                permissions
+                    .iter()
+                    .filter(|(perm_name, enabled)| *enabled && can_delegate_permission(perm_name))
+                    .map(|(name, _)| name.clone())
+                    .collect(),
+            )
+        } else {
+            None
+        };
+
+        let (requested_group_id, remove_group, revokes) =
+            if is_self_edit || (!group_changed && !send_permission_state) {
+                (None, None, None)
+            } else if let Some(gid) = group_id {
+                let revoke_list: Vec<String> = group_permissions
+                    .iter()
+                    .filter(|gp| can_delegate_permission(gp))
+                    .filter(|gp| {
+                        permissions
+                            .iter()
+                            .any(|(p, enabled)| p.as_str() == gp.as_str() && !*enabled)
+                    })
+                    .cloned()
+                    .collect();
+                let revokes = if revoke_list.is_empty() {
+                    None
+                } else {
+                    Some(revoke_list)
+                };
+                (group_changed.then_some(*gid), None, revokes)
+            } else {
+                let remove = if group_changed && original_group_id.is_some() {
+                    Some(true)
+                } else {
+                    None
+                };
+                (None, remove, None)
+            };
+
+        let original_inherit = original_bandwidth_weight_override.is_none();
+        let bandwidth_changed = *bandwidth_weight_inherit != original_inherit
+            || (!*bandwidth_weight_inherit
+                && bandwidth_weight_override != original_bandwidth_weight_override);
+        let (bandwidth_weight, inherit_bandwidth_weight) = if !bandwidth_changed {
+            (None, None)
+        } else if *bandwidth_weight_inherit {
+            (None, Some(true))
+        } else {
+            let group_weight = group_id.and_then(&mut group_weight_for);
+            let baseline = resolve_bandwidth_weight(None, group_weight, *is_admin);
+            let pinned = bandwidth_weight_override.unwrap_or(baseline);
+            (Some(pinned), Some(false))
+        };
+
+        Some(UserUpdateFields {
+            id: *id,
+            username: (new_username != original_username).then_some(new_username.clone()),
+            password: (!new_password.trim().is_empty()).then_some(new_password.clone()),
+            is_admin: (requester_is_admin && !is_self_edit && is_admin != original_is_admin)
+                .then_some(*is_admin),
+            enabled: (requester_is_admin && !is_self_edit && enabled != original_enabled)
+                .then_some(*enabled),
+            permissions: requested_permissions,
+            group_id: requested_group_id,
+            remove_group,
+            revokes,
+            bandwidth_weight,
+            inherit_bandwidth_weight,
+        })
+    }
 }
 
 /// User management panel state (per-connection)
@@ -346,9 +534,12 @@ impl UserManagementState {
             new_username: username,
             new_password: String::new(),
             is_admin,
+            original_is_admin: is_admin,
             is_shared,
             enabled,
-            permissions: perm_map,
+            original_enabled: enabled,
+            permissions: perm_map.clone(),
+            original_permissions: perm_map,
             original_group_id: group_id,
             group_id,
             group_permissions,
@@ -430,6 +621,114 @@ mod tests {
             revoked_permissions: Vec::new(),
             bandwidth_weight: None,
         }
+    }
+
+    fn edit_mode_mut(state: &mut UserManagementState) -> &mut UserManagementMode {
+        &mut state.mode
+    }
+
+    #[test]
+    fn edit_mode_has_no_effective_update_changes_initially() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+
+        assert!(!state.mode.has_effective_user_update_changes("admin", true));
+    }
+
+    #[test]
+    fn edit_mode_detects_effective_update_changes() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit { new_username, .. } = edit_mode_mut(&mut state) {
+            *new_username = "alice2".to_string();
+        }
+
+        assert!(state.mode.has_effective_user_update_changes("admin", true));
+    }
+
+    #[test]
+    fn edit_mode_ignores_whitespace_only_password_change() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit { new_password, .. } = edit_mode_mut(&mut state) {
+            *new_password = "   ".to_string();
+        }
+
+        assert!(!state.mode.has_effective_user_update_changes("admin", true));
+    }
+
+    #[test]
+    fn edit_mode_ignores_hidden_bandwidth_override_while_inheriting() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit {
+            bandwidth_weight_override,
+            bandwidth_weight_inherit,
+            ..
+        } = edit_mode_mut(&mut state)
+        {
+            *bandwidth_weight_override = Some(25);
+            *bandwidth_weight_inherit = true;
+        }
+
+        assert!(!state.mode.has_effective_user_update_changes("admin", true));
+    }
+
+    #[test]
+    fn edit_mode_detects_bandwidth_inherit_toggle() {
+        let mut init = edit_init(42, "alice");
+        init.bandwidth_weight = Some(10);
+
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(init);
+        if let UserManagementMode::Edit {
+            bandwidth_weight_override,
+            bandwidth_weight_inherit,
+            ..
+        } = edit_mode_mut(&mut state)
+        {
+            *bandwidth_weight_override = None;
+            *bandwidth_weight_inherit = true;
+        }
+
+        assert!(state.mode.has_effective_user_update_changes("admin", true));
+    }
+
+    #[test]
+    fn edit_mode_detects_permission_and_group_changes() {
+        let mut init = edit_init(42, "alice");
+        init.permissions = vec!["chat_send".to_string()];
+        init.group_id = Some(1);
+
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(init);
+        if let UserManagementMode::Edit {
+            permissions,
+            group_id,
+            ..
+        } = edit_mode_mut(&mut state)
+        {
+            if let Some((_, enabled)) = permissions
+                .iter_mut()
+                .find(|(permission, _)| permission == "chat_send")
+            {
+                *enabled = false;
+            }
+            *group_id = Some(2);
+        }
+
+        assert!(state.mode.has_effective_user_update_changes("admin", true));
+    }
+
+    #[test]
+    fn edit_mode_ignores_self_edit_fields_that_submit_strips() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit { enabled, .. } = edit_mode_mut(&mut state) {
+            *enabled = false;
+        }
+
+        assert!(!state.mode.has_effective_user_update_changes("alice", true));
     }
 
     #[test]
