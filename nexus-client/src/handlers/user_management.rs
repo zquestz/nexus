@@ -1695,6 +1695,52 @@ mod tests {
     }
 
     #[test]
+    fn update_submit_permission_only_change_sends_no_group_id() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        let mut init = edit_init(42, "alice");
+        init.permissions = vec!["chat_send".to_string()];
+        conn.user_management.enter_edit_mode(init);
+        if let UserManagementMode::Edit { permissions, .. } = &mut conn.user_management.mode
+            && let Some((_, enabled)) = permissions
+                .iter_mut()
+                .find(|(permission, _)| permission == "file_list")
+        {
+            *enabled = true;
+        }
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_update_pressed();
+
+        match rx.try_recv() {
+            Ok((
+                _,
+                ClientMessage::UserUpdate {
+                    username,
+                    permissions,
+                    group_id,
+                    remove_group,
+                    revokes,
+                    ..
+                },
+            )) => {
+                assert!(username.is_none());
+                assert_eq!(
+                    permissions,
+                    Some(vec!["chat_send".to_string(), "file_list".to_string()])
+                );
+                assert!(group_id.is_none());
+                assert!(remove_group.is_none());
+                assert!(revokes.is_none());
+            }
+            other => panic!("expected UserUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn update_submit_filters_revokes_to_delegated_permissions() {
         let mut app = NexusApp {
             active_connection: Some(1),
