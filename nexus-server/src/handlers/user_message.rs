@@ -213,7 +213,8 @@ where
 
         let Some(target_session) = target_sessions
             .into_iter()
-            .find(|session| session.has_feature(FEATURE_CHAT))
+            .filter(|session| session.has_feature(FEATURE_CHAT))
+            .max_by_key(|session| session.last_activity)
         else {
             break 'deliver DeliveryOutcome::TargetFeatureUnavailable;
         };
@@ -304,7 +305,8 @@ mod tests {
     use crate::db::Permission;
     use crate::flood::FloodConfig;
     use crate::handlers::testing::{
-        add_observer_session_for_existing_regular_user, create_test_context,
+        add_observer_session_for_existing_regular_user,
+        add_observer_session_for_existing_regular_user_with_features, create_test_context,
         get_cached_password_hash, login_shared_user_with_features, login_user,
         login_user_with_features, read_channel_response, read_login_response, read_server_message,
     };
@@ -543,6 +545,79 @@ mod tests {
 
         assert!(sender_no_chat_rx.try_recv().is_err());
         assert!(target_no_chat_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_usermessage_away_notice_uses_most_recent_chat_session() {
+        let mut test_ctx = create_test_context().await;
+
+        let sender_id = login_chat_user(
+            &mut test_ctx,
+            "sender",
+            "pass123",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+        let target_first_id = login_chat_user(
+            &mut test_ctx,
+            "target",
+            "pass456",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+        let (target_second_id, _target_second_rx) =
+            add_observer_session_for_existing_regular_user_with_features(
+                &mut test_ctx,
+                "target",
+                &[Permission::UserMessage],
+                chat_features(),
+            )
+            .await;
+
+        test_ctx
+            .user_manager
+            .set_status(target_first_id, true, Some("most recent away".to_string()))
+            .await;
+        test_ctx
+            .user_manager
+            .set_status(target_second_id, false, Some("older status".to_string()))
+            .await;
+        test_ctx
+            .user_manager
+            .update_last_activity(target_first_id)
+            .await;
+
+        let result = handle_user_message(
+            "target".to_string(),
+            "hello".to_string(),
+            ChatAction::Normal,
+            Some(sender_id),
+            &mut FloodTracker::new(),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_channel_response(&mut test_ctx, |msg| {
+            matches!(msg, ServerMessage::UserMessageResponse { .. })
+        });
+        match response {
+            ServerMessage::UserMessageResponse {
+                success,
+                error,
+                is_away,
+                status,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                assert_eq!(is_away, Some(true));
+                assert_eq!(status, Some("most recent away".to_string()));
+            }
+            _ => panic!("Expected UserMessageResponse"),
+        }
     }
 
     #[tokio::test]
