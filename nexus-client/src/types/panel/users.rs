@@ -287,7 +287,8 @@ impl UserManagementMode {
         Some(UserUpdateFields {
             id: *id,
             username: (new_username != original_username).then_some(new_username.clone()),
-            password: (!new_password.trim().is_empty()).then_some(new_password.clone()),
+            password: (!is_self_edit && !new_password.trim().is_empty())
+                .then_some(new_password.clone()),
             is_admin: (requester_is_admin && !is_self_edit && is_admin != original_is_admin)
                 .then_some(*is_admin),
             enabled: (requester_is_admin && !is_self_edit && enabled != original_enabled)
@@ -729,6 +730,29 @@ mod tests {
         }
 
         assert!(!state.mode.has_effective_user_update_changes("alice", true));
+    }
+
+    #[test]
+    fn user_update_fields_strip_self_edit_password() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit {
+            new_username,
+            new_password,
+            ..
+        } = edit_mode_mut(&mut state)
+        {
+            *new_username = "alice2".to_string();
+            *new_password = "new-password".to_string();
+        }
+
+        let fields = state
+            .mode
+            .user_update_fields("alice", true, |_| false, |_| None)
+            .expect("admin self-rename is an effective update");
+
+        assert_eq!(fields.username.as_deref(), Some("alice2"));
+        assert!(fields.password.is_none());
     }
 
     #[test]
