@@ -641,9 +641,13 @@ Auto-joined channels are provided in the `LoginResponse`:
 }
 ```
 
-The `voiced` field contains nicknames currently in voice chat for the channel. It is only included if the user activated the `voice` feature and has the `voice_listen` permission. See [Voice Chat Protocol](14-voice.md) for details.
+The `voiced` field contains nicknames currently in voice chat for the
+channel. It is only included if the user activated the `voice` feature
+and has the `voice_listen` permission. See
+[Voice Chat Protocol](14-voice.md) for details.
 
-If no auto-join channels are configured, `channels` is `null`.
+If the user did not activate the `chat` feature, or no auto-join
+channels are configured, `channels` is `null`.
 
 ## Secret Channels
 
@@ -709,6 +713,14 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 | Cannot leave server channels | Trying to leave persistent channel | Stays connected |
 | Not a member                 | User not in channel                | Stays connected |
 | Chat feature not enabled     | Missing `chat` feature             | Stays connected |
+
+### ChatList Errors
+
+| Error                    | Cause                          | Connection      |
+| ------------------------ | ------------------------------ | --------------- |
+| Not logged in            | Sent before authentication     | Disconnected    |
+| Chat feature not enabled | Missing `chat` feature         | Stays connected |
+| Permission denied        | Missing `chat_list` permission | Stays connected |
 
 ### ChatSend Errors
 
