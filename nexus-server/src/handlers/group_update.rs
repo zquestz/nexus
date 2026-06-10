@@ -1536,17 +1536,25 @@ mod tests {
     #[tokio::test]
     async fn test_group_update_permission_cascade_sends_permissions_updated() {
         let mut test_ctx = create_test_context().await;
+        test_ctx
+            .db
+            .config
+            .set_auto_join_channels(nexus_common::validators::DEFAULT_CHANNEL)
+            .await
+            .unwrap();
 
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group with chat_send
+        // Create a group with chat permissions. Bob's session has `chat_join`
+        // but no negotiated `chat` feature, so server info must still hide
+        // auto_join_channels in the later PermissionsUpdated broadcast.
         let group = test_ctx
             .db
             .groups
             .create_group(
                 "Staff",
                 false,
-                &Permissions::from(&[Permission::ChatSend]),
+                &Permissions::from(&[Permission::ChatSend, Permission::ChatJoin]),
                 1,
             )
             .await
@@ -1608,7 +1616,11 @@ mod tests {
             group.id,
             None,
             None,
-            Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            Some(vec![
+                "chat_send".to_string(),
+                "chat_join".to_string(),
+                "user_kick".to_string(),
+            ]),
             None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
@@ -1639,6 +1651,7 @@ mod tests {
             } => {
                 assert!(!is_admin);
                 assert!(permissions.contains(&"chat_send".to_string()));
+                assert!(permissions.contains(&"chat_join".to_string()));
                 assert!(permissions.contains(&"user_kick".to_string()));
                 assert_eq!(group_id, Some(group.id));
                 assert_eq!(group_name, Some("Staff".to_string()));
@@ -1651,6 +1664,10 @@ mod tests {
                 assert!(info.chat_rate_limit.is_some());
                 assert!(info.min_password_strength.is_some());
                 assert!(info.log_level.is_some());
+                assert_eq!(
+                    info.auto_join_channels, None,
+                    "chat_join without negotiated chat must not reveal auto_join_channels"
+                );
                 assert!(info.persistent_channels.is_none());
                 assert!(info.image.is_none());
             }
@@ -1663,6 +1680,7 @@ mod tests {
             .await
             .unwrap();
         assert!(updated_bob.permissions.contains(&db::Permission::ChatSend));
+        assert!(updated_bob.permissions.contains(&db::Permission::ChatJoin));
         assert!(updated_bob.permissions.contains(&db::Permission::UserKick));
     }
 

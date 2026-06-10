@@ -7182,11 +7182,18 @@ mod tests {
     #[tokio::test]
     async fn test_userupdate_permissions_updated_sent_when_changed() {
         let mut test_ctx = create_test_context().await;
+        test_ctx
+            .db
+            .config
+            .set_auto_join_channels(nexus_common::validators::DEFAULT_CHANNEL)
+            .await
+            .unwrap();
 
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let mut bob_perms = Permissions::new();
         bob_perms.permissions.insert(Permission::UserList);
+        bob_perms.permissions.insert(Permission::ChatJoin);
         let bob = test_ctx
             .db
             .users
@@ -7239,7 +7246,11 @@ mod tests {
             password: None,
             is_admin: None,
             enabled: None,
-            permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            permissions: Some(vec![
+                "user_list".to_string(),
+                "chat_join".to_string(),
+                "chat_send".to_string(),
+            ]),
             group_id: None,
             remove_group: None,
             revokes: None,
@@ -7270,11 +7281,18 @@ mod tests {
             ServerMessage::PermissionsUpdated {
                 is_admin,
                 permissions,
+                server_info,
                 ..
             } => {
                 assert!(!is_admin);
                 assert!(permissions.contains(&"user_list".to_string()));
+                assert!(permissions.contains(&"chat_join".to_string()));
                 assert!(permissions.contains(&"chat_send".to_string()));
+                let info = server_info.expect("server_info should be included");
+                assert_eq!(
+                    info.auto_join_channels, None,
+                    "chat_join without negotiated chat must not reveal auto_join_channels"
+                );
             }
             _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
         }
