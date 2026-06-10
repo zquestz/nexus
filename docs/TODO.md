@@ -414,11 +414,8 @@ Preview files before downloading.
 
 ### Feature-Gated Future Broadcasts
 
-- Keep direct command responses tied to the command; feature gating is for
-  unsolicited broadcasts/events.
-- Apply feature gating to new unsolicited broadcasts/events as features are
-  added. Boards events must not be sent until a session has negotiated the
-  `boards` feature.
+- Boards events must not be sent until a session has negotiated the
+  future `boards` feature.
 
 ### Admin Event History
 
