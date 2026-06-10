@@ -264,7 +264,7 @@ impl TrackerDb {
         Self { pool }
     }
 
-    /// All tracker rows in insertion order (by `id`).
+    /// All tracker rows sorted case-insensitively by name.
     pub async fn list_all(&self) -> Result<Vec<TrackerRecord>, sqlx::Error> {
         let rows: Vec<TrackerRow> = sqlx::query_as(sql::SQL_SELECT_ALL_TRACKERS)
             .fetch_all(&self.pool)
