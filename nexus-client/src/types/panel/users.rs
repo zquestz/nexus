@@ -696,25 +696,32 @@ mod tests {
     }
 
     #[test]
-    fn edit_mode_detects_permission_and_group_changes() {
+    fn edit_mode_detects_permission_changes() {
         let mut init = edit_init(42, "alice");
         init.permissions = vec!["chat_send".to_string()];
-        init.group_id = Some(1);
 
         let mut state = UserManagementState::default();
         state.enter_edit_mode(init);
-        if let UserManagementMode::Edit {
-            permissions,
-            group_id,
-            ..
-        } = edit_mode_mut(&mut state)
-        {
+        if let UserManagementMode::Edit { permissions, .. } = edit_mode_mut(&mut state) {
             if let Some((_, enabled)) = permissions
                 .iter_mut()
                 .find(|(permission, _)| permission == "chat_send")
             {
                 *enabled = false;
             }
+        }
+
+        assert!(state.mode.has_effective_user_update_changes("admin", true));
+    }
+
+    #[test]
+    fn edit_mode_detects_group_changes() {
+        let mut init = edit_init(42, "alice");
+        init.group_id = Some(1);
+
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(init);
+        if let UserManagementMode::Edit { group_id, .. } = edit_mode_mut(&mut state) {
             *group_id = Some(2);
         }
 
