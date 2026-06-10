@@ -984,6 +984,24 @@ mod tests {
         app
     }
 
+    fn setup_channel_message_send_app(features: Vec<String>, permissions: Vec<String>) -> NexusApp {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.features = features;
+        conn.permissions = permissions;
+        conn.message_input = "hello".to_string();
+        conn.active_chat_tab = ChatTab::Channel("#general".to_string());
+        conn.channels.insert(
+            fold_name("#general"),
+            crate::types::ChannelState::new(None, None, false, vec!["admin".to_string()]),
+        );
+        app.connections.insert(1, conn);
+        app
+    }
+
     #[test]
     fn send_chat_leave_once_blocks_duplicate_while_pending() {
         let mut app = NexusApp::default();
@@ -1087,6 +1105,39 @@ mod tests {
         let messages = conn
             .user_messages_for("alice")
             .expect("DM tab should still exist");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].message, t("err-no-chat-permission"));
+        assert_eq!(conn.message_input, "hello");
+    }
+
+    #[test]
+    fn send_channel_message_without_chat_feature_reports_feature_error() {
+        let mut app =
+            setup_channel_message_send_app(Vec::new(), vec![PERMISSION_CHAT_SEND.to_string()]);
+
+        let _ = app.handle_send_message_pressed();
+
+        let conn = &app.connections[&1];
+        let messages = &conn
+            .get_channel_state("#general")
+            .expect("channel should exist")
+            .messages;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].message, t("err-chat-feature-not-enabled"));
+        assert_eq!(conn.message_input, "hello");
+    }
+
+    #[test]
+    fn send_channel_message_without_permission_reports_permission_error() {
+        let mut app = setup_channel_message_send_app(vec![FEATURE_CHAT.to_string()], Vec::new());
+
+        let _ = app.handle_send_message_pressed();
+
+        let conn = &app.connections[&1];
+        let messages = &conn
+            .get_channel_state("#general")
+            .expect("channel should exist")
+            .messages;
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].message, t("err-no-chat-permission"));
         assert_eq!(conn.message_input, "hello");
