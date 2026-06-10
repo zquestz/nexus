@@ -556,6 +556,9 @@ impl NexusApp {
                 && let Some(server_conn) = self.connections.get_mut(&connection_id)
             {
                 for (other_nickname, messages) in conversations {
+                    // Intentionally restore local DM history even when this
+                    // login did not activate `chat`. The history is read-only
+                    // until send, and send remains feature-gated.
                     // Convert ServerMessage::UserMessage to ChatMessage for display
                     let chat_messages: Vec<_> = messages
                         .iter()
