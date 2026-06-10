@@ -567,6 +567,7 @@ News items are returned newest first (descending by creation date).
 | Invalid characters                      | Control characters in body       | Stays connected |
 | Image too large                         | Exceeds 700KB                    | Stays connected |
 | Invalid image format                    | Not PNG/WebP/JPEG/SVG            | Stays connected |
+| No fields to update                     | No update fields supplied        | Stays connected |
 | Content required                        | Both body and image are empty    | Stays connected |
 | You can only edit your own news posts   | Non-admin editing others' posts  | Stays connected |
 | You can only delete your own news posts | Non-admin deleting others' posts | Stays connected |
