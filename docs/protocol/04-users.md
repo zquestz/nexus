@@ -107,7 +107,8 @@ Response containing the user list.
       "is_away": true,
       "status": "in a meeting",
       "group_id": null,
-      "group_name": null
+      "group_name": null,
+      "bandwidth_weight": 50
     },
     {
       "id": 2,
@@ -122,7 +123,8 @@ Response containing the user list.
       "is_away": false,
       "status": null,
       "group_id": 1,
-      "group_name": "Basic Users"
+      "group_name": "Basic Users",
+      "bandwidth_weight": 1
     },
     {
       "id": 3,
@@ -137,7 +139,8 @@ Response containing the user list.
       "is_away": false,
       "status": "just browsing",
       "group_id": null,
-      "group_name": null
+      "group_name": null,
+      "bandwidth_weight": 1
     }
   ]
 }
@@ -160,7 +163,8 @@ Response containing the user list.
       "locale": "",
       "avatar": null,
       "group_id": null,
-      "group_name": null
+      "group_name": null,
+      "bandwidth_weight": 50
     },
     {
       "id": 2,
@@ -173,7 +177,8 @@ Response containing the user list.
       "locale": "",
       "avatar": null,
       "group_id": 1,
-      "group_name": "Basic Users"
+      "group_name": "Basic Users",
+      "bandwidth_weight": 1
     }
   ]
 }
@@ -245,7 +250,8 @@ Response containing detailed user information.
     "is_admin": false,
     "channels": ["#general"],
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "bandwidth_weight": 1
   }
 }
 ```
@@ -272,7 +278,8 @@ Response containing detailed user information.
     "addresses": ["192.168.1.100", "10.0.0.5"],
     "channels": ["#general", "#support"],
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "bandwidth_weight": 1
   }
 }
 ```
@@ -313,7 +320,8 @@ Broadcast when a user connects.
     "is_away": false,
     "status": null,
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "bandwidth_weight": 1
   }
 }
 ```
@@ -335,7 +343,8 @@ Broadcast when a user connects.
     "is_away": false,
     "status": null,
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "bandwidth_weight": 1
   }
 }
 ```
@@ -385,7 +394,8 @@ Broadcast when a user's account is modified (e.g., username change, admin status
     "is_away": false,
     "status": null,
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "bandwidth_weight": 1
   }
 }
 ```
@@ -408,7 +418,8 @@ Broadcast when a user's account is modified (e.g., username change, admin status
     "is_away": true,
     "status": "in a meeting",
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "bandwidth_weight": 50
   }
 }
 ```

@@ -947,7 +947,8 @@ The `user.avatar` field follows [Users → Avatar Handling](04-users.md#avatar-h
     "is_away": false,
     "status": null,
     "group_id": null,
-    "group_name": null
+    "group_name": null,
+    "bandwidth_weight": 1
   }
 }
 ```
