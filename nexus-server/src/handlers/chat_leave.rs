@@ -185,6 +185,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_chat_leave_requires_chat_feature() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id =
+            login_user_with_features(&mut test_ctx, "alice", "password", &[], false, vec![]).await;
+
+        let result = handle_chat_leave(
+            "#general".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ChatLeaveResponse {
+                success,
+                error,
+                channel,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_chat_feature_not_enabled("en")));
+                assert!(channel.is_none());
+            }
+            _ => panic!("Expected ChatLeaveResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
     async fn test_chat_leave_success() {
         let mut test_ctx = create_test_context().await;
 
