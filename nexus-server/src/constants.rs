@@ -283,6 +283,7 @@ pub const ERR_PASSWORD_TASK_JOIN: &str = "password task did not complete";
 
 // `files::index::FileIndex` prefixes, composed `format!("{}{}", PREFIX, err)`.
 pub const ERR_FILE_INDEX_CREATE_TEMP: &str = "Failed to create temp index: ";
+#[cfg(unix)]
 pub const ERR_FILE_INDEX_SET_PERMISSIONS: &str = "Failed to set index permissions: ";
 pub const ERR_FILE_INDEX_WRITE_ENTRY: &str = "Failed to write index entry: ";
 pub const ERR_FILE_INDEX_FLUSH: &str = "Failed to flush index: ";
