@@ -209,26 +209,26 @@ requested features as unsupported by this server/session.
 
 Included in successful login responses.
 
-| Field                     | Type    | Description                                                                        |
-| ------------------------- | ------- | ---------------------------------------------------------------------------------- |
-| `name`                    | string  | Server display name (null if not set)                                              |
-| `description`             | string  | Server description (null if not set)                                               |
-| `public_address`          | string  | Admin-advertised hostname or IP for shareable `nexus://` URIs (null if unset)      |
-| `version`                 | string  | Server software version (null if not set)                                          |
-| `transfer_port`           | integer | Port for file transfers (required)                                                 |
-| `transfer_websocket_port` | integer | Port for WebSocket file transfers (null if not enabled)                            |
-| `max_connections_per_ip`  | integer | Connection limit per IP (null if not set)                                          |
-| `max_transfers_per_ip`    | integer | Transfer connection limit per IP (null if not set)                                 |
-| `max_outbound_rate`       | integer | Server-wide outbound bandwidth cap in bytes/sec, 0 = unlimited (null if not set)   |
-| `scheduler_chunk_size`    | integer | Egress scheduler packet size in bytes (admin only, null otherwise)                 |
-| `image`                   | string  | Server logo as data URI (null if none)                                             |
-| `file_reindex_interval`   | integer | File reindex interval in minutes, 0 = disabled (null if not set)                   |
-| `persistent_channels`     | string  | Space-separated persistent channels (admin only, null otherwise)                   |
-| `auto_join_channels`      | string  | Space-separated auto-join channels (admin or chat_join permission, null otherwise) |
-| `chat_burst_limit`        | integer | Max messages in a burst before rate limiting (null if not set)                     |
-| `chat_rate_limit`         | integer | Messages per minute rate limit, 0 = disabled (null if not set)                     |
-| `min_password_strength`   | integer | Minimum password strength level 0-4 (null if not set)                              |
-| `log_level`               | string  | Server log level: "none", "error", "warn", "info", "debug"                         |
+| Field                     | Type    | Description                                                                                            |
+| ------------------------- | ------- | ------------------------------------------------------------------------------------------------------ |
+| `name`                    | string  | Server display name (null if not set)                                                                  |
+| `description`             | string  | Server description (null if not set)                                                                   |
+| `public_address`          | string  | Admin-advertised hostname or IP for shareable `nexus://` URIs (null if unset)                          |
+| `version`                 | string  | Server software version (null if not set)                                                              |
+| `transfer_port`           | integer | Port for file transfers (required)                                                                     |
+| `transfer_websocket_port` | integer | Port for WebSocket file transfers (null if not enabled)                                                |
+| `max_connections_per_ip`  | integer | Connection limit per IP (null if not set)                                                              |
+| `max_transfers_per_ip`    | integer | Transfer connection limit per IP (null if not set)                                                     |
+| `max_outbound_rate`       | integer | Server-wide outbound bandwidth cap in bytes/sec, 0 = unlimited (null if not set)                       |
+| `scheduler_chunk_size`    | integer | Egress scheduler packet size in bytes (admin only, null otherwise)                                     |
+| `image`                   | string  | Server logo as data URI (null if none)                                                                 |
+| `file_reindex_interval`   | integer | File reindex interval in minutes, 0 = disabled (null if not set)                                       |
+| `persistent_channels`     | string  | Space-separated persistent channels (admin only, null otherwise)                                       |
+| `auto_join_channels`      | string  | Space-separated auto-join channels (admin, or `chat` feature + `chat_join` permission; null otherwise) |
+| `chat_burst_limit`        | integer | Max messages in a burst before rate limiting (null if not set)                                         |
+| `chat_rate_limit`         | integer | Messages per minute rate limit, 0 = disabled (null if not set)                                         |
+| `min_password_strength`   | integer | Minimum password strength level 0-4 (null if not set)                                                  |
+| `log_level`               | string  | Server log level: "none", "error", "warn", "info", "debug"                                             |
 
 ## Channel Join Info Object
 

@@ -914,7 +914,7 @@ Sent to a user when their permissions change.
 }
 ```
 
-Note: Server info is always included when permissions change. Admins see all fields including admin-only fields (`persistent_channels`). The `auto_join_channels` field is visible to users with `chat_join` permission. Non-admins without relevant permissions see fewer fields. The `image` field is not included in `PermissionsUpdated` (clients already have it from login or `ServerInfoUpdated`).
+Note: Server info is always included when permissions change. Admins see all fields including admin-only fields (`persistent_channels`). The `auto_join_channels` field is visible to sessions that activated `chat` and have `chat_join` permission. Non-admins without relevant permissions see fewer fields. The `image` field is not included in `PermissionsUpdated` (clients already have it from login or `ServerInfoUpdated`).
 
 ### UserUpdated (Server → Client)
 

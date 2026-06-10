@@ -61,12 +61,12 @@ disappears, heading and all. Within each section, rows are alphabetical.
 
 ### Chat
 
-| Field                   | Visible To                        | Description                                      |
-| ----------------------- | --------------------------------- | ------------------------------------------------ |
-| **Auto-Join Channels**  | Users with `chat_join` permission | Channels users automatically join on login       |
-| **Chat Burst Limit**    | All users                         | Maximum messages in a burst before rate limiting |
-| **Chat Rate Limit**     | All users                         | Messages per minute rate limit (0 = disabled)    |
-| **Persistent Channels** | Admins only                       | Channels that persist even when empty            |
+| Field                   | Visible To                                                      | Description                                      |
+| ----------------------- | --------------------------------------------------------------- | ------------------------------------------------ |
+| **Auto-Join Channels**  | Admins, or users with `chat` enabled and `chat_join` permission | Channels users automatically join on login       |
+| **Chat Burst Limit**    | All users                                                       | Maximum messages in a burst before rate limiting |
+| **Chat Rate Limit**     | All users                                                       | Messages per minute rate limit (0 = disabled)    |
+| **Persistent Channels** | Admins only                                                     | Channels that persist even when empty            |
 
 ### Files
 
