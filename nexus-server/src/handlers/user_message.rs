@@ -584,9 +584,18 @@ mod tests {
             .user_manager
             .set_status(target_second_id, false, Some("older status".to_string()))
             .await;
+
+        let base_activity = std::time::Instant::now();
         test_ctx
             .user_manager
-            .update_last_activity(target_first_id)
+            .set_last_activity_for_test(target_second_id, base_activity)
+            .await;
+        test_ctx
+            .user_manager
+            .set_last_activity_for_test(
+                target_first_id,
+                base_activity + std::time::Duration::from_secs(1),
+            )
             .await;
 
         let result = handle_user_message(

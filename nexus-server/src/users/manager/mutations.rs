@@ -281,6 +281,18 @@ impl UserManager {
         }
     }
 
+    #[cfg(test)]
+    pub async fn set_last_activity_for_test(
+        &self,
+        session_id: u32,
+        last_activity: std::time::Instant,
+    ) {
+        let mut users = self.users.write().await;
+        if let Some(user) = users.get_mut(&session_id) {
+            user.last_activity = last_activity;
+        }
+    }
+
     /// Full sessions connected from `ip`, for the ban system. `skip_ip` returning
     /// true exempts an IP (e.g. trusted), in which case the result is empty. Pure
     /// lookup: the caller sends each session its localized goodbye (while still
