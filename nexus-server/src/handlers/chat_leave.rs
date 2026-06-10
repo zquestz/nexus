@@ -133,7 +133,8 @@ mod tests {
     use crate::db::Permission;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
-        TestContext, create_test_context, login_user_with_features, read_server_message,
+        DEFAULT_TEST_LOCALE, TestContext, create_test_context, login_user_with_features,
+        read_server_message,
     };
 
     #[tokio::test]
@@ -208,7 +209,10 @@ mod tests {
                 channel,
             } => {
                 assert!(!success);
-                assert_eq!(error, Some(err_chat_feature_not_enabled("en")));
+                assert_eq!(
+                    error,
+                    Some(err_chat_feature_not_enabled(DEFAULT_TEST_LOCALE))
+                );
                 assert!(channel.is_none());
             }
             _ => panic!("Expected ChatLeaveResponse, got {:?}", response),
