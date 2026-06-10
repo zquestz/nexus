@@ -702,13 +702,12 @@ mod tests {
 
         let mut state = UserManagementState::default();
         state.enter_edit_mode(init);
-        if let UserManagementMode::Edit { permissions, .. } = edit_mode_mut(&mut state) {
-            if let Some((_, enabled)) = permissions
+        if let UserManagementMode::Edit { permissions, .. } = edit_mode_mut(&mut state)
+            && let Some((_, enabled)) = permissions
                 .iter_mut()
                 .find(|(permission, _)| permission == "chat_send")
-            {
-                *enabled = false;
-            }
+        {
+            *enabled = false;
         }
 
         assert!(state.mode.has_effective_user_update_changes("admin", true));

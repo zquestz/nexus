@@ -87,7 +87,7 @@ mod tests {
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
         add_observer_session_for_existing_regular_user_with_features, create_test_context,
-        login_user, login_user_with_features, read_server_message,
+        login_observer_user, login_user, login_user_with_features, read_server_message,
     };
     use crate::handlers::voice_join::handle_voice_join;
     use crate::users::user::SessionRx;
@@ -178,6 +178,10 @@ mod tests {
             }
             other => panic!("Expected VoiceUserLeft, got {:?}", other),
         }
+    }
+
+    fn drain_session_rx(rx: &mut SessionRx) {
+        while rx.try_recv().is_ok() {}
     }
 
     #[tokio::test]
@@ -403,6 +407,99 @@ mod tests {
 
         expect_voice_user_left(&mut test_ctx.rx, "alice", "alice").await;
         expect_voice_user_left(&mut bob_second_rx, "alice", "alice").await;
+    }
+
+    #[tokio::test]
+    async fn test_channel_voice_notifications_skip_members_without_voice_feature() {
+        let mut test_ctx = create_test_context().await;
+
+        let alice_session = login_chat_voice_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[
+                Permission::VoiceListen,
+                Permission::ChatJoin,
+                Permission::ChatCreate,
+            ],
+            false,
+        )
+        .await;
+
+        let (bob_session, mut bob_rx) = login_observer_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen, Permission::ChatJoin],
+            chat_voice_features(),
+        )
+        .await;
+
+        let (carol_session, mut carol_rx) = login_observer_user(
+            &mut test_ctx,
+            "carol",
+            "password",
+            &[Permission::VoiceListen, Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        for session_id in [alice_session, bob_session, carol_session] {
+            handle_chat_join(
+                "#general".to_string(),
+                Some(session_id),
+                &mut test_ctx.handler_context(),
+            )
+            .await
+            .unwrap();
+            let response = read_server_message(&mut test_ctx).await;
+            assert!(matches!(
+                response,
+                ServerMessage::ChatJoinResponse { success: true, .. }
+            ));
+        }
+
+        drain_session_rx(&mut bob_rx);
+        drain_session_rx(&mut carol_rx);
+
+        handle_voice_join(
+            "#general".to_string(),
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+
+        expect_voice_user_joined(&mut bob_rx, "alice", "#general").await;
+        assert!(
+            carol_rx.try_recv().is_err(),
+            "voice_listen without negotiated voice must not receive VoiceUserJoined"
+        );
+
+        handle_voice_leave(Some(alice_session), &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceLeaveResponse {
+                success: true,
+                error: None,
+            }
+        ));
+
+        expect_voice_user_left(&mut bob_rx, "alice", "#general").await;
+        assert!(
+            carol_rx.try_recv().is_err(),
+            "voice_listen without negotiated voice must not receive VoiceUserLeft"
+        );
     }
 
     #[tokio::test]
