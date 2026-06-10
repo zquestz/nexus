@@ -45,18 +45,18 @@ where
             break 'locked LeaveOutcome::Disconnect;
         };
 
-        if let Err(e) = validators::validate_channel(&channel) {
-            break 'locked LeaveOutcome::Send(Box::new(ServerMessage::ChatLeaveResponse {
-                success: false,
-                error: Some(channel_error_to_message(e, ctx.locale)),
-                channel: None,
-            }));
-        }
-
         if !user.has_feature(FEATURE_CHAT) {
             break 'locked LeaveOutcome::Send(Box::new(ServerMessage::ChatLeaveResponse {
                 success: false,
                 error: Some(err_chat_feature_not_enabled(ctx.locale)),
+                channel: None,
+            }));
+        }
+
+        if let Err(e) = validators::validate_channel(&channel) {
+            break 'locked LeaveOutcome::Send(Box::new(ServerMessage::ChatLeaveResponse {
+                success: false,
+                error: Some(channel_error_to_message(e, ctx.locale)),
                 channel: None,
             }));
         }
@@ -192,7 +192,7 @@ mod tests {
             login_user_with_features(&mut test_ctx, "alice", "password", &[], false, vec![]).await;
 
         let result = handle_chat_leave(
-            "#general".to_string(),
+            "general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )

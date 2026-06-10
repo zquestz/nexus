@@ -709,10 +709,10 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 | Error                        | Cause                              | Connection      |
 | ---------------------------- | ---------------------------------- | --------------- |
 | Not logged in                | Sent before authentication         | Disconnected    |
+| Chat feature not enabled     | Missing `chat` feature             | Stays connected |
 | Channel name validation      | Invalid channel format             | Stays connected |
 | Cannot leave server channels | Trying to leave persistent channel | Stays connected |
 | Not a member                 | User not in channel                | Stays connected |
-| Chat feature not enabled     | Missing `chat` feature             | Stays connected |
 
 ### ChatList Errors
 
