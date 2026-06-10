@@ -646,8 +646,8 @@ channel. It is only included if the user activated the `voice` feature
 and has the `voice_listen` permission. See
 [Voice Chat Protocol](14-voice.md) for details.
 
-If the user did not activate the `chat` feature, or no auto-join
-channels are configured, `channels` is `null`.
+If the user did not activate the `chat` feature, lacks the `chat_join`
+permission, or no auto-join channels are configured, `channels` is `null`.
 
 ## Secret Channels
 
