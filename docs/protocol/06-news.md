@@ -42,7 +42,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         NewsUpdated { action: Created }     │
-   │ ◄─────────── (broadcast to all) ────────    │
+   │ ◄────── (broadcast to news sessions) ───    │
    │                                             │
 ```
 
@@ -65,7 +65,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         NewsUpdated { action: Updated }     │
-   │ ◄─────────── (broadcast to all) ────────    │
+   │ ◄────── (broadcast to news sessions) ───    │
    │                                             │
 ```
 
@@ -81,7 +81,7 @@ Client                                        Server
    │ ◄───────────────────────────────────────    │
    │                                             │
    │         NewsUpdated { action: Deleted }     │
-   │ ◄─────────── (broadcast to all) ────────    │
+   │ ◄────── (broadcast to news sessions) ───    │
    │                                             │
 ```
 
@@ -434,7 +434,8 @@ Response after deleting a news item.
 
 ### NewsUpdated (Server → Client)
 
-Broadcast to all users when news changes.
+Broadcast when news changes to other sessions that activated the `news`
+feature and have `news_list` permission.
 
 | Field    | Type    | Required | Description                                   |
 | -------- | ------- | -------- | --------------------------------------------- |
