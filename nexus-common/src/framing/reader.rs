@@ -165,6 +165,79 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         }
     }
 
+    /// Read the next frame, validating the header before reading the payload.
+    ///
+    /// This is used by higher protocol layers to enforce connection phase and
+    /// direction before any payload allocation occurs.
+    pub async fn read_frame_checked<F>(
+        &mut self,
+        check_header: F,
+    ) -> Result<Option<RawFrame>, FrameError>
+    where
+        F: Fn(&FrameHeader) -> Result<(), FrameError>,
+    {
+        let first_byte = match self.read_byte_allow_eof().await? {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+
+        self.read_frame_after_first_byte_checked(first_byte, check_header)
+            .await
+    }
+
+    /// Read the next checked frame with a timeout after the first byte.
+    pub async fn read_frame_checked_with_timeout<F>(
+        &mut self,
+        frame_timeout: Duration,
+        check_header: F,
+    ) -> Result<Option<RawFrame>, FrameError>
+    where
+        F: Fn(&FrameHeader) -> Result<(), FrameError>,
+    {
+        let first_byte = match self.read_byte_allow_eof().await? {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+
+        match timeout(
+            frame_timeout,
+            self.read_frame_after_first_byte_checked(first_byte, check_header),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(FrameError::FrameTimeout),
+        }
+    }
+
+    /// Read the next checked frame with a full timeout including idle wait.
+    pub async fn read_frame_checked_with_full_timeout<F>(
+        &mut self,
+        idle_timeout: Duration,
+        frame_timeout: Duration,
+        check_header: F,
+    ) -> Result<Option<RawFrame>, FrameError>
+    where
+        F: Fn(&FrameHeader) -> Result<(), FrameError>,
+    {
+        let first_byte = match timeout(idle_timeout, self.read_byte_allow_eof()).await {
+            Ok(Ok(Some(b))) => b,
+            Ok(Ok(None)) => return Ok(None),
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Err(FrameError::IdleTimeout),
+        };
+
+        match timeout(
+            frame_timeout,
+            self.read_frame_after_first_byte_checked(first_byte, check_header),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(FrameError::FrameTimeout),
+        }
+    }
+
     /// Read just the frame header, leaving the payload unread
     ///
     /// This method reads and validates the frame header (magic, type, message_id,
@@ -355,11 +428,25 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         &mut self,
         first_byte: u8,
     ) -> Result<Option<RawFrame>, FrameError> {
+        self.read_frame_after_first_byte_checked(first_byte, |_| Ok::<(), FrameError>(()))
+            .await
+    }
+
+    async fn read_frame_after_first_byte_checked<F>(
+        &mut self,
+        first_byte: u8,
+        check_header: F,
+    ) -> Result<Option<RawFrame>, FrameError>
+    where
+        F: Fn(&FrameHeader) -> Result<(), FrameError>,
+    {
         // Read the header first
         let header = match self.read_frame_header_after_first_byte(first_byte).await? {
             Some(h) => h,
             None => return Ok(None),
         };
+
+        check_header(&header)?;
 
         // Read the payload into memory
         let payload = self.read_payload_into_vec(&header).await?;

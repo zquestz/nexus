@@ -19,7 +19,7 @@ use tracing::{debug, info, warn};
 
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter};
 use nexus_common::io::{
-    client_message_type, read_client_message_with_full_timeout,
+    client_message_type, read_client_handshake_message_with_full_timeout,
     read_tracker_client_message_with_full_timeout, send_server_message,
     send_tracker_server_message,
 };
@@ -37,7 +37,8 @@ use crate::constants::{
 };
 use crate::errors::{
     err_tracker_frame_error, err_tracker_handshake_required, err_tracker_malformed_message,
-    err_tracker_payload_too_large, err_tracker_role_violation, err_tracker_unknown_message_type,
+    err_tracker_payload_too_large, err_tracker_role_violation, err_tracker_unexpected_message_type,
+    err_tracker_unknown_message_type,
 };
 use crate::handlers;
 use crate::handlers::tracker_server_list::{ListParams, handle_tracker_server_list};
@@ -107,15 +108,25 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let received =
-        match read_client_message_with_full_timeout(reader, Some(HANDSHAKE_TIMEOUT), None).await {
-            Ok(Some(msg)) => msg,
-            Ok(None) => return Ok(false), // clean pre-handshake disconnect
-            Err(e) => {
-                send_handshake_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
-                return Err(e.into());
-            }
-        };
+    let received = match read_client_handshake_message_with_full_timeout(
+        reader,
+        Some(HANDSHAKE_TIMEOUT),
+        None,
+    )
+    .await
+    {
+        Ok(Some(msg)) => msg,
+        Ok(None) => return Ok(false), // clean pre-handshake disconnect
+        Err(e) => {
+            send_handshake_error(
+                writer,
+                frame_error_command(&e),
+                frame_error_message(&e, DEFAULT_LOCALE),
+            )
+            .await;
+            return Err(e.into());
+        }
+    };
 
     let version = match received.message {
         ClientMessage::Handshake { version } => version,
@@ -161,7 +172,12 @@ where
         Err(e) => {
             // The unparsed message carried the `locale`, so per spec §Localization we render
             // this pre-locale `Error` in the default locale.
-            send_tracker_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
+            send_tracker_error(
+                writer,
+                frame_error_command(&e),
+                frame_error_message(&e, DEFAULT_LOCALE),
+            )
+            .await;
             return Err(e.into());
         }
     };
@@ -285,7 +301,12 @@ where
                     "{}",
                     LOG_REGISTER_DISCONNECTED
                 );
-                send_tracker_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
+                send_tracker_error(
+                    writer,
+                    frame_error_command(&e),
+                    frame_error_message(&e, DEFAULT_LOCALE),
+                )
+                .await;
                 return Ok(());
             }
         };
@@ -407,14 +428,22 @@ async fn send_tracker_error<W>(
     let _ = send_tracker_server_message(writer, &response).await;
 }
 
-/// Map a [`FrameError`] to a translated diagnostic. Differentiates the three spec-called-out cases
-/// (malformed JSON, wrong-port peer, oversize) from generic frame violations so registrants get an
-/// actionable message instead of a catch-all.
+/// Map a [`FrameError`] to a translated diagnostic. Differentiates malformed JSON,
+/// wrong-port peers, wrong-phase/wrong-direction messages, and oversize payloads from generic
+/// frame violations so registrants get an actionable message instead of a catch-all.
 fn frame_error_message(err: &FrameError, locale: &str) -> String {
     match err {
         FrameError::InvalidJson(_) => err_tracker_malformed_message(locale),
         FrameError::UnknownMessageType(_) => err_tracker_unknown_message_type(locale),
+        FrameError::UnexpectedMessageType(_) => err_tracker_unexpected_message_type(locale),
         FrameError::PayloadLengthExceedsTypeMax { .. } => err_tracker_payload_too_large(locale),
         _ => err_tracker_frame_error(locale),
+    }
+}
+
+fn frame_error_command(err: &FrameError) -> Option<String> {
+    match err {
+        FrameError::UnexpectedMessageType(message_type) => Some(message_type.clone()),
+        _ => None,
     }
 }

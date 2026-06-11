@@ -56,6 +56,7 @@ err-login-bandwidth-failed = Failed to load account bandwidth settings
 
 # Message Format Errors
 err-invalid-message-format = Invalid message format
+err-unexpected-message-type = Unexpected message type
 err-message-not-supported = Message type not supported
 
 # User Management Errors

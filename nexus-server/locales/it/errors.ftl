@@ -68,6 +68,7 @@ err-login-bandwidth-failed = Impossibile caricare le impostazioni di banda
 
 # Errori di formato messaggio
 err-invalid-message-format = Formato messaggio non valido
+err-unexpected-message-type = Tipo di messaggio inatteso
 err-message-not-supported = Tipo di messaggio non supportato
 
 # Errori di gestione utenti

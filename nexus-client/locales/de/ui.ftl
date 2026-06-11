@@ -1408,3 +1408,21 @@ label-inherit-bandwidth-weight = Bandbreitengewicht erben
 label-max-outbound-rate = Max. ausgehend (Mbit/s):
 label-unlimited = Unbegrenzt
 label-scheduler-chunk-size = Scheduler-Blockgröße (Bytes):
+
+cmd-help-aliases = Aliase: { $aliases }
+err-frame-invalid = Ungültiger Protokoll-Frame
+err-frame-payload-too-large = Nutzlastlänge { $length } überschreitet das Maximum { $max } für { $message_type }
+err-frame-unknown-message-type = Unbekannter Nachrichtentyp: { $message_type }
+err-frame-unexpected-message-type = Unerwarteter Nachrichtentyp: { $message_type }
+err-frame-invalid-json = Ungültige Protokoll-Nutzlast: { $error }
+err-frame-io = Netzwerk-E/A-Fehler: { $error }
+err-frame-timeout = Zeitüberschreitung beim Lesen des Protokoll-Frames
+err-frame-idle-timeout = Zeitüberschreitung beim Warten auf Protokolldaten
+err-tracker-timeout-sending-handshake = Zeitüberschreitung beim Senden des Tracker-Handshakes
+err-tracker-noncanonical-handshake-fingerprint = Der Tracker hat einen fehlerhaften Handshake-Fingerabdruck zurückgegeben ({ $bytes } { $bytes ->
+    [one] Byte
+   *[other] Bytes
+})
+err-tracker-timeout-sending-server-list = Zeitüberschreitung beim Senden der Tracker-Serverlistenanfrage
+err-tracker-noncanonical-entry-fingerprint = Der Tracker hat einen fehlerhaften Fingerabdruck für { $name } zurückgegeben
+err-tracker-unexpected-list-response = Unerwartete Tracker-Listenantwort

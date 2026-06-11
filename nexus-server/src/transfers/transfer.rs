@@ -738,7 +738,7 @@ mod tests {
     use crate::files::{FileActivityMap, FileIndex};
     use crate::scheduler::{ConnectionClass, ConnectionId};
     use crate::transfers::registry::{TransferDirection, TransferRegistry};
-    use nexus_common::io::read_server_message;
+    use nexus_common::io::read_transfer_server_message as read_server_message;
     use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::num::NonZeroUsize;

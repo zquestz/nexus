@@ -51,7 +51,7 @@ Pre-built binaries are available on the [Releases](https://github.com/zquestz/ne
 
 ### Tracker
 
-The tracker is an optional discovery daemon that maintains a list of registered Nexus servers. It is versioned independently from the BBS server and client (current tracker version: **0.1.1**).
+The tracker is an optional discovery daemon that maintains a list of registered Nexus servers. It is versioned independently from the BBS server and client (current tracker version: **0.1.2**).
 
 | Platform | Download                                            |
 | -------- | --------------------------------------------------- |

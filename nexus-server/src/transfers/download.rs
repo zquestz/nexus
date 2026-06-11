@@ -17,7 +17,7 @@ use tracing::{debug, error, info, warn};
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::hash::StreamingHasher;
-use nexus_common::io::read_client_message_with_full_timeout;
+use nexus_common::io::read_transfer_client_message_with_full_timeout;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_IO_ERROR};
@@ -659,19 +659,20 @@ where
 {
     // Loop so we skip any FileHashing keepalives the client sends while hashing.
     let (size, blake3) = loop {
-        let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
-            Ok(Some(msg)) => msg,
-            Ok(None) => {
-                return Err(io::Error::other(
-                    "Connection closed waiting for FileStartResponse",
-                ));
-            }
-            Err(e) => {
-                return Err(io::Error::other(format!(
-                    "Failed to read FileStartResponse: {e}"
-                )));
-            }
-        };
+        let received =
+            match read_transfer_client_message_with_full_timeout(frame_reader, None, None).await {
+                Ok(Some(msg)) => msg,
+                Ok(None) => {
+                    return Err(io::Error::other(
+                        "Connection closed waiting for FileStartResponse",
+                    ));
+                }
+                Err(e) => {
+                    return Err(io::Error::other(format!(
+                        "Failed to read FileStartResponse: {e}"
+                    )));
+                }
+            };
 
         match received.message {
             ClientMessage::FileStartResponse { size, blake3 } => {
@@ -732,7 +733,9 @@ mod tests {
     use std::sync::Arc;
 
     use nexus_common::ERROR_KIND_CONFLICT;
-    use nexus_common::io::{read_server_message, send_client_message};
+    use nexus_common::io::{
+        read_transfer_server_message as read_server_message, send_client_message,
+    };
     use tempfile::TempDir;
     use tokio::fs;
     use tokio::io::{BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};

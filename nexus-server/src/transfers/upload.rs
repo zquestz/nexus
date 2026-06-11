@@ -15,7 +15,9 @@ use nexus_common::framing::{
     DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader, FrameWriter, MessageId,
 };
 use nexus_common::hash::StreamingHasher;
-use nexus_common::io::{read_client_message_with_full_timeout, send_server_message_with_id};
+use nexus_common::io::{
+    read_transfer_client_message_with_full_timeout, send_server_message_with_id,
+};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::validators;
 
@@ -668,17 +670,18 @@ where
 {
     // Loop to skip FileHashing keepalives.
     loop {
-        let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
-            Ok(Some(msg)) => msg,
-            Ok(None) => {
-                return Err(TransferError::io_error(err_upload_connection_lost(locale)));
-            }
-            Err(_) => {
-                return Err(TransferError::protocol_error(err_upload_protocol_error(
-                    locale,
-                )));
-            }
-        };
+        let received =
+            match read_transfer_client_message_with_full_timeout(frame_reader, None, None).await {
+                Ok(Some(msg)) => msg,
+                Ok(None) => {
+                    return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+                }
+                Err(_) => {
+                    return Err(TransferError::protocol_error(err_upload_protocol_error(
+                        locale,
+                    )));
+                }
+            };
 
         match received.message {
             ClientMessage::FileStart { path, size } => {
@@ -891,7 +894,9 @@ mod tests {
     use std::time::Duration;
 
     use nexus_common::hash::StreamingHasher;
-    use nexus_common::io::{read_server_message, send_client_message};
+    use nexus_common::io::{
+        read_transfer_server_message as read_server_message, send_client_message,
+    };
     use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_INVALID};
     use tempfile::TempDir;
     use tokio::fs;

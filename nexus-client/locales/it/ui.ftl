@@ -1408,3 +1408,21 @@ label-inherit-bandwidth-weight = Eredita peso larghezza di banda
 label-max-outbound-rate = Uscita max (Mbps):
 label-unlimited = Illimitata
 label-scheduler-chunk-size = Dimensione blocco scheduler (byte):
+
+cmd-help-aliases = Alias: { $aliases }
+err-frame-invalid = Frame di protocollo non valido
+err-frame-payload-too-large = La lunghezza del payload { $length } supera il massimo { $max } per { $message_type }
+err-frame-unknown-message-type = Tipo di messaggio sconosciuto: { $message_type }
+err-frame-unexpected-message-type = Tipo di messaggio inatteso: { $message_type }
+err-frame-invalid-json = Payload di protocollo non valido: { $error }
+err-frame-io = Errore I/O di rete: { $error }
+err-frame-timeout = Timeout durante la lettura del frame di protocollo
+err-frame-idle-timeout = Timeout in attesa di dati di protocollo
+err-tracker-timeout-sending-handshake = Timeout durante l'invio dell'handshake del tracker
+err-tracker-noncanonical-handshake-fingerprint = Il tracker ha restituito un fingerprint di handshake non valido ({ $bytes } { $bytes ->
+    [one] byte
+   *[other] byte
+})
+err-tracker-timeout-sending-server-list = Timeout durante l'invio della richiesta elenco server del tracker
+err-tracker-noncanonical-entry-fingerprint = Il tracker ha restituito un fingerprint non valido per { $name }
+err-tracker-unexpected-list-response = Risposta elenco del tracker inattesa

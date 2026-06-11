@@ -39,6 +39,7 @@ err-tracker-role-violation = Bericht niet toegestaan voor de rol van deze verbin
 err-tracker-protocol-version-mismatch = Incompatibele tracker-protocolversie (server: { $server }, client: { $client })
 err-tracker-handshake-version-invalid = Ongeldige handshake-versie (moet geldige semver zijn)
 err-tracker-unknown-message-type = Onbekend berichttype
+err-tracker-unexpected-message-type = Onverwacht berichttype
 
 # Frame / transport
 err-tracker-frame-error = Schending van frameformaat

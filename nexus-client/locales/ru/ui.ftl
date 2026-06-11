@@ -1424,3 +1424,22 @@ label-inherit-bandwidth-weight = Наследовать вес пропускн�
 label-max-outbound-rate = Макс. исходящий (Мбит/с):
 label-unlimited = Без ограничения
 label-scheduler-chunk-size = Размер блока планировщика (байт):
+
+cmd-help-aliases = Псевдонимы: { $aliases }
+err-frame-invalid = Недопустимый кадр протокола
+err-frame-payload-too-large = Длина полезной нагрузки { $length } превышает максимум { $max } для { $message_type }
+err-frame-unknown-message-type = Неизвестный тип сообщения: { $message_type }
+err-frame-unexpected-message-type = Неожиданный тип сообщения: { $message_type }
+err-frame-invalid-json = Недопустимая полезная нагрузка протокола: { $error }
+err-frame-io = Ошибка сетевого ввода-вывода: { $error }
+err-frame-timeout = Истекло время чтения кадра протокола
+err-frame-idle-timeout = Истекло время ожидания данных протокола
+err-tracker-timeout-sending-handshake = Истекло время отправки рукопожатия трекеру
+err-tracker-noncanonical-handshake-fingerprint = Трекер вернул некорректный отпечаток рукопожатия ({ $bytes } { $bytes ->
+    [one] байт
+    [few] байта
+   *[other] байт
+})
+err-tracker-timeout-sending-server-list = Истекло время отправки запроса списка серверов трекеру
+err-tracker-noncanonical-entry-fingerprint = Трекер вернул некорректный отпечаток для { $name }
+err-tracker-unexpected-list-response = Неожиданный ответ списка трекера

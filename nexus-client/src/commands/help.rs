@@ -105,7 +105,8 @@ fn show_command_help(
 
     // Show aliases if any
     if !cmd.aliases.is_empty() {
-        let aliases_line = format!("  Aliases: {}", cmd.aliases.join(", "));
+        let aliases = cmd.aliases.join(", ");
+        let aliases_line = format!("  {}", t_args("cmd-help-aliases", &[("aliases", &aliases)]));
         tasks.push(app.add_active_tab_message(connection_id, ChatMessage::info(aliases_line)));
     }
 

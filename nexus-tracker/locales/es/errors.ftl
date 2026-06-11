@@ -39,6 +39,7 @@ err-tracker-role-violation = Mensaje no permitido para el rol de esta conexión
 err-tracker-protocol-version-mismatch = Versión incompatible del protocolo del rastreador (servidor: { $server }, cliente: { $client })
 err-tracker-handshake-version-invalid = Versión de handshake inválida (debe ser semver válido)
 err-tracker-unknown-message-type = Tipo de mensaje desconocido
+err-tracker-unexpected-message-type = Tipo de mensaje inesperado
 
 # Trama / transporte
 err-tracker-frame-error = Violación del formato de trama

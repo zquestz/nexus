@@ -6,7 +6,10 @@ use std::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
-use nexus_common::io::{read_client_message_with_full_timeout, send_server_message_with_id};
+use nexus_common::io::{
+    read_client_handshake_message_with_full_timeout, read_client_login_message_with_full_timeout,
+    read_transfer_client_message_with_full_timeout, send_server_message_with_id,
+};
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::validators::{self, PasswordError, VersionError};
@@ -58,16 +61,17 @@ where
     let server_version_str = nexus_common::PROTOCOL_VERSION;
 
     // Idle timeout enforced — no idle connections allowed on the transfer port.
-    let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
-        Ok(Some(msg)) => msg,
-        Ok(None) => return Err(io::Error::other(ERR_TRANSFER_HANDSHAKE_CLOSED)),
-        Err(e) => {
-            return Err(io::Error::other(format!(
-                "{}{}",
-                ERR_TRANSFER_READ_HANDSHAKE, e
-            )));
-        }
-    };
+    let received =
+        match read_client_handshake_message_with_full_timeout(frame_reader, None, None).await {
+            Ok(Some(msg)) => msg,
+            Ok(None) => return Err(io::Error::other(ERR_TRANSFER_HANDSHAKE_CLOSED)),
+            Err(e) => {
+                return Err(io::Error::other(format!(
+                    "{}{}",
+                    ERR_TRANSFER_READ_HANDSHAKE, e
+                )));
+            }
+        };
 
     let version = match received.message {
         ClientMessage::Handshake { version } => version,
@@ -187,7 +191,8 @@ where
     W: AsyncWriteExt + Unpin,
 {
     // Idle timeout enforced — no idle connections allowed on the transfer port.
-    let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
+    let received = match read_client_login_message_with_full_timeout(frame_reader, None, None).await
+    {
         Ok(Some(msg)) => msg,
         Ok(None) => return Err(io::Error::other(ERR_TRANSFER_LOGIN_CLOSED)),
         Err(e) => {
@@ -356,16 +361,17 @@ where
     W: AsyncWriteExt + Unpin,
 {
     // Idle timeout enforced — no idle connections allowed on the transfer port.
-    let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
-        Ok(Some(msg)) => msg,
-        Ok(None) => return Err(io::Error::other(ERR_TRANSFER_CONNECTION_CLOSED)),
-        Err(e) => {
-            return Err(io::Error::other(format!(
-                "{}{}",
-                ERR_TRANSFER_READ_MESSAGE, e
-            )));
-        }
-    };
+    let received =
+        match read_transfer_client_message_with_full_timeout(frame_reader, None, None).await {
+            Ok(Some(msg)) => msg,
+            Ok(None) => return Err(io::Error::other(ERR_TRANSFER_CONNECTION_CLOSED)),
+            Err(e) => {
+                return Err(io::Error::other(format!(
+                    "{}{}",
+                    ERR_TRANSFER_READ_MESSAGE, e
+                )));
+            }
+        };
 
     match received.message {
         ClientMessage::FileDownload { path, root } => {
@@ -399,7 +405,9 @@ mod tests {
     use tokio::net::{TcpListener, TcpStream};
 
     use nexus_common::PROTOCOL_VERSION;
-    use nexus_common::io::{read_server_message, send_client_message};
+    use nexus_common::io::{
+        read_transfer_server_message as read_server_message, send_client_message,
+    };
 
     use crate::handlers::testing::{DEFAULT_TEST_LOCALE, TEST_FINGERPRINT};
 

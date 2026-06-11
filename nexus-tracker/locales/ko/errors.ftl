@@ -38,6 +38,7 @@ err-tracker-role-violation = 이 연결의 역할에 허용되지 않는 메시�
 err-tracker-protocol-version-mismatch = 호환되지 않는 트래커 프로토콜 버전 (서버: { $server }, 클라이언트: { $client })
 err-tracker-handshake-version-invalid = 잘못된 핸드셰이크 버전 (유효한 semver여야 함)
 err-tracker-unknown-message-type = 알 수 없는 메시지 유형
+err-tracker-unexpected-message-type = 예상하지 못한 메시지 유형
 
 # 프레임 / 전송
 err-tracker-frame-error = 프레임 형식 위반

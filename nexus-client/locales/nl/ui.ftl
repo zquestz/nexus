@@ -1405,3 +1405,21 @@ label-inherit-bandwidth-weight = Bandbreedtegewicht overerven
 label-max-outbound-rate = Max. uitgaand (Mbps):
 label-unlimited = Onbeperkt
 label-scheduler-chunk-size = Schedulerblokgrootte (bytes):
+
+cmd-help-aliases = Aliassen: { $aliases }
+err-frame-invalid = Ongeldig protocolframe
+err-frame-payload-too-large = Payloadlengte { $length } overschrijdt het maximum { $max } voor { $message_type }
+err-frame-unknown-message-type = Onbekend berichttype: { $message_type }
+err-frame-unexpected-message-type = Onverwacht berichttype: { $message_type }
+err-frame-invalid-json = Ongeldige protocolpayload: { $error }
+err-frame-io = Netwerk-I/O-fout: { $error }
+err-frame-timeout = Time-out bij het lezen van het protocolframe
+err-frame-idle-timeout = Time-out bij wachten op protocolgegevens
+err-tracker-timeout-sending-handshake = Time-out bij het verzenden van de tracker-handshake
+err-tracker-noncanonical-handshake-fingerprint = Tracker gaf een ongeldig handshake-vingerafdruk terug ({ $bytes } { $bytes ->
+    [one] byte
+   *[other] bytes
+})
+err-tracker-timeout-sending-server-list = Time-out bij het verzenden van de serverlijstaanvraag naar de tracker
+err-tracker-noncanonical-entry-fingerprint = Tracker gaf een ongeldig vingerafdruk terug voor { $name }
+err-tracker-unexpected-list-response = Onverwachte serverlijstrespons van tracker

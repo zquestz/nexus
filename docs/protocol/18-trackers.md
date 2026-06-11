@@ -627,10 +627,10 @@ the implementation's default locale (English).
 Sent by the tracker when it must abort the connection without a typed flow
 response. Always followed by an immediate disconnect.
 
-| Field     | Type   | Required | Description                                 |
-| --------- | ------ | -------- | ------------------------------------------- |
-| `message` | string | Yes      | Human-readable description of the violation |
-| `command` | string | No       | The offending message type, if known        |
+| Field     | Type   | Required | Description                                           |
+| --------- | ------ | -------- | ----------------------------------------------------- |
+| `message` | string | Yes      | Human-readable description of the violation           |
+| `command` | string | No       | The offending message type, if available from context |
 
 The `Error` frame echoes the `message_id` of the offending frame when one
 was received; otherwise the tracker generates a fresh ID.
@@ -666,17 +666,18 @@ disconnect.
 
 ### Failure Conditions
 
-| Condition                                       | Tracker Response                                 | `error_kind`   |
-| ----------------------------------------------- | ------------------------------------------------ | -------------- |
-| Frame format violation (bad magic, bad framing) | `Error`, disconnect                              | —              |
-| Payload exceeds per-message-type limit          | `Error`, disconnect                              | —              |
-| Unknown message type                            | `Error`, disconnect                              | —              |
-| Malformed JSON in a known message               | `Error`, disconnect                              | —              |
-| Role violation                                  | `Error`, disconnect                              | —              |
-| Missing or wrong password                       | Typed response with `success: false`, disconnect | `unauthorized` |
-| Field validation failure                        | Typed response with `success: false`, disconnect | `invalid`      |
-| Rate-limited                                    | Typed response with `success: false`, disconnect | `rate_limited` |
-| Tracker at capacity                             | Typed response with `success: false`, disconnect | `capacity`     |
+| Condition                                                        | Tracker Response                                 | `error_kind`   |
+| ---------------------------------------------------------------- | ------------------------------------------------ | -------------- |
+| Frame format violation (bad magic, bad framing)                  | `Error`, disconnect                              | —              |
+| Payload exceeds per-message-type limit                           | `Error`, disconnect                              | —              |
+| Unknown message type                                             | `Error`, disconnect                              | —              |
+| Known message type sent in the wrong protocol phase or direction | `Error`, disconnect                              | —              |
+| Malformed JSON in a known message                                | `Error`, disconnect                              | —              |
+| Role violation                                                   | `Error`, disconnect                              | —              |
+| Missing or wrong password                                        | Typed response with `success: false`, disconnect | `unauthorized` |
+| Field validation failure                                         | Typed response with `success: false`, disconnect | `invalid`      |
+| Rate-limited                                                     | Typed response with `success: false`, disconnect | `rate_limited` |
+| Tracker at capacity                                              | Typed response with `success: false`, disconnect | `capacity`     |
 
 The generic `Error` message does not carry an `error_kind` — its
 violation space is exclusively protocol-level, and clients do not branch

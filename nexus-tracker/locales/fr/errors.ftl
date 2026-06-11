@@ -38,6 +38,7 @@ err-tracker-role-violation = Message non autorisé pour le rôle de cette connex
 err-tracker-protocol-version-mismatch = Version incompatible du protocole tracker (serveur : { $server }, client : { $client })
 err-tracker-handshake-version-invalid = Version de handshake invalide (doit être un semver valide)
 err-tracker-unknown-message-type = Type de message inconnu
+err-tracker-unexpected-message-type = Type de message inattendu
 
 # Trame / transport
 err-tracker-frame-error = Violation du format de trame

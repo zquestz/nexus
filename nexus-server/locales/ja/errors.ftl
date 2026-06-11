@@ -68,6 +68,7 @@ err-login-bandwidth-failed = アカウントの帯域幅設定を読み込めま
 
 # メッセージ形式のエラー
 err-invalid-message-format = 無効なメッセージ形式です
+err-unexpected-message-type = 予期しないメッセージタイプです
 err-message-not-supported = サポートされていないメッセージタイプです
 
 # ユーザー管理のエラー

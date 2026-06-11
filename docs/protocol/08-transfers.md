@@ -498,6 +498,8 @@ The login flow on port 7501 is identical to port 7500, but `LoginResponse` only 
 
 No `session_id`, `permissions`, `server_info`, or `chat_info` is returned on the transfer port.
 
+After the transfer-port handshake and login complete, `Handshake` and `Login` are no longer valid transfer control frames. `FileData` is also not accepted by JSON control readers; it is valid only in the streaming data phase described above.
+
 When the transfer is registered, the server resolves the current account identity
 by the stable account id from login. Regular accounts use the current username as
 both `username` and `nickname`; shared accounts use the current account username

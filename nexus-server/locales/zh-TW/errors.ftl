@@ -68,6 +68,7 @@ err-login-bandwidth-failed = 無法載入帳戶頻寬設定
 
 # 訊息格式錯誤
 err-invalid-message-format = 無效的訊息格式
+err-unexpected-message-type = 未預期的訊息類型
 err-message-not-supported = 不支援的訊息類型
 
 # 使用者管理錯誤

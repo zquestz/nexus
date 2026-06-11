@@ -39,6 +39,7 @@ err-tracker-role-violation = この接続のロールではメッセージは許
 err-tracker-protocol-version-mismatch = 互換性のないトラッカープロトコルバージョン (サーバー: { $server }, クライアント: { $client })
 err-tracker-handshake-version-invalid = 無効なハンドシェイクバージョンです (有効なsemverである必要があります)
 err-tracker-unknown-message-type = 不明なメッセージタイプ
+err-tracker-unexpected-message-type = 予期しないメッセージタイプです
 
 # フレーム / トランスポート
 err-tracker-frame-error = フレーム形式違反

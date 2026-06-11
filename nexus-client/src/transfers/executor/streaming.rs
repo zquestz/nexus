@@ -14,7 +14,7 @@ use tokio::io::{AsyncReadExt, BufReader};
 use tokio::time::timeout;
 
 use nexus_common::framing::{FrameError, FrameHeader, FrameReader, FrameWriter, MessageId};
-use nexus_common::io::read_server_message;
+use nexus_common::io::read_transfer_server_message;
 use nexus_common::protocol::ServerMessage;
 
 use super::file_utils::is_cancelled;
@@ -47,7 +47,7 @@ where
 {
     // Loop to skip any FileHashing keepalive messages
     loop {
-        let result = timeout(idle_timeout, read_server_message(reader)).await;
+        let result = timeout(idle_timeout, read_transfer_server_message(reader)).await;
 
         match result {
             Ok(Ok(Some(received))) => {

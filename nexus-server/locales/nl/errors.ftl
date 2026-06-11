@@ -68,6 +68,7 @@ err-login-bandwidth-failed = Kan bandbreedte-instellingen niet laden
 
 # Berichtformaatfouten
 err-invalid-message-format = Ongeldig berichtformaat
+err-unexpected-message-type = Onverwacht berichttype
 err-message-not-supported = Berichttype niet ondersteund
 
 # Gebruikersbeheersfouten

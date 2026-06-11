@@ -68,6 +68,7 @@ err-login-bandwidth-failed = Не удалось загрузить настро
 
 # Ошибки формата сообщения
 err-invalid-message-format = Неверный формат сообщения
+err-unexpected-message-type = Неожиданный тип сообщения
 err-message-not-supported = Тип сообщения не поддерживается
 
 # Ошибки управления пользователями

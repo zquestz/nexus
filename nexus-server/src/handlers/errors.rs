@@ -338,6 +338,10 @@ pub fn err_invalid_message_format(locale: &str) -> String {
     t(locale, "err-invalid-message-format")
 }
 
+pub fn err_unexpected_message_type(locale: &str) -> String {
+    t(locale, "err-unexpected-message-type")
+}
+
 pub fn err_message_not_supported(locale: &str) -> String {
     t(locale, "err-message-not-supported")
 }

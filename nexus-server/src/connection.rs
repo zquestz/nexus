@@ -14,7 +14,10 @@ use tracing::{debug, error, warn};
 
 use nexus_common::address::is_private_network;
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
-use nexus_common::io::{read_client_message_with_full_timeout, read_client_message_with_timeout};
+use nexus_common::io::{
+    read_client_handshake_message_with_full_timeout, read_client_login_message_with_full_timeout,
+    read_client_message_with_timeout,
+};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tls::accept_tls_with_timeout;
 
@@ -31,7 +34,7 @@ use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
     self, DirectWriter, HandlerContext, err_invalid_message_format, err_message_not_supported,
-    err_slow_client_disconnect,
+    err_slow_client_disconnect, err_unexpected_message_type,
 };
 use crate::ip_rule_cache::IpRuleState;
 use crate::scheduler::{ConnectionClass, ConnectionId};
@@ -405,8 +408,10 @@ where
             result = async {
                 if is_authenticated {
                     read_client_message_with_timeout(&mut frame_reader).await
+                } else if conn_state.handshake_complete {
+                    read_client_login_message_with_full_timeout(&mut frame_reader, None, None).await
                 } else {
-                    read_client_message_with_full_timeout(&mut frame_reader, None, None).await
+                    read_client_handshake_message_with_full_timeout(&mut frame_reader, None, None).await
                 }
             }, if !egress_frame_in_progress && pending_session_event.is_none() && !disconnect_after_egress_drain => {
                 match result {
@@ -483,9 +488,15 @@ where
                         }
 
                         // Try to send error before disconnecting.
+                        let command = frame_error_command(&e);
+                        let message = if matches!(&e, FrameError::UnexpectedMessageType(_)) {
+                            err_unexpected_message_type(&conn_state.locale)
+                        } else {
+                            err_invalid_message_format(&conn_state.locale)
+                        };
                         let error_msg = ServerMessage::Error {
-                            message: err_invalid_message_format(&conn_state.locale),
-                            command: None,
+                            message,
+                            command,
                             disconnect: true,
                         };
                         if egress_dispatch_rx.is_some() {
@@ -1059,6 +1070,13 @@ fn is_passive_message(msg: &ClientMessage) -> bool {
     matches!(msg, ClientMessage::Ping | ClientMessage::UserAway { .. })
 }
 
+fn frame_error_command(err: &FrameError) -> Option<String> {
+    match err {
+        FrameError::UnexpectedMessageType(message_type) => Some(message_type.clone()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1543,6 +1561,56 @@ mod tests {
         let expected = server_message_to_frame_bytes(&queued_message, queued_id)
             .expect("expected frame should serialize");
         assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn pre_login_command_gets_unexpected_message_type_error() {
+        let mut connection = start_test_connection(64, 8192).await;
+
+        send_client_message_with_id(
+            &mut connection.writer,
+            &ClientMessage::Handshake {
+                version: nexus_common::PROTOCOL_VERSION.to_string(),
+            },
+            message_id(b"000000000331"),
+        )
+        .await
+        .expect("handshake send should succeed");
+
+        let handshake = read_next_server_message(&mut connection).await;
+        assert!(matches!(
+            handshake.message,
+            ServerMessage::HandshakeResponse { success: true, .. }
+        ));
+
+        send_client_message_with_id(
+            &mut connection.writer,
+            &ClientMessage::ChatSend {
+                message: "too early".to_string(),
+                action: ChatAction::Normal,
+                channel: DEFAULT_CHANNEL.to_string(),
+            },
+            message_id(b"000000000332"),
+        )
+        .await
+        .expect("pre-login command send should succeed");
+
+        let error = read_next_server_message(&mut connection).await;
+        match error.message {
+            ServerMessage::Error {
+                message,
+                command,
+                disconnect,
+                ..
+            } => {
+                assert_eq!(message, err_unexpected_message_type("en"));
+                assert_eq!(command.as_deref(), Some("ChatSend"));
+                assert!(disconnect);
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
 
         connection.shutdown().await;
     }

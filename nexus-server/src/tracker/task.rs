@@ -15,8 +15,8 @@ use chrono::Utc;
 use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
-    read_server_message, read_tracker_server_message_with_full_timeout, send_client_message,
-    send_tracker_client_message,
+    read_server_handshake_response, read_tracker_server_message_with_full_timeout,
+    send_client_message, send_tracker_client_message,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
@@ -859,7 +859,7 @@ async fn read_handshake_response<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let received = read_server_message(reader)
+    let received = read_server_handshake_response(reader)
         .await
         .map_err(|e| HandshakeReadError::Io(e.to_string()))?
         .ok_or(HandshakeReadError::Closed)?;

@@ -133,7 +133,7 @@ The sender generates the ID; the receiver echoes it back in the response.
 
 ### Payload Limits
 
-Each message type has a maximum payload size to prevent denial-of-service attacks. Unknown message types are rejected. Limits are enforced before reading the payload.
+Each message type has a maximum payload size to prevent denial-of-service attacks. Unknown message types, known message types sent in the wrong protocol phase or direction, and payloads over the per-type limit are rejected before reading the payload.
 
 ## Connection Flow
 

@@ -129,7 +129,7 @@ Most messages have dedicated response types with `success`, `error`, and sometim
 
 The `Error` message type is used for:
 
-- Protocol violations (invalid frames, unknown message types)
+- Protocol violations (invalid frames, unknown or unexpected message types)
 - Authentication failures during message handling
 - Critical errors that should disconnect the client
 - Terminal moderation reasons, such as kicks (`command: "UserKick"`)
@@ -205,14 +205,14 @@ Errors can either keep the connection open or disconnect the client.
 
 These errors terminate the connection after sending:
 
-| Category            | Examples                                    |
-| ------------------- | ------------------------------------------- |
-| Authentication      | Not logged in, invalid session              |
-| Protocol            | Invalid frame, unknown message type         |
-| Critical validation | Invalid handshake, malformed login          |
-| Some validation     | Chat message too long, broadcast validation |
-| Flood protection    | 3 consecutive rate limit violations         |
-| Slow client         | Session cannot keep up with server messages |
+| Category            | Examples                                          |
+| ------------------- | ------------------------------------------------- |
+| Authentication      | Not logged in, invalid session                    |
+| Protocol            | Invalid frame, unknown or unexpected message type |
+| Critical validation | Invalid handshake, malformed login                |
+| Some validation     | Chat message too long, broadcast validation       |
+| Flood protection    | 3 consecutive rate limit violations               |
+| Slow client         | Session cannot keep up with server messages       |
 
 ### Non-Disconnect Errors
 

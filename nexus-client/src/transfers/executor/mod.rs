@@ -1023,7 +1023,7 @@ mod tests {
     use crate::types::ConnectionInfo;
     use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
     use nexus_common::hash::StreamingHasher;
-    use nexus_common::io::{read_client_message, send_server_message};
+    use nexus_common::io::{read_transfer_client_message_with_full_timeout, send_server_message};
     use std::sync::atomic::AtomicBool;
     use tokio::io::{BufReader, duplex};
 
@@ -1098,11 +1098,12 @@ mod tests {
         };
 
         let server = async {
-            let request = read_client_message(&mut server_reader)
-                .await
-                .expect("read FileDownload")
-                .expect("FileDownload message")
-                .message;
+            let request =
+                read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                    .await
+                    .expect("read FileDownload")
+                    .expect("FileDownload message")
+                    .message;
             assert!(matches!(
                 request,
                 ClientMessage::FileDownload { path, .. } if path == "bundle"
@@ -1136,11 +1137,12 @@ mod tests {
                 .await
                 .expect("send FileStart");
 
-                let response = read_client_message(&mut server_reader)
-                    .await
-                    .expect("read FileStartResponse")
-                    .expect("FileStartResponse message")
-                    .message;
+                let response =
+                    read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                        .await
+                        .expect("read FileStartResponse")
+                        .expect("FileStartResponse message")
+                        .message;
                 assert!(matches!(
                     response,
                     ClientMessage::FileStartResponse {
@@ -1241,10 +1243,11 @@ mod tests {
         };
 
         let server = async {
-            let _request = read_client_message(&mut server_reader)
-                .await
-                .expect("read FileDownload")
-                .expect("FileDownload message");
+            let _request =
+                read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                    .await
+                    .expect("read FileDownload")
+                    .expect("FileDownload message");
 
             send_server_message(
                 &mut server_writer,
@@ -1270,11 +1273,12 @@ mod tests {
             .await
             .expect("send FileStart");
 
-            let response = read_client_message(&mut server_reader)
-                .await
-                .expect("read FileStartResponse")
-                .expect("FileStartResponse message")
-                .message;
+            let response =
+                read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                    .await
+                    .expect("read FileStartResponse")
+                    .expect("FileStartResponse message")
+                    .message;
             assert!(matches!(
                 response,
                 ClientMessage::FileStartResponse {

@@ -38,6 +38,7 @@ err-tracker-role-violation = Сообщение не разрешено для �
 err-tracker-protocol-version-mismatch = Несовместимая версия протокола трекера (сервер: { $server }, клиент: { $client })
 err-tracker-handshake-version-invalid = Неверная версия handshake (должна быть корректной semver)
 err-tracker-unknown-message-type = Неизвестный тип сообщения
+err-tracker-unexpected-message-type = Неожиданный тип сообщения
 
 # Кадр / транспорт
 err-tracker-frame-error = Нарушение формата кадра

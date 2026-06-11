@@ -27,7 +27,7 @@ impl From<FrameError> for io::Error {
             FrameError::ConnectionClosed => {
                 io::Error::new(io::ErrorKind::ConnectionReset, "connection closed")
             }
-            other => io::Error::other(other.to_string()),
+            other => io::Error::other(other),
         }
     }
 }
@@ -147,6 +147,176 @@ pub struct ReceivedServerMessage {
     pub message: ServerMessage,
 }
 
+const CLIENT_HANDSHAKE_FRAME_TYPES: &[&str] = &["Handshake"];
+const CLIENT_LOGIN_FRAME_TYPES: &[&str] = &["Login"];
+const SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES: &[&str] = &["Error", "HandshakeResponse"];
+const SERVER_LOGIN_RESPONSE_FRAME_TYPES: &[&str] = &["Error", "LoginResponse"];
+
+const BBS_CLIENT_FRAME_TYPES: &[&str] = &[
+    "BanCreate",
+    "BanDelete",
+    "BanList",
+    "ChatJoin",
+    "ChatLeave",
+    "ChatList",
+    "ChatSecret",
+    "ChatSend",
+    "ChatTopicUpdate",
+    "ConnectionMonitor",
+    "FileCopy",
+    "FileCreateDir",
+    "FileDelete",
+    "FileInfo",
+    "FileList",
+    "FileMove",
+    "FileReindex",
+    "FileRename",
+    "FileSearch",
+    "GroupCreate",
+    "GroupDelete",
+    "GroupEdit",
+    "GroupList",
+    "GroupUpdate",
+    "Handshake",
+    "Login",
+    "NewsCreate",
+    "NewsDelete",
+    "NewsEdit",
+    "NewsList",
+    "NewsShow",
+    "NewsUpdate",
+    "Ping",
+    "ServerInfoUpdate",
+    "TrackerAcceptFingerprint",
+    "TrackerAdd",
+    "TrackerEdit",
+    "TrackerList",
+    "TrackerRemove",
+    "TrackerUpdate",
+    "TrustCreate",
+    "TrustDelete",
+    "TrustList",
+    "UserAway",
+    "UserBack",
+    "UserBroadcast",
+    "UserCreate",
+    "UserDelete",
+    "UserEdit",
+    "UserInfo",
+    "UserKick",
+    "UserList",
+    "UserMessage",
+    "UserStatus",
+    "UserUpdate",
+    "VoiceJoin",
+    "VoiceLeave",
+];
+
+const BBS_SERVER_FRAME_TYPES: &[&str] = &[
+    "BanCreateResponse",
+    "BanDeleteResponse",
+    "BanListResponse",
+    "ChatJoinResponse",
+    "ChatLeaveResponse",
+    "ChatListResponse",
+    "ChatMessage",
+    "ChatSecretResponse",
+    "ChatTopicUpdateResponse",
+    "ChatUpdated",
+    "ChatUserJoined",
+    "ChatUserLeft",
+    "ChatUserRenamed",
+    "ConnectionMonitorResponse",
+    "Error",
+    "FileCopyResponse",
+    "FileCreateDirResponse",
+    "FileDeleteResponse",
+    "FileInfoResponse",
+    "FileListResponse",
+    "FileMoveResponse",
+    "FileReindexResponse",
+    "FileRenameResponse",
+    "FileSearchResponse",
+    "GroupCreateResponse",
+    "GroupDeleteResponse",
+    "GroupEditResponse",
+    "GroupListResponse",
+    "GroupUpdateResponse",
+    "HandshakeResponse",
+    "LoginResponse",
+    "NewsCreateResponse",
+    "NewsDeleteResponse",
+    "NewsEditResponse",
+    "NewsListResponse",
+    "NewsShowResponse",
+    "NewsUpdateResponse",
+    "NewsUpdated",
+    "PermissionsUpdated",
+    "Pong",
+    "ServerBroadcast",
+    "ServerInfoUpdateResponse",
+    "ServerInfoUpdated",
+    "TrackerAcceptFingerprintResponse",
+    "TrackerAddResponse",
+    "TrackerEditResponse",
+    "TrackerListResponse",
+    "TrackerRemoveResponse",
+    "TrackerUpdateResponse",
+    "TrustCreateResponse",
+    "TrustDeleteResponse",
+    "TrustListResponse",
+    "UserAwayResponse",
+    "UserBackResponse",
+    "UserBroadcastResponse",
+    "UserConnected",
+    "UserCreateResponse",
+    "UserDeleteResponse",
+    "UserDisconnected",
+    "UserEditResponse",
+    "UserInfoResponse",
+    "UserKickResponse",
+    "UserListResponse",
+    "UserMessage",
+    "UserMessageResponse",
+    "UserStatusResponse",
+    "UserUpdateResponse",
+    "UserUpdated",
+    "VoiceJoinResponse",
+    "VoiceLeaveResponse",
+    "VoiceUserJoined",
+    "VoiceUserLeft",
+];
+
+const TRANSFER_CLIENT_FRAME_TYPES: &[&str] = &[
+    "FileDownload",
+    "FileHash",
+    "FileHashing",
+    "FileStart",
+    "FileStartResponse",
+    "FileUpload",
+];
+
+const TRANSFER_SERVER_FRAME_TYPES: &[&str] = &[
+    "Error",
+    "FileDownloadResponse",
+    "FileHash",
+    "FileHashing",
+    "FileStart",
+    "FileStartResponse",
+    "FileUploadResponse",
+    "HandshakeResponse",
+    "LoginResponse",
+    "TransferComplete",
+];
+
+fn check_frame_type(message_type: &str, allowed_types: &[&str]) -> Result<(), FrameError> {
+    if allowed_types.binary_search(&message_type).is_ok() {
+        Ok(())
+    } else {
+        Err(FrameError::UnexpectedMessageType(message_type.to_string()))
+    }
+}
+
 /// Read a `ClientMessage` from the stream
 ///
 /// Returns `Ok(None)` if the connection was cleanly closed.
@@ -161,7 +331,10 @@ pub async fn read_client_message<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let Some(frame) = reader.read_frame().await? else {
+    let Some(frame) = reader
+        .read_frame_checked(|header| check_frame_type(&header.message_type, BBS_CLIENT_FRAME_TYPES))
+        .await?
+    else {
         return Ok(None);
     };
 
@@ -183,7 +356,9 @@ where
     R: AsyncReadExt + Unpin,
 {
     let Some(frame) = reader
-        .read_frame_with_timeout(DEFAULT_FRAME_TIMEOUT)
+        .read_frame_checked_with_timeout(DEFAULT_FRAME_TIMEOUT, |header| {
+            check_frame_type(&header.message_type, BBS_CLIENT_FRAME_TYPES)
+        })
         .await?
     else {
         return Ok(None);
@@ -220,7 +395,84 @@ where
     let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_with_full_timeout(idle, frame_time)
+        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
+            check_frame_type(&header.message_type, BBS_CLIENT_FRAME_TYPES)
+        })
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_client_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+}
+
+pub async fn read_client_handshake_message_with_full_timeout<R>(
+    reader: &mut FrameReader<R>,
+    idle_timeout: Option<Duration>,
+    frame_timeout: Option<Duration>,
+) -> Result<Option<ReceivedClientMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+
+    let Some(frame) = reader
+        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
+            check_frame_type(&header.message_type, CLIENT_HANDSHAKE_FRAME_TYPES)
+        })
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_client_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+}
+
+pub async fn read_client_login_message_with_full_timeout<R>(
+    reader: &mut FrameReader<R>,
+    idle_timeout: Option<Duration>,
+    frame_timeout: Option<Duration>,
+) -> Result<Option<ReceivedClientMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+
+    let Some(frame) = reader
+        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
+            check_frame_type(&header.message_type, CLIENT_LOGIN_FRAME_TYPES)
+        })
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_client_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+}
+
+pub async fn read_transfer_client_message_with_full_timeout<R>(
+    reader: &mut FrameReader<R>,
+    idle_timeout: Option<Duration>,
+    frame_timeout: Option<Duration>,
+) -> Result<Option<ReceivedClientMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+
+    let Some(frame) = reader
+        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
+            check_frame_type(&header.message_type, TRANSFER_CLIENT_FRAME_TYPES)
+        })
         .await?
     else {
         return Ok(None);
@@ -288,7 +540,64 @@ pub async fn read_server_message<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let Some(frame) = reader.read_frame().await? else {
+    let Some(frame) = reader
+        .read_frame_checked(|header| check_frame_type(&header.message_type, BBS_SERVER_FRAME_TYPES))
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_server_frame(frame).map(Some)
+}
+
+pub async fn read_server_handshake_response<R>(
+    reader: &mut FrameReader<R>,
+) -> io::Result<Option<ReceivedServerMessage>>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let Some(frame) = reader
+        .read_frame_checked(|header| {
+            check_frame_type(&header.message_type, SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES)
+        })
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_server_frame(frame).map(Some)
+}
+
+pub async fn read_server_login_response<R>(
+    reader: &mut FrameReader<R>,
+) -> io::Result<Option<ReceivedServerMessage>>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let Some(frame) = reader
+        .read_frame_checked(|header| {
+            check_frame_type(&header.message_type, SERVER_LOGIN_RESPONSE_FRAME_TYPES)
+        })
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_server_frame(frame).map(Some)
+}
+
+pub async fn read_transfer_server_message<R>(
+    reader: &mut FrameReader<R>,
+) -> io::Result<Option<ReceivedServerMessage>>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let Some(frame) = reader
+        .read_frame_checked(|header| {
+            check_frame_type(&header.message_type, TRANSFER_SERVER_FRAME_TYPES)
+        })
+        .await?
+    else {
         return Ok(None);
     };
 
@@ -503,6 +812,14 @@ pub fn tracker_server_message_type(message: &TrackerServerMessage) -> &'static s
     }
 }
 
+const TRACKER_CLIENT_FRAME_TYPES: &[&str] = &["TrackerServerList", "TrackerServerRegister"];
+
+const TRACKER_SERVER_FRAME_TYPES: &[&str] = &[
+    "Error",
+    "TrackerServerListResponse",
+    "TrackerServerRegisterResponse",
+];
+
 /// Send a `TrackerServerMessage` to the peer with a fresh message ID.
 pub async fn send_tracker_server_message<W>(
     writer: &mut FrameWriter<W>,
@@ -558,7 +875,9 @@ where
     let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_with_full_timeout(idle, frame_time)
+        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
+            check_frame_type(&header.message_type, TRACKER_CLIENT_FRAME_TYPES)
+        })
         .await?
     else {
         return Ok(None);
@@ -611,7 +930,9 @@ where
     let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_with_full_timeout(idle, frame_time)
+        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
+            check_frame_type(&header.message_type, TRACKER_SERVER_FRAME_TYPES)
+        })
         .await?
     else {
         return Ok(None);
@@ -651,10 +972,30 @@ fn parse_tracker_server_frame(frame: RawFrame) -> io::Result<ReceivedTrackerServ
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framing::{known_message_types, max_payload_for_type};
     use crate::protocol::ChatAction;
     use crate::validators::DEFAULT_CHANNEL;
+    use std::collections::HashSet;
     use std::io::Cursor;
     use tokio::io::BufReader;
+
+    fn header_only_frame(message_type: &str, payload_length: u64) -> Vec<u8> {
+        format!(
+            "NX|{}|{}|a1b2c3d4e5f6|{}|",
+            message_type.len(),
+            message_type,
+            payload_length
+        )
+        .into_bytes()
+    }
+
+    fn assert_unexpected_message_type(result: Result<Option<ReceivedClientMessage>, FrameError>) {
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(message_type))
+                if message_type == "UserListResponse"
+        ));
+    }
 
     #[test]
     fn test_client_message_type() {
@@ -960,5 +1301,414 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[tokio::test]
+    async fn bbs_client_reader_rejects_server_response_before_payload() {
+        let cursor = Cursor::new(header_only_frame("UserListResponse", u64::MAX));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_client_message_with_full_timeout(&mut reader, None, None).await;
+        assert_unexpected_message_type(result);
+    }
+
+    #[tokio::test]
+    async fn bbs_client_reader_rejects_file_data() {
+        let cursor = Cursor::new(header_only_frame("FileData", u64::MAX));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_client_message_with_full_timeout(&mut reader, None, None).await;
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(message_type)) if message_type == "FileData"
+        ));
+    }
+
+    #[tokio::test]
+    async fn bbs_client_reader_rejects_transfer_control() {
+        let cursor = Cursor::new(header_only_frame("FileUpload", 128));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_client_message_with_full_timeout(&mut reader, None, None).await;
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(message_type)) if message_type == "FileUpload"
+        ));
+    }
+
+    #[tokio::test]
+    async fn client_handshake_reader_rejects_login_before_handshake() {
+        let payload =
+            r#"{"type":"Login","username":"u","password":"p","features":[],"locale":"en"}"#;
+        let frame_data = format!("NX|5|Login|a1b2c3d4e5f6|{}|{}\n", payload.len(), payload);
+        let cursor = Cursor::new(frame_data.into_bytes());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_client_handshake_message_with_full_timeout(&mut reader, None, None).await;
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(message_type)) if message_type == "Login"
+        ));
+    }
+
+    #[tokio::test]
+    async fn client_login_reader_rejects_command_before_login() {
+        let payload = r#"{"type":"ChatSend","message":"hi","action":null,"channel":null}"#;
+        let frame_data = format!("NX|8|ChatSend|a1b2c3d4e5f6|{}|{}\n", payload.len(), payload);
+        let cursor = Cursor::new(frame_data.into_bytes());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_client_login_message_with_full_timeout(&mut reader, None, None).await;
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(message_type)) if message_type == "ChatSend"
+        ));
+    }
+
+    #[tokio::test]
+    async fn server_login_response_reader_rejects_non_login_response() {
+        let cursor = Cursor::new(header_only_frame("UserListResponse", u64::MAX));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let err = read_server_login_response(&mut reader).await.unwrap_err();
+        let frame_error = err
+            .get_ref()
+            .and_then(|source| source.downcast_ref::<FrameError>())
+            .expect("unexpected message type should be preserved as FrameError source");
+        assert!(matches!(
+            frame_error,
+            FrameError::UnexpectedMessageType(message_type) if message_type == "UserListResponse"
+        ));
+    }
+
+    #[tokio::test]
+    async fn transfer_client_reader_accepts_transfer_control() {
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let mut writer = FrameWriter::new(cursor);
+            send_client_message(
+                &mut writer,
+                &ClientMessage::FileUpload {
+                    destination: "/incoming".to_string(),
+                    file_count: 1,
+                    total_size: 42,
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+            send_client_message(
+                &mut writer,
+                &ClientMessage::FileHashing {
+                    file: "demo.bin".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let cursor = Cursor::new(buffer);
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let first = read_transfer_client_message_with_full_timeout(&mut reader, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(first.message, ClientMessage::FileUpload { .. }));
+
+        let second = read_transfer_client_message_with_full_timeout(&mut reader, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(second.message, ClientMessage::FileHashing { .. }));
+    }
+
+    #[tokio::test]
+    async fn transfer_client_reader_rejects_file_data() {
+        let cursor = Cursor::new(header_only_frame("FileData", u64::MAX));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_transfer_client_message_with_full_timeout(&mut reader, None, None).await;
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(message_type)) if message_type == "FileData"
+        ));
+    }
+
+    #[tokio::test]
+    async fn bbs_server_reader_rejects_transfer_control() {
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let mut writer = FrameWriter::new(cursor);
+            send_server_message(
+                &mut writer,
+                &ServerMessage::FileStart {
+                    path: "demo.bin".to_string(),
+                    size: 42,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let cursor = Cursor::new(buffer);
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let err = read_server_message(&mut reader).await.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unexpected message type: 'FileStart'")
+        );
+    }
+
+    #[tokio::test]
+    async fn transfer_server_reader_accepts_transfer_control() {
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let mut writer = FrameWriter::new(cursor);
+            send_server_message(
+                &mut writer,
+                &ServerMessage::FileStart {
+                    path: "demo.bin".to_string(),
+                    size: 42,
+                },
+            )
+            .await
+            .unwrap();
+            send_server_message(
+                &mut writer,
+                &ServerMessage::FileHashing {
+                    file: "demo.bin".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let cursor = Cursor::new(buffer);
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let first = read_transfer_server_message(&mut reader)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(first.message, ServerMessage::FileStart { .. }));
+
+        let second = read_transfer_server_message(&mut reader)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(second.message, ServerMessage::FileHashing { .. }));
+    }
+
+    #[tokio::test]
+    async fn transfer_server_reader_rejects_file_data() {
+        let cursor = Cursor::new(header_only_frame("FileData", u64::MAX));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let err = read_transfer_server_message(&mut reader).await.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unexpected message type: 'FileData'")
+        );
+    }
+
+    #[tokio::test]
+    async fn server_handshake_response_reader_rejects_unexpected_list_response() {
+        let cursor = Cursor::new(header_only_frame("UserListResponse", u64::MAX));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let err = read_server_handshake_response(&mut reader)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unexpected message type: 'UserListResponse'")
+        );
+    }
+
+    #[tokio::test]
+    async fn tracker_client_reader_accepts_tracker_requests() {
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let mut writer = FrameWriter::new(cursor);
+            send_tracker_client_message(
+                &mut writer,
+                &TrackerClientMessage::TrackerServerList {
+                    password: None,
+                    locale: "en".to_string(),
+                    version: crate::PROTOCOL_VERSION.to_string(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let cursor = Cursor::new(buffer);
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let received = read_tracker_client_message_with_full_timeout(&mut reader, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            received.message,
+            TrackerClientMessage::TrackerServerList { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn tracker_server_reader_accepts_tracker_responses() {
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let mut writer = FrameWriter::new(cursor);
+            send_tracker_server_message(
+                &mut writer,
+                &TrackerServerMessage::TrackerServerRegisterResponse {
+                    success: true,
+                    refresh_interval: Some(300),
+                    error: None,
+                    error_kind: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let cursor = Cursor::new(buffer);
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let received = read_tracker_server_message_with_full_timeout(&mut reader, None, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            received.message,
+            TrackerServerMessage::TrackerServerRegisterResponse { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn tracker_server_reader_rejects_bbs_response_before_payload() {
+        let cursor = Cursor::new(header_only_frame("UserListResponse", u64::MAX));
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_tracker_server_message_with_full_timeout(&mut reader, None, None).await;
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(message_type))
+                if message_type == "UserListResponse"
+        ));
+    }
+
+    #[test]
+    fn untrusted_reader_allowlists_have_nonzero_payload_limits() {
+        let checked_allowlists = [
+            CLIENT_HANDSHAKE_FRAME_TYPES,
+            CLIENT_LOGIN_FRAME_TYPES,
+            SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES,
+            SERVER_LOGIN_RESPONSE_FRAME_TYPES,
+            BBS_CLIENT_FRAME_TYPES,
+            TRANSFER_CLIENT_FRAME_TYPES,
+            TRANSFER_SERVER_FRAME_TYPES,
+            TRACKER_CLIENT_FRAME_TYPES,
+            TRACKER_SERVER_FRAME_TYPES,
+        ];
+
+        for allowlist in checked_allowlists {
+            for message_type in allowlist {
+                assert_ne!(
+                    max_payload_for_type(message_type),
+                    0,
+                    "{message_type} is accepted from an untrusted/semi-trusted peer and must not have an unlimited payload limit"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_known_message_type_is_in_a_reader_allowlist_or_streamed() {
+        let allowlists = [
+            CLIENT_HANDSHAKE_FRAME_TYPES,
+            CLIENT_LOGIN_FRAME_TYPES,
+            SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES,
+            SERVER_LOGIN_RESPONSE_FRAME_TYPES,
+            BBS_CLIENT_FRAME_TYPES,
+            BBS_SERVER_FRAME_TYPES,
+            TRANSFER_CLIENT_FRAME_TYPES,
+            TRANSFER_SERVER_FRAME_TYPES,
+            TRACKER_CLIENT_FRAME_TYPES,
+            TRACKER_SERVER_FRAME_TYPES,
+        ];
+
+        let mut covered: HashSet<&str> = allowlists.into_iter().flatten().copied().collect();
+        covered.insert("FileData");
+
+        for message_type in known_message_types() {
+            assert!(
+                covered.contains(message_type),
+                "{message_type} has a payload limit but is not accepted by any reader allowlist"
+            );
+        }
+
+        for message_type in covered {
+            assert!(
+                known_message_types().contains(&message_type),
+                "{message_type} is present in a reader allowlist but has no payload limit"
+            );
+        }
+    }
+
+    #[test]
+    fn reader_allowlists_are_sorted() {
+        let allowlists = [
+            ("CLIENT_HANDSHAKE_FRAME_TYPES", CLIENT_HANDSHAKE_FRAME_TYPES),
+            ("CLIENT_LOGIN_FRAME_TYPES", CLIENT_LOGIN_FRAME_TYPES),
+            (
+                "SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES",
+                SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES,
+            ),
+            (
+                "SERVER_LOGIN_RESPONSE_FRAME_TYPES",
+                SERVER_LOGIN_RESPONSE_FRAME_TYPES,
+            ),
+            ("BBS_CLIENT_FRAME_TYPES", BBS_CLIENT_FRAME_TYPES),
+            ("BBS_SERVER_FRAME_TYPES", BBS_SERVER_FRAME_TYPES),
+            ("TRANSFER_CLIENT_FRAME_TYPES", TRANSFER_CLIENT_FRAME_TYPES),
+            ("TRANSFER_SERVER_FRAME_TYPES", TRANSFER_SERVER_FRAME_TYPES),
+            ("TRACKER_CLIENT_FRAME_TYPES", TRACKER_CLIENT_FRAME_TYPES),
+            ("TRACKER_SERVER_FRAME_TYPES", TRACKER_SERVER_FRAME_TYPES),
+        ];
+
+        for (name, allowlist) in allowlists {
+            for pair in allowlist.windows(2) {
+                assert!(
+                    pair[0] <= pair[1],
+                    "{name} is not sorted: {} should come after {}",
+                    pair[0],
+                    pair[1]
+                );
+            }
+        }
     }
 }

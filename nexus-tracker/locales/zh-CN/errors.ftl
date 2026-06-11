@@ -38,6 +38,7 @@ err-tracker-role-violation = 此连接的角色不允许该消息
 err-tracker-protocol-version-mismatch = 不兼容的跟踪器协议版本 (服务器: { $server }, 客户端: { $client })
 err-tracker-handshake-version-invalid = 无效的握手版本 (必须是有效的 semver)
 err-tracker-unknown-message-type = 未知的消息类型
+err-tracker-unexpected-message-type = 意外消息类型
 
 # 帧 / 传输
 err-tracker-frame-error = 帧格式违规

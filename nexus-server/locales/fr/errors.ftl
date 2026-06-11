@@ -68,6 +68,7 @@ err-login-bandwidth-failed = Échec du chargement des paramètres de bande passa
 
 # Erreurs de format de message
 err-invalid-message-format = Format de message invalide
+err-unexpected-message-type = Type de message inattendu
 err-message-not-supported = Type de message non pris en charge
 
 # Erreurs de gestion des utilisateurs

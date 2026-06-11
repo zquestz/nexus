@@ -68,6 +68,7 @@ err-login-bandwidth-failed = Fehler beim Laden der Bandbreiten-Einstellungen
 
 # Nachrichtenformatfehler
 err-invalid-message-format = Ungültiges Nachrichtenformat
+err-unexpected-message-type = Unerwarteter Nachrichtentyp
 err-message-not-supported = Nachrichtentyp wird nicht unterstützt
 
 # Benutzerverwaltungsfehler

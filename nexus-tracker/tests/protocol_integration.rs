@@ -289,14 +289,13 @@ async fn test_non_handshake_first_message_yields_error() {
             message, command, ..
         } => {
             assert!(
-                message.contains("Handshake required"),
-                "expected handshake-required message, got: {message}"
+                message.contains("Unexpected message type"),
+                "expected unexpected-message-type message, got: {message}"
             );
-            // `command` names the offending message type that triggered rejection.
             assert_eq!(
                 command.as_deref(),
                 Some("Login"),
-                "command should name the offending message type"
+                "unexpected-message-type rejection should name the attempted type"
             );
         }
         other => panic!("expected Error, got {other:?}"),

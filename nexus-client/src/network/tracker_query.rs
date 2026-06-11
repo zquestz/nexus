@@ -21,8 +21,8 @@ use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
-    read_server_message, read_tracker_server_message_with_full_timeout, send_client_message,
-    send_tracker_client_message,
+    read_server_handshake_response, read_tracker_server_message_with_full_timeout,
+    send_client_message, send_tracker_client_message,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
@@ -31,7 +31,7 @@ use tokio::time::timeout;
 
 use super::tls::establish_connection;
 use super::types::{TrackerQueryError, TrackerQueryOk, TrackerQueryParams};
-use crate::i18n::t_args;
+use crate::i18n::{t, t_args, translate_frame_error, translate_protocol_io_error};
 
 /// Read timeout for tracker handshake and list responses. Matches the
 /// BBS-server tracker task's `TRACKER_RESPONSE_TIMEOUT` so client and
@@ -104,54 +104,61 @@ pub async fn query_tracker(
         ),
     )
     .await
-    .map_err(|_| TrackerQueryError::Handshake("timeout sending Handshake".to_string()))?
+    .map_err(|_| TrackerQueryError::Handshake(t("err-tracker-timeout-sending-handshake")))?
     .map_err(|e| TrackerQueryError::Handshake(e.to_string()))?;
 
     // Phase 4: read HandshakeResponse with a tight per-call timeout.
-    let (server_reported, server_version) =
-        match timeout(TRACKER_RESPONSE_TIMEOUT, read_server_message(&mut reader)).await {
-            Ok(Ok(Some(received))) => match received.message {
-                ServerMessage::HandshakeResponse {
-                    success,
-                    fingerprint,
-                    version,
-                    error,
-                } => {
-                    if !success {
-                        return Err(TrackerQueryError::Handshake(error.unwrap_or_default()));
-                    }
-                    (fingerprint, version)
+    let (server_reported, server_version) = match timeout(
+        TRACKER_RESPONSE_TIMEOUT,
+        read_server_handshake_response(&mut reader),
+    )
+    .await
+    {
+        Ok(Ok(Some(received))) => match received.message {
+            ServerMessage::HandshakeResponse {
+                success,
+                fingerprint,
+                version,
+                error,
+            } => {
+                if !success {
+                    return Err(TrackerQueryError::Handshake(error.unwrap_or_default()));
                 }
-                ServerMessage::Error { message, .. } => {
-                    return Err(TrackerQueryError::Handshake(message));
-                }
-                _ => {
-                    return Err(TrackerQueryError::Handshake(
-                        "unexpected message type before HandshakeResponse".to_string(),
-                    ));
-                }
-            },
-            Ok(Ok(None)) => {
-                return Err(TrackerQueryError::Handshake(
-                    "connection closed before HandshakeResponse".to_string(),
-                ));
+                (fingerprint, version)
             }
-            Ok(Err(e)) => return Err(TrackerQueryError::Handshake(e.to_string())),
-            Err(_elapsed) => {
-                return Err(TrackerQueryError::Handshake(
-                    "timeout waiting for HandshakeResponse".to_string(),
-                ));
+            ServerMessage::Error { message, .. } => {
+                return Err(TrackerQueryError::Handshake(message));
             }
-        };
+            _ => {
+                return Err(TrackerQueryError::Handshake(t(
+                    "err-unexpected-handshake-response",
+                )));
+            }
+        },
+        Ok(Ok(None)) => {
+            return Err(TrackerQueryError::Handshake(t("err-connection-closed")));
+        }
+        Ok(Err(e)) => {
+            return Err(TrackerQueryError::Handshake(translate_protocol_io_error(
+                &e,
+            )));
+        }
+        Err(_elapsed) => {
+            return Err(TrackerQueryError::Handshake(t_args(
+                "err-connection-timeout",
+                &[("seconds", &TRACKER_RESPONSE_TIMEOUT.as_secs().to_string())],
+            )));
+        }
+    };
 
     // Phase 5: Stage 2 — TLS-observed vs server-self-reported.
     // Validate canonical form first so a malformed self-report routes
     // to MalformedResponse (tracker broken) rather than Stage2Mismatch
     // (tracker being intercepted).
     if !is_canonical_fingerprint(&server_reported) {
-        return Err(TrackerQueryError::MalformedResponse(format!(
-            "non-canonical fingerprint in HandshakeResponse ({} bytes)",
-            server_reported.len()
+        return Err(TrackerQueryError::MalformedResponse(t_args(
+            "err-tracker-noncanonical-handshake-fingerprint",
+            &[("bytes", &server_reported.len().to_string())],
         )));
     }
     if server_reported != tls_observed {
@@ -200,7 +207,7 @@ pub async fn query_tracker(
         ),
     )
     .await
-    .map_err(|_| TrackerQueryError::Protocol("timeout sending TrackerServerList".to_string()))?
+    .map_err(|_| TrackerQueryError::Protocol(t("err-tracker-timeout-sending-server-list")))?
     .map_err(|e| TrackerQueryError::Protocol(e.to_string()))?;
 
     // Phase 7: read TrackerServerListResponse. The inner method applies
@@ -217,8 +224,13 @@ pub async fn query_tracker(
         ),
     )
     .await
-    .map_err(|_| TrackerQueryError::Protocol("timeout reading response".to_string()))?
-    .map_err(|e| TrackerQueryError::Protocol(e.to_string()))?;
+    .map_err(|_| {
+        TrackerQueryError::Protocol(t_args(
+            "err-connection-timeout",
+            &[("seconds", &TRACKER_RESPONSE_TIMEOUT.as_secs().to_string())],
+        ))
+    })?
+    .map_err(|e| TrackerQueryError::Protocol(translate_frame_error(&e)))?;
 
     match response {
         Some(received) => match received.message {
@@ -237,9 +249,9 @@ pub async fn query_tracker(
                 // point.
                 for entry in &servers {
                     if !nexus_common::fingerprint::is_canonical_fingerprint(&entry.fingerprint) {
-                        return Err(TrackerQueryError::MalformedResponse(format!(
-                            "non-canonical fingerprint in entry \"{}\"",
-                            entry.name
+                        return Err(TrackerQueryError::MalformedResponse(t_args(
+                            "err-tracker-noncanonical-entry-fingerprint",
+                            &[("name", &entry.name)],
                         )));
                     }
                 }
@@ -260,12 +272,10 @@ pub async fn query_tracker(
             TrackerServerMessage::Error { message, .. } => {
                 Err(TrackerQueryError::Protocol(message))
             }
-            _ => Err(TrackerQueryError::Protocol(
-                "unexpected response type after TrackerServerList".to_string(),
-            )),
+            _ => Err(TrackerQueryError::Protocol(t(
+                "err-tracker-unexpected-list-response",
+            ))),
         },
-        None => Err(TrackerQueryError::Protocol(
-            "connection closed before TrackerServerListResponse".to_string(),
-        )),
+        None => Err(TrackerQueryError::Protocol(t("err-connection-closed"))),
     }
 }

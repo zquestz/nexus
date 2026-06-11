@@ -68,6 +68,7 @@ err-login-bandwidth-failed = 계정 대역폭 설정을 불러오지 못했습�
 
 # 메시지 형식 오류
 err-invalid-message-format = 잘못된 메시지 형식
+err-unexpected-message-type = 예상하지 못한 메시지 유형
 err-message-not-supported = 지원되지 않는 메시지 유형
 
 # 사용자 관리 오류

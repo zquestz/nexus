@@ -1404,3 +1404,21 @@ label-inherit-bandwidth-weight = Hériter du poids de bande passante
 label-max-outbound-rate = Sortie max. (Mbit/s) :
 label-unlimited = Illimité
 label-scheduler-chunk-size = Taille de bloc du planificateur (octets) :
+
+cmd-help-aliases = Alias : { $aliases }
+err-frame-invalid = Trame de protocole invalide
+err-frame-payload-too-large = La longueur de charge utile { $length } dépasse le maximum { $max } pour { $message_type }
+err-frame-unknown-message-type = Type de message inconnu : { $message_type }
+err-frame-unexpected-message-type = Type de message inattendu : { $message_type }
+err-frame-invalid-json = Charge utile de protocole invalide : { $error }
+err-frame-io = Erreur d'E/S réseau : { $error }
+err-frame-timeout = Délai dépassé lors de la lecture de la trame de protocole
+err-frame-idle-timeout = Délai dépassé en attente de données de protocole
+err-tracker-timeout-sending-handshake = Délai dépassé lors de l'envoi de la négociation du tracker
+err-tracker-noncanonical-handshake-fingerprint = Le tracker a renvoyé une empreinte de négociation mal formée ({ $bytes } { $bytes ->
+    [one] octet
+   *[other] octets
+})
+err-tracker-timeout-sending-server-list = Délai dépassé lors de l'envoi de la demande de liste de serveurs du tracker
+err-tracker-noncanonical-entry-fingerprint = Le tracker a renvoyé une empreinte mal formée pour { $name }
+err-tracker-unexpected-list-response = Réponse de liste du tracker inattendue

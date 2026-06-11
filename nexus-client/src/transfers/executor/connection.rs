@@ -15,11 +15,12 @@ use tokio_socks::tcp::Socks5Stream;
 
 use nexus_common::address::resolve_host_for_connection;
 use nexus_common::framing::{FrameReader, FrameWriter};
-use nexus_common::io::send_client_message;
+use nexus_common::io::{
+    read_server_handshake_response, read_server_login_response, send_client_message,
+};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, PROTOCOL_VERSION, SNI_SERVER_NAME};
 
-use super::streaming::read_message_with_timeout;
 use super::{CONNECTION_TIMEOUT, IDLE_TIMEOUT, TransferError};
 use crate::network::{DNS_LOOKUP_TIMEOUT, ProxyConfig};
 use crate::types::ConnectionInfo;
@@ -188,7 +189,12 @@ pub async fn connect_and_authenticate(
         .await
         .map_err(|_| TransferError::ConnectionError)?;
 
-    let handshake_response = read_message_with_timeout(&mut reader, IDLE_TIMEOUT).await?;
+    let handshake_response = timeout(IDLE_TIMEOUT, read_server_handshake_response(&mut reader))
+        .await
+        .map_err(|_| TransferError::ConnectionError)?
+        .map_err(|_| TransferError::ProtocolError)?
+        .ok_or(TransferError::ConnectionError)?
+        .message;
 
     match handshake_response {
         ServerMessage::HandshakeResponse {
@@ -234,7 +240,12 @@ pub async fn connect_and_authenticate(
         .await
         .map_err(|_| TransferError::ConnectionError)?;
 
-    let login_response = read_message_with_timeout(&mut reader, IDLE_TIMEOUT).await?;
+    let login_response = timeout(IDLE_TIMEOUT, read_server_login_response(&mut reader))
+        .await
+        .map_err(|_| TransferError::ConnectionError)?
+        .map_err(|_| TransferError::ProtocolError)?
+        .ok_or(TransferError::ConnectionError)?
+        .message;
 
     match login_response {
         ServerMessage::LoginResponse { success: true, .. } => {}

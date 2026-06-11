@@ -68,6 +68,7 @@ err-login-bandwidth-failed = Falha ao carregar as configurações de largura de 
 
 # Erros de formato de mensagem
 err-invalid-message-format = Formato de mensagem inválido
+err-unexpected-message-type = Tipo de mensagem inesperado
 err-message-not-supported = Tipo de mensagem não suportado
 
 # Erros de gestão de utilizadores

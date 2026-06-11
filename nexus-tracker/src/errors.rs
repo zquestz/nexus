@@ -174,6 +174,11 @@ pub fn err_tracker_unknown_message_type(locale: &str) -> String {
     t(locale, "err-tracker-unknown-message-type")
 }
 
+/// Known message `type` sent in the wrong protocol phase or direction.
+pub fn err_tracker_unexpected_message_type(locale: &str) -> String {
+    t(locale, "err-tracker-unexpected-message-type")
+}
+
 /// Magic bytes / framing structure violated.
 pub fn err_tracker_frame_error(locale: &str) -> String {
     t(locale, "err-tracker-frame-error")
@@ -220,6 +225,7 @@ mod tests {
             err_tracker_handshake_version_invalid("en"),
             err_tracker_protocol_version_mismatch("en", "0.1.0", "1.0.0"),
             err_tracker_unknown_message_type("en"),
+            err_tracker_unexpected_message_type("en"),
             err_tracker_frame_error("en"),
             err_tracker_payload_too_large("en"),
         ];

@@ -3,11 +3,13 @@
 use tokio::io::BufReader;
 
 use nexus_common::framing::{FrameReader, FrameWriter};
-use nexus_common::io::{read_server_message, send_client_message};
+use nexus_common::io::{
+    read_server_handshake_response, read_server_login_response, send_client_message,
+};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{DEFAULT_TRANSFER_PORT, PROTOCOL_VERSION};
 
-use crate::i18n::{t, t_args};
+use crate::i18n::{t, t_args, translate_protocol_io_error};
 use crate::types::{ConnectionInfo, NetworkConnection};
 
 use super::constants::{BBS_RESPONSE_TIMEOUT, DEFAULT_FEATURES};
@@ -155,11 +157,15 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<S
     .map_err(|_| t("err-connection-closed"))?
     .map_err(|e| t_args("err-failed-send-handshake", &[("error", &e.to_string())]))?;
 
-    let received = tokio::time::timeout(BBS_RESPONSE_TIMEOUT, read_server_message(reader))
-        .await
-        .map_err(|_| t("err-connection-closed"))?
-        .map_err(|e| t_args("err-failed-read-handshake", &[("error", &e.to_string())]))?
-        .ok_or_else(|| t("err-connection-closed"))?;
+    let received =
+        tokio::time::timeout(BBS_RESPONSE_TIMEOUT, read_server_handshake_response(reader))
+            .await
+            .map_err(|_| t("err-connection-closed"))?
+            .map_err(|e| {
+                let error = translate_protocol_io_error(&e);
+                t_args("err-failed-read-handshake", &[("error", &error)])
+            })?
+            .ok_or_else(|| t("err-connection-closed"))?;
 
     match received.message {
         ServerMessage::HandshakeResponse {
@@ -233,10 +239,13 @@ async fn perform_login(
         .map_err(|_| t("err-connection-closed"))?
         .map_err(|e| t_args("err-failed-send-login", &[("error", &e.to_string())]))?;
 
-    let received = tokio::time::timeout(BBS_RESPONSE_TIMEOUT, read_server_message(reader))
+    let received = tokio::time::timeout(BBS_RESPONSE_TIMEOUT, read_server_login_response(reader))
         .await
         .map_err(|_| t("err-connection-closed"))?
-        .map_err(|e| t_args("err-failed-read-login", &[("error", &e.to_string())]))?
+        .map_err(|e| {
+            let error = translate_protocol_io_error(&e);
+            t_args("err-failed-read-login", &[("error", &error)])
+        })?
         .ok_or_else(|| t("err-connection-closed"))?;
 
     match received.message {

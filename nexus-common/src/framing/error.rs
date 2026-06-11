@@ -34,6 +34,8 @@ pub enum FrameError {
     MissingTerminator,
     /// Unknown message type
     UnknownMessageType(String),
+    /// Known message type received in the wrong connection phase or context
+    UnexpectedMessageType(String),
     /// Invalid JSON payload
     InvalidJson(String),
     /// I/O error
@@ -83,6 +85,7 @@ impl fmt::Display for FrameError {
             FrameError::MissingDelimiter => write!(f, "missing delimiter '|'"),
             FrameError::MissingTerminator => write!(f, "missing terminator '\\n'"),
             FrameError::UnknownMessageType(t) => write!(f, "unknown message type: '{t}'"),
+            FrameError::UnexpectedMessageType(t) => write!(f, "unexpected message type: '{t}'"),
             FrameError::InvalidJson(e) => write!(f, "invalid JSON payload: {e}"),
             FrameError::Io(e) => write!(f, "I/O error: {e}"),
             FrameError::ConnectionClosed => write!(f, "connection closed"),
@@ -162,6 +165,10 @@ mod tests {
         assert_eq!(
             FrameError::UnknownMessageType("FakeType".to_string()).to_string(),
             "unknown message type: 'FakeType'"
+        );
+        assert_eq!(
+            FrameError::UnexpectedMessageType("Login".to_string()).to_string(),
+            "unexpected message type: 'Login'"
         );
         assert_eq!(
             FrameError::InvalidJson("expected value".to_string()).to_string(),

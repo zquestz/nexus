@@ -549,7 +549,9 @@ mod tests {
     use tokio::io::BufReader;
     use tokio::time::{self, Duration};
 
-    use nexus_common::io::{read_server_message, send_client_message};
+    use nexus_common::io::{
+        read_transfer_server_message as read_server_message, send_client_message,
+    };
     use nexus_common::protocol::{ClientMessage, ServerMessage};
 
     use crate::db::testing::create_test_db;

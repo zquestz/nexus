@@ -69,6 +69,7 @@ err-login-bandwidth-failed = No se pudo cargar la configuración de ancho de ban
 
 # Errores de formato de mensaje
 err-invalid-message-format = Formato de mensaje inválido
+err-unexpected-message-type = Tipo de mensaje inesperado
 err-message-not-supported = Tipo de mensaje no soportado
 
 # Errores de gestión de usuarios

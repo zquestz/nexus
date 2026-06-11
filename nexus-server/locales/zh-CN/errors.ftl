@@ -68,6 +68,7 @@ err-login-bandwidth-failed = 无法加载账户带宽设置
 
 # 消息格式错误
 err-invalid-message-format = 无效的消息格式
+err-unexpected-message-type = 意外消息类型
 err-message-not-supported = 不支持的消息类型
 
 # 用户管理错误

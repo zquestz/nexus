@@ -1466,3 +1466,21 @@ err-tracker-query-rate-limited = Tracker rejected the request: rate limit exceed
 err-tracker-query-capacity = Tracker rejected the request: at capacity. Try again later.
 err-tracker-query-invalid = Tracker rejected the request: invalid input.
 err-tracker-query-rejected = Tracker rejected the request: { $message }
+
+cmd-help-aliases = Aliases: { $aliases }
+err-frame-invalid = Invalid protocol frame
+err-frame-payload-too-large = Payload length { $length } exceeds maximum { $max } for { $message_type }
+err-frame-unknown-message-type = Unknown message type: { $message_type }
+err-frame-unexpected-message-type = Unexpected message type: { $message_type }
+err-frame-invalid-json = Invalid protocol payload: { $error }
+err-frame-io = Network I/O error: { $error }
+err-frame-timeout = Timed out while reading protocol frame
+err-frame-idle-timeout = Timed out waiting for protocol data
+err-tracker-timeout-sending-handshake = Timed out sending tracker handshake
+err-tracker-noncanonical-handshake-fingerprint = Tracker returned a malformed handshake fingerprint ({ $bytes } { $bytes ->
+    [one] byte
+   *[other] bytes
+})
+err-tracker-timeout-sending-server-list = Timed out sending tracker server list request
+err-tracker-noncanonical-entry-fingerprint = Tracker returned a malformed fingerprint for { $name }
+err-tracker-unexpected-list-response = Unexpected tracker list response

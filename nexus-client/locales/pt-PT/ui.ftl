@@ -1403,3 +1403,21 @@ label-inherit-bandwidth-weight = Herdar peso da largura de banda
 label-max-outbound-rate = Saída máx. (Mbps):
 label-unlimited = Ilimitada
 label-scheduler-chunk-size = Tamanho do bloco do escalonador (bytes):
+
+cmd-help-aliases = Aliases: { $aliases }
+err-frame-invalid = Frame de protocolo inválido
+err-frame-payload-too-large = O tamanho da carga { $length } excede o máximo { $max } para { $message_type }
+err-frame-unknown-message-type = Tipo de mensagem desconhecido: { $message_type }
+err-frame-unexpected-message-type = Tipo de mensagem inesperado: { $message_type }
+err-frame-invalid-json = Carga de protocolo inválida: { $error }
+err-frame-io = Erro de E/S de rede: { $error }
+err-frame-timeout = Tempo esgotado ao ler o frame de protocolo
+err-frame-idle-timeout = Tempo esgotado aguardando dados de protocolo
+err-tracker-timeout-sending-handshake = Tempo esgotado ao enviar o handshake do tracker
+err-tracker-noncanonical-handshake-fingerprint = O tracker devolveu uma impressão digital de handshake malformada ({ $bytes } { $bytes ->
+    [one] byte
+   *[other] bytes
+})
+err-tracker-timeout-sending-server-list = Tempo esgotado ao enviar o pedido de lista de servidores do tracker
+err-tracker-noncanonical-entry-fingerprint = O tracker devolveu uma impressão digital malformada para { $name }
+err-tracker-unexpected-list-response = Resposta inesperada da lista do tracker
