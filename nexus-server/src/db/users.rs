@@ -689,6 +689,17 @@ impl UserDb {
         }))
     }
 
+    /// Whether any non-guest user exists.
+    ///
+    /// Guest is excluded so a fresh install can validate the first real user's
+    /// login inputs before attempting the atomic first-admin insert.
+    pub async fn has_non_guest_users(&self) -> Result<bool, sqlx::Error> {
+        let count: (i64,) = sqlx::query_as(sql::SQL_COUNT_NON_GUEST_USERS)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(count.0 > 0)
+    }
+
     /// Delete a user. `Ok(true)` on success, `Ok(false)` if the row
     /// is missing OR the atomic guard blocked (last-admin or
     /// non-admin requester targeting an admin row). Internal/system

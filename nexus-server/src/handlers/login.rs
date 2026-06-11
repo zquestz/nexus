@@ -124,6 +124,41 @@ fn late_ban_error(locale: &str, expires_at: Option<i64>) -> String {
     }
 }
 
+async fn validate_login_avatar(
+    avatar: &Option<String>,
+    locale: &str,
+    peer_addr: SocketAddr,
+) -> Result<(), String> {
+    let Some(avatar_data) = avatar else {
+        return Ok(());
+    };
+
+    // Decode-validation (raster decode / SVG parse under `avatar-decode`) is
+    // CPU-bound; run it on the blocking pool so it can't stall the async
+    // runtime's message dispatch. Callers run this only after authentication
+    // succeeds, except the fresh-install first-admin path where validation
+    // must happen before creating the account.
+    let owned = avatar_data.clone();
+    match tokio::task::spawn_blocking(move || validators::validate_avatar(&owned)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => {
+            let error_msg = match e {
+                AvatarError::TooLarge => {
+                    err_avatar_too_large(locale, validators::MAX_AVATAR_DATA_URI_LENGTH)
+                }
+                AvatarError::InvalidFormat => err_avatar_invalid_format(locale),
+                AvatarError::UnsupportedType => err_avatar_unsupported_type(locale),
+                AvatarError::Undecodable => err_avatar_undecodable(locale),
+            };
+            Err(error_msg)
+        }
+        Err(e) => {
+            error!(ip = %peer_addr, err = %e, "{}", LOG_LOGIN_AVATAR_VALIDATE_ERROR);
+            Err(err_internal_error(locale))
+        }
+    }
+}
+
 pub async fn handle_login<W>(
     request: LoginRequest,
     session_id: &mut Option<u32>,
@@ -213,35 +248,6 @@ where
     }
     let activated_features = activate_supported_features(features);
 
-    if let Some(ref avatar_data) = avatar {
-        // Decode-validation (raster decode / SVG parse under `avatar-decode`) is
-        // CPU-bound; run it on the blocking pool so a login storm can't stall the
-        // async runtime's message dispatch — same offload as `verify_password_async`.
-        let owned = avatar_data.clone();
-        match tokio::task::spawn_blocking(move || validators::validate_avatar(&owned)).await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                let error_msg = match e {
-                    AvatarError::TooLarge => {
-                        err_avatar_too_large(&locale, validators::MAX_AVATAR_DATA_URI_LENGTH)
-                    }
-                    AvatarError::InvalidFormat => err_avatar_invalid_format(&locale),
-                    AvatarError::UnsupportedType => err_avatar_unsupported_type(&locale),
-                    AvatarError::Undecodable => err_avatar_undecodable(&locale),
-                };
-                return ctx
-                    .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
-                    .await;
-            }
-            Err(e) => {
-                error!(ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_AVATAR_VALIDATE_ERROR);
-                return ctx
-                    .send_error_and_disconnect(&err_internal_error(&locale), Some(HANDLER_LOGIN))
-                    .await;
-            }
-        }
-    }
-
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
@@ -252,6 +258,7 @@ where
         }
     };
 
+    let mut avatar_validated = false;
     let authenticated_account = if let Some(account) = account {
         // Guest accounts have an empty hash, which requires an empty password.
         let password_valid = if account.hashed_password.is_empty() {
@@ -292,6 +299,35 @@ where
                 .await;
         }
     } else {
+        let has_non_guest_users = match ctx.db.users.has_non_guest_users().await {
+            Ok(has_users) => has_users,
+            Err(e) => {
+                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_ERROR);
+                return ctx
+                    .send_error_and_disconnect(&err_database(&locale), Some(HANDLER_LOGIN))
+                    .await;
+            }
+        };
+
+        if has_non_guest_users {
+            // Match the wrong-password path's Argon2 cost so response timing
+            // does not reveal whether the username exists. The dummy result is
+            // intentionally not surfaced; externally this remains invalid
+            // credentials either way.
+            let min_strength = ctx.db.config.get_min_password_strength().await;
+            let _ = db::hash_password_async(password.clone(), min_strength, false).await;
+            return ctx
+                .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
+                .await;
+        }
+
+        if let Err(error_msg) = validate_login_avatar(&avatar, &locale, ctx.peer_addr).await {
+            return ctx
+                .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
+                .await;
+        }
+        avatar_validated = true;
+
         let min_strength = ctx.db.config.get_min_password_strength().await;
         let hashed_password = match db::hash_password_async(password.clone(), min_strength, false)
             .await
@@ -392,6 +428,14 @@ where
     } else {
         None
     };
+
+    if !avatar_validated
+        && let Err(error_msg) = validate_login_avatar(&avatar, &locale, ctx.peer_addr).await
+    {
+        return ctx
+            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
+            .await;
+    }
 
     let result: Result<LoginSuccess, String> = 'locked: {
         let _user_state = ctx.user_manager.read_user_state().await;
@@ -744,6 +788,8 @@ mod tests {
         login_user_with_features, read_login_response, read_server_message,
     };
     use crate::voice::VoiceSession;
+
+    const INVALID_AVATAR_FORMAT: &str = "data:image/png,notbase64encoded";
 
     fn expect_egress_transition(test_ctx: &mut TestContext) -> (i64, u16) {
         let transition = test_ctx
@@ -1138,6 +1184,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_login_wrong_password_does_not_validate_avatar() {
+        let mut test_ctx = create_test_context().await;
+
+        let password = "correctpassword";
+        let hashed = get_cached_password_hash(password);
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "bob".to_string(),
+            password: "wrongpassword".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: Some(INVALID_AVATAR_FORMAT.to_string()),
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_err(), "Login with wrong password should fail");
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_invalid_credentials(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected Error message"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_login_nonexistent_user() {
         let mut test_ctx = create_test_context().await;
 
@@ -1180,6 +1273,57 @@ mod tests {
             "Login as non-existent user should fail after first user"
         );
         assert!(session_id.is_none(), "Session ID should remain None");
+    }
+
+    #[tokio::test]
+    async fn test_login_nonexistent_user_does_not_validate_avatar() {
+        let mut test_ctx = create_test_context().await;
+
+        // Pre-create a user so we aren't the first user (who would auto-register as admin).
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "existing",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "nonexistent".to_string(),
+            password: "password".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: Some(INVALID_AVATAR_FORMAT.to_string()),
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(
+            result.is_err(),
+            "Login as non-existent user should fail after first user"
+        );
+        assert!(session_id.is_none(), "Session ID should remain None");
+
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_invalid_credentials(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected Error message"),
+        }
     }
 
     #[tokio::test]
@@ -2269,7 +2413,7 @@ mod tests {
         let handshake_complete = true;
 
         // Invalid format - missing base64 marker
-        let invalid_avatar = "data:image/png,notbase64encoded".to_string();
+        let invalid_avatar = INVALID_AVATAR_FORMAT.to_string();
 
         let request = LoginRequest {
             username: "alice".to_string(),
@@ -2296,6 +2440,53 @@ mod tests {
                     "Error should mention invalid format, got: {}",
                     message
                 );
+            }
+            _ => panic!("Expected Error message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_first_admin_invalid_avatar_does_not_create_account() {
+        let mut test_ctx = create_test_context().await;
+        let mut session_id = None;
+
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: Some(INVALID_AVATAR_FORMAT.to_string()),
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(
+            result.is_err(),
+            "First-admin login with invalid avatar should fail"
+        );
+        assert!(session_id.is_none(), "Session ID should remain None");
+        assert_eq!(
+            test_ctx.user_manager.user_count().await,
+            0,
+            "Invalid first-admin avatar must not create a session"
+        );
+
+        let account = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .expect("user lookup should succeed");
+        assert!(
+            account.is_none(),
+            "Invalid first-admin avatar must not create the account"
+        );
+
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_avatar_invalid_format(DEFAULT_TEST_LOCALE));
             }
             _ => panic!("Expected Error message"),
         }
