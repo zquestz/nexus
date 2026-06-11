@@ -14,6 +14,7 @@ pub mod io;
 pub mod logging;
 pub mod names;
 pub mod protocol;
+pub mod rate_limiter;
 pub mod secure_file;
 pub mod time;
 #[cfg(feature = "tls")]

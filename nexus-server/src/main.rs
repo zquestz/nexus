@@ -30,6 +30,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use nexus_common::names::fold_name;
+use nexus_common::rate_limiter::RateLimiter;
 use nexus_common::validators::DEFAULT_BANDWIDTH_CHUNK_SIZE;
 pub(crate) use nexus_server::{egress, scheduler};
 use tokio::net::TcpListener;
@@ -213,6 +214,23 @@ async fn main() {
     let chat_burst_limit = database.config.get_chat_burst_limit().await;
     let chat_rate_limit = database.config.get_chat_rate_limit().await;
     let flood_config = Arc::new(FloodConfig::new(chat_burst_limit, chat_rate_limit));
+
+    // Per-IP failed-login limiter, shared by the BBS and transfer ports.
+    // Successes never debit; trusted IPs bypass it entirely.
+    let login_limiter = Arc::new(
+        RateLimiter::with_burst_and_refill(LOGIN_FAILURE_BURST, LOGIN_FAILURE_REFILL_PER_MINUTE)
+            .key_ipv6_by_prefix(),
+    );
+    {
+        let login_limiter = Arc::clone(&login_limiter);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(LOGIN_LIMITER_GC_INTERVAL);
+            loop {
+                interval.tick().await;
+                login_limiter.gc(LOGIN_LIMITER_GC_IDLE_TTL);
+            }
+        });
+    }
     let egress_config = database.config.get_all().await;
     let egress_chunk_size = resolve_egress_chunk_size(egress_config.scheduler_chunk_size);
     let (egress_handle, egress_task) = egress::task::EgressTask::channel_with_rate(
@@ -406,6 +424,7 @@ async fn main() {
                             tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
+                            login_limiter: login_limiter.clone(),
                             egress: egress_handle.clone(),
                             egress_connection_id: allocate_egress_connection_id(
                                 &egress_connection_ids,
@@ -465,6 +484,7 @@ async fn main() {
                             file_activity: file_activity.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
+                            login_limiter: login_limiter.clone(),
                             user_manager: user_manager.clone(),
                             fingerprint,
                             egress: egress_handle.clone(),
@@ -541,6 +561,7 @@ async fn main() {
                                 tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
+                            login_limiter: login_limiter.clone(),
                             egress: egress_handle.clone(),
                             egress_connection_id: allocate_egress_connection_id(
                                 &egress_connection_ids,
@@ -605,6 +626,7 @@ async fn main() {
                             file_activity: file_activity.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
+                            login_limiter: login_limiter.clone(),
                             user_manager: user_manager.clone(),
                             fingerprint,
                             egress: egress_handle.clone(),

@@ -34,6 +34,7 @@ err-avatar-unsupported-type = 지원되지 않는 아바타 유형입니다 (PNG
 err-avatar-undecodable = 아바타를 유효한 이미지로 디코딩할 수 없습니다
 err-authentication = 인증 오류
 err-invalid-credentials = 잘못된 사용자 이름 또는 비밀번호
+err-login-rate-limited = 로그인 실패 횟수가 너무 많습니다. 나중에 다시 시도하세요.
 err-handshake-required = 핸드셰이크 필요
 err-already-logged-in = 이미 로그인됨
 err-handshake-already-completed = 핸드셰이크가 이미 완료됨

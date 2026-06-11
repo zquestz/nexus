@@ -159,6 +159,7 @@ where
         file_activity,
         transfer_registry,
         ip_rule_cache,
+        login_limiter,
         user_manager,
         fingerprint,
         egress,
@@ -186,15 +187,24 @@ where
     }
 
     // Phase 2: Login (authentication only)
-    let login_auth =
-        match handle_transfer_login(&mut frame_reader, &mut frame_writer, &db, &mut locale).await {
-            Ok(login) => login,
-            Err(e) => {
-                debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_LOGIN_FAILED);
-                let _ = frame_writer.get_mut().shutdown().await;
-                return Ok(());
-            }
-        };
+    let login_auth = match handle_transfer_login(
+        &mut frame_reader,
+        &mut frame_writer,
+        &db,
+        &mut locale,
+        &login_limiter,
+        peer_addr.ip(),
+        ip_rule_cache.is_trusted(peer_addr.ip()),
+    )
+    .await
+    {
+        Ok(login) => login,
+        Err(e) => {
+            debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_LOGIN_FAILED);
+            let _ = frame_writer.get_mut().shutdown().await;
+            return Ok(());
+        }
+    };
 
     let login_success = match complete_transfer_login(
         TransferLoginContext {
@@ -656,6 +666,13 @@ mod tests {
         let file_activity = Arc::new(FileActivityMap::new());
         TransferHarness {
             params: TransferParams {
+                login_limiter: Arc::new(
+                    nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(
+                        crate::constants::LOGIN_FAILURE_BURST,
+                        crate::constants::LOGIN_FAILURE_REFILL_PER_MINUTE,
+                    )
+                    .key_ipv6_by_prefix(),
+                ),
                 peer_addr: SocketAddr::from(([127, 0, 0, 1], 7501)),
                 db,
                 file_root: None,
@@ -883,6 +900,138 @@ mod tests {
             login,
             ServerMessage::LoginResponse { success: false, .. }
         ));
+        assert!(settings_rx.try_recv().is_err());
+
+        drop(client_writer);
+        server_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn transfer_login_rate_limited_after_failed_attempts() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        create_transfer_user_with_weight(&db, "alice", 9, &permissions).await;
+
+        // Burst-1 limiter shared across both connections, like production.
+        let limiter = Arc::new(
+            nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(1, 1)
+                .key_ipv6_by_prefix(),
+        );
+
+        // Connection 1: wrong password fails normally and debits the limiter.
+        let (egress, _command_rx, _settings_rx) = egress_handle_for_test();
+        let mut harness = transfer_harness(
+            db.clone(),
+            user_manager.clone(),
+            egress,
+            ConnectionId::new(9_006),
+        )
+        .await;
+        harness.params.login_limiter = Arc::clone(&limiter);
+        let peer_ip = harness.params.peer_addr.ip();
+
+        let (client, server) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
+            server,
+            harness.params,
+            Some(registered_dispatch_rx()),
+        ));
+        let login = send_transfer_handshake_and_login(
+            &mut client_writer,
+            &mut client_reader,
+            "alice",
+            "wrong-password",
+        )
+        .await;
+        assert!(matches!(
+            login,
+            ServerMessage::LoginResponse { success: false, .. }
+        ));
+        drop(client_writer);
+        server_task.await.unwrap().unwrap();
+
+        // The failure debited the shared limiter to empty.
+        assert_eq!(
+            limiter.check_only(peer_ip),
+            nexus_common::rate_limiter::RateCheck::Limited
+        );
+
+        // Connection 2: even correct credentials are rejected as rate limited
+        // before any account lookup or Argon2 work.
+        let (egress, _command_rx, _settings_rx) = egress_handle_for_test();
+        let mut harness =
+            transfer_harness(db, user_manager, egress, ConnectionId::new(9_007)).await;
+        harness.params.login_limiter = Arc::clone(&limiter);
+
+        let (client, server) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
+            server,
+            harness.params,
+            Some(registered_dispatch_rx()),
+        ));
+        let login = send_transfer_handshake_and_login(
+            &mut client_writer,
+            &mut client_reader,
+            "alice",
+            "password",
+        )
+        .await;
+        match login {
+            ServerMessage::LoginResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error, Some(crate::handlers::err_login_rate_limited("en")));
+            }
+            other => panic!("expected LoginResponse, got {other:?}"),
+        }
+        drop(client_writer);
+        server_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn transfer_login_nonexistent_user_returns_invalid_credentials() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        create_transfer_user_with_weight(&db, "alice", 9, &permissions).await;
+        let (egress, _command_rx, mut settings_rx) = egress_handle_for_test();
+        let harness = transfer_harness(db, user_manager, egress, ConnectionId::new(9_005)).await;
+
+        let (client, server) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
+            server,
+            harness.params,
+            Some(registered_dispatch_rx()),
+        ));
+
+        // Nonexistent users get the same error as wrong passwords (and the
+        // handler burns the same Argon2 cost) so the transfer port does not
+        // reveal whether a username exists.
+        let login = send_transfer_handshake_and_login(
+            &mut client_writer,
+            &mut client_reader,
+            "nonexistent",
+            "password",
+        )
+        .await;
+        match login {
+            ServerMessage::LoginResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error, Some(crate::handlers::err_invalid_credentials("en")));
+            }
+            other => panic!("expected LoginResponse, got {other:?}"),
+        }
         assert!(settings_rx.try_recv().is_err());
 
         drop(client_writer);

@@ -1,8 +1,9 @@
 //! Per-IP token-bucket rate limiter.
 //!
-//! Buckets refill at `capacity / 60` tokens/sec: sustained rate
-//! `capacity`/minute, burst `capacity`. `capacity == 0` disables the
-//! limiter (always allows, never inserts buckets).
+//! Buckets hold `burst` tokens and refill at `refill_per_minute / 60`
+//! tokens/sec: burst `burst`, sustained rate `refill_per_minute`/minute.
+//! `burst == 0` disables the limiter (always allows, never inserts
+//! buckets).
 //!
 //! Two usage modes:
 //! - **Connection rate** — one-shot [`try_consume`](RateLimiter::try_consume)
@@ -14,15 +15,23 @@
 //!   verify. Successes never debit, so an attacker can't guess past the
 //!   limit.
 //!
+//! [`key_ipv6_by_prefix`](RateLimiter::key_ipv6_by_prefix) buckets IPv6
+//! addresses by their /64 prefix — attackers trivially hold an entire
+//! /64, so per-address buckets are no obstacle there.
+//!
 //! [`gc`](RateLimiter::gc) bounds the bucket map under a disposable-IP
 //! attack; call it from a periodic background task.
 
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::constants::ERR_RATE_LIMITER_MUTEX_POISONED;
+const ERR_RATE_LIMITER_MUTEX_POISONED: &str = "rate limiter mutex poisoned";
+
+/// Number of IPv6 prefix segments (16 bits each) kept when bucketing by
+/// /64: the first four segments are the routing prefix.
+const IPV6_PREFIX_SEGMENTS: usize = 4;
 
 /// Outcome of a rate-limit check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,11 +48,13 @@ struct Bucket {
 }
 
 /// Per-IP token-bucket rate limiter. Construct via
-/// [`per_minute`](RateLimiter::per_minute).
+/// [`per_minute`](RateLimiter::per_minute) (burst == sustained rate) or
+/// [`with_burst_and_refill`](RateLimiter::with_burst_and_refill).
 pub struct RateLimiter {
     buckets: Mutex<HashMap<IpAddr, Bucket>>,
     capacity: f64,
     refill_per_sec: f64,
+    ipv6_prefix_keying: bool,
 }
 
 impl RateLimiter {
@@ -51,17 +62,44 @@ impl RateLimiter {
     /// per second (`capacity`/minute). `capacity == 0` disables it.
     #[must_use]
     pub fn per_minute(capacity: u32) -> Self {
-        let cap = f64::from(capacity);
+        Self::with_burst_and_refill(capacity, capacity)
+    }
+
+    /// Limiter with `burst` tokens, refilling `refill_per_minute / 60`
+    /// tokens per second. `burst == 0` disables it.
+    #[must_use]
+    pub fn with_burst_and_refill(burst: u32, refill_per_minute: u32) -> Self {
         Self {
             buckets: Mutex::new(HashMap::new()),
-            capacity: cap,
-            refill_per_sec: cap / 60.0,
+            capacity: f64::from(burst),
+            refill_per_sec: f64::from(refill_per_minute) / 60.0,
+            ipv6_prefix_keying: false,
         }
+    }
+
+    /// Bucket IPv6 addresses by their /64 prefix instead of per-address.
+    /// IPv4 addresses are unaffected.
+    #[must_use]
+    pub fn key_ipv6_by_prefix(mut self) -> Self {
+        self.ipv6_prefix_keying = true;
+        self
     }
 
     #[inline]
     fn disabled(&self) -> bool {
         self.capacity == 0.0
+    }
+
+    /// Map an address to its bucket key (IPv6 /64 prefix when enabled).
+    fn key(&self, ip: IpAddr) -> IpAddr {
+        match ip {
+            IpAddr::V6(v6) if self.ipv6_prefix_keying => {
+                let mut segments = v6.segments();
+                segments[IPV6_PREFIX_SEGMENTS..].fill(0);
+                IpAddr::V6(Ipv6Addr::from(segments))
+            }
+            other => other,
+        }
     }
 
     /// Refill, then consume one token: `Allowed` if a token was taken,
@@ -70,9 +108,10 @@ impl RateLimiter {
         if self.disabled() {
             return RateCheck::Allowed;
         }
+        let key = self.key(ip);
         let now = Instant::now();
         let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
-        let bucket = buckets.entry(ip).or_insert_with(|| Bucket {
+        let bucket = buckets.entry(key).or_insert_with(|| Bucket {
             tokens: self.capacity,
             last_refill: now,
         });
@@ -91,9 +130,10 @@ impl RateLimiter {
         if self.disabled() {
             return RateCheck::Allowed;
         }
+        let key = self.key(ip);
         let now = Instant::now();
         let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
-        let bucket = buckets.entry(ip).or_insert_with(|| Bucket {
+        let bucket = buckets.entry(key).or_insert_with(|| Bucket {
             tokens: self.capacity,
             last_refill: now,
         });
@@ -111,9 +151,10 @@ impl RateLimiter {
         if self.disabled() {
             return;
         }
+        let key = self.key(ip);
         let now = Instant::now();
         let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
-        let bucket = buckets.entry(ip).or_insert_with(|| Bucket {
+        let bucket = buckets.entry(key).or_insert_with(|| Bucket {
             tokens: self.capacity,
             last_refill: now,
         });
@@ -121,8 +162,16 @@ impl RateLimiter {
         bucket.tokens = (bucket.tokens - 1.0).max(0.0);
     }
 
-    /// Drop entries that have refilled to capacity AND haven't been
-    /// touched in `idle_ttl`. Bounds memory under a disposable-IP attack.
+    /// Drop entries that have (or would have) refilled to capacity AND
+    /// haven't been touched in `idle_ttl`. Bounds memory under a
+    /// disposable-IP attack.
+    ///
+    /// Tokens are only materialized on access, so an abandoned bucket's
+    /// stored count understates it; the full-and-idle decision uses the
+    /// elapsed-time projection instead. A zero-refill limiter
+    /// (`with_burst_and_refill(n, 0)`) never projects to full, so its
+    /// drained buckets are deliberately retained — a never-refilling
+    /// penalty is meaningful state, not garbage.
     pub fn gc(&self, idle_ttl: Duration) {
         if self.disabled() {
             return;
@@ -130,9 +179,11 @@ impl RateLimiter {
         let now = Instant::now();
         let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
         buckets.retain(|_ip, b| {
-            let idle = now.saturating_duration_since(b.last_refill) >= idle_ttl;
+            let idle_secs = now.saturating_duration_since(b.last_refill).as_secs_f64();
+            let idle = idle_secs >= idle_ttl.as_secs_f64();
+            let projected = (b.tokens + idle_secs * self.refill_per_sec).min(self.capacity);
             // Drop only full-and-idle; keep still-draining or recently active.
-            !(b.tokens >= self.capacity && idle)
+            !(projected >= self.capacity && idle)
         });
     }
 
@@ -236,6 +287,58 @@ mod tests {
     }
 
     #[test]
+    fn burst_and_refill_are_independent() {
+        // burst=2 with a 60/min refill (1 token/sec): two quick failures
+        // exhaust the bucket, and ~1.1s restores roughly one token, not
+        // the full burst.
+        let rl = RateLimiter::with_burst_and_refill(2, 60);
+        rl.record_failure(ip(1));
+        rl.record_failure(ip(1));
+        assert_eq!(rl.check_only(ip(1)), RateCheck::Limited);
+        thread::sleep(Duration::from_millis(1100));
+        assert_eq!(rl.try_consume(ip(1)), RateCheck::Allowed);
+        assert_eq!(rl.try_consume(ip(1)), RateCheck::Limited);
+    }
+
+    #[test]
+    fn burst_zero_disables_with_burst_and_refill() {
+        let rl = RateLimiter::with_burst_and_refill(0, 60);
+        for _ in 0..10 {
+            assert_eq!(rl.try_consume(ip(1)), RateCheck::Allowed);
+        }
+        assert_eq!(rl.bucket_count(), 0);
+    }
+
+    #[test]
+    fn ipv6_prefix_keying_shares_a_slash_64() {
+        let rl = RateLimiter::per_minute(1).key_ipv6_by_prefix();
+        let a: IpAddr = "2001:db8:1:1::1".parse().expect("valid IPv6");
+        let b: IpAddr = "2001:db8:1:1:ffff:ffff:ffff:ffff"
+            .parse()
+            .expect("valid IPv6");
+        let other_prefix: IpAddr = "2001:db8:1:2::1".parse().expect("valid IPv6");
+
+        assert_eq!(rl.try_consume(a), RateCheck::Allowed);
+        // Same /64 → same bucket → limited.
+        assert_eq!(rl.try_consume(b), RateCheck::Limited);
+        // Different /64 → independent bucket.
+        assert_eq!(rl.try_consume(other_prefix), RateCheck::Allowed);
+        // IPv4 stays per-address.
+        assert_eq!(rl.try_consume(ip(1)), RateCheck::Allowed);
+        assert_eq!(rl.try_consume(ip(2)), RateCheck::Allowed);
+    }
+
+    #[test]
+    fn ipv6_per_address_without_prefix_keying() {
+        let rl = RateLimiter::per_minute(1);
+        let a: IpAddr = "2001:db8:1:1::1".parse().expect("valid IPv6");
+        let b: IpAddr = "2001:db8:1:1::2".parse().expect("valid IPv6");
+        assert_eq!(rl.try_consume(a), RateCheck::Allowed);
+        // Same /64 but prefix keying is off → independent buckets.
+        assert_eq!(rl.try_consume(b), RateCheck::Allowed);
+    }
+
+    #[test]
     fn gc_removes_idle_full_buckets() {
         let rl = RateLimiter::per_minute(1);
         assert_eq!(rl.try_consume(ip(1)), RateCheck::Allowed);
@@ -252,6 +355,41 @@ mod tests {
         }
         rl.gc(Duration::from_secs(60));
         assert_eq!(rl.bucket_count(), 0);
+    }
+
+    #[test]
+    fn gc_removes_abandoned_drained_buckets() {
+        // The disposable-IP attack shape: one failure, never touched again.
+        // The stored token count stays below capacity (refill only happens
+        // on access), so gc must project the refill from elapsed time.
+        let rl = RateLimiter::per_minute(60);
+        rl.record_failure(ip(1));
+        {
+            let mut buckets = rl.buckets.lock().expect("mutex");
+            let bucket = buckets.get_mut(&ip(1)).expect("present");
+            // 120s idle at 1 token/sec projects well past full capacity.
+            bucket.last_refill = Instant::now() - Duration::from_secs(120);
+        }
+        rl.gc(Duration::from_secs(60));
+        assert_eq!(rl.bucket_count(), 0);
+    }
+
+    #[test]
+    fn gc_keeps_idle_buckets_that_have_not_refilled() {
+        // burst 10, refill 1/min: after 9 failures, 120s only restores ~2
+        // tokens — the projection is below capacity, so the penalty state
+        // must survive gc even though the bucket is idle.
+        let rl = RateLimiter::with_burst_and_refill(10, 1);
+        for _ in 0..9 {
+            rl.record_failure(ip(1));
+        }
+        {
+            let mut buckets = rl.buckets.lock().expect("mutex");
+            let bucket = buckets.get_mut(&ip(1)).expect("present");
+            bucket.last_refill = Instant::now() - Duration::from_secs(120);
+        }
+        rl.gc(Duration::from_secs(60));
+        assert_eq!(rl.bucket_count(), 1);
     }
 
     #[test]

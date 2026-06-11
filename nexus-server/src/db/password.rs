@@ -100,13 +100,29 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Pass
     }
 }
 
+/// Maximum concurrent Argon2 operations across the whole server.
+///
+/// Each Argon2id op pins a blocking-pool thread and allocates its memory
+/// parameter (~19 MiB at defaults). Without a cap, a distributed login
+/// flood can run hundreds of ops at once — saturating every core and
+/// gigabytes of memory — because the blocking pool admits far more
+/// threads than Argon2 should ever occupy. Excess callers queue on the
+/// semaphore instead: latency degrades under attack, the server does not.
+const MAX_CONCURRENT_ARGON2_OPS: usize = 8;
+
+static ARGON2_PERMITS: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_ARGON2_OPS);
+
+/// Panic message: the static Argon2 semaphore is never closed.
+const ERR_ARGON2_SEMAPHORE_CLOSED: &str = "Argon2 semaphore unexpectedly closed";
+
 /// Async wrapper around [`hash_password`] that runs Argon2 on the blocking pool.
 ///
 /// Argon2id with default params takes ~50–500 ms per call. Calling the sync
 /// version from an async handler pins the worker thread for that duration; a
 /// flood of password creates / changes from rotating IPs can pin every worker.
 /// This wrapper offloads the Argon2 work via `spawn_blocking` so the runtime
-/// stays responsive.
+/// stays responsive, and bounds global concurrency via [`ARGON2_PERMITS`].
 ///
 /// The fast (test-only) path is sync-cheap (`format!`) and not offloaded.
 pub async fn hash_password_async(
@@ -117,6 +133,10 @@ pub async fn hash_password_async(
     if fast {
         return hash_password(&password, min_strength, fast);
     }
+    let _permit = ARGON2_PERMITS
+        .acquire()
+        .await
+        .expect(ERR_ARGON2_SEMAPHORE_CLOSED);
     tokio::task::spawn_blocking(move || hash_password(&password, min_strength, fast))
         .await
         .unwrap_or(Err(PasswordError::TaskJoin))
@@ -124,8 +144,9 @@ pub async fn hash_password_async(
 
 /// Async wrapper around [`verify_password`] that runs Argon2 on the blocking pool.
 ///
-/// See [`hash_password_async`] for rationale. Fast hashes short-circuit
-/// inline (string compare); only the Argon2 path is offloaded.
+/// See [`hash_password_async`] for rationale and the global concurrency
+/// bound. Fast hashes short-circuit inline (string compare); only the
+/// Argon2 path is offloaded.
 pub async fn verify_password_async(
     password: String,
     password_hash: String,
@@ -133,6 +154,10 @@ pub async fn verify_password_async(
     if password_hash.starts_with(FAST_HASH_PREFIX) {
         return verify_password(&password, &password_hash);
     }
+    let _permit = ARGON2_PERMITS
+        .acquire()
+        .await
+        .expect(ERR_ARGON2_SEMAPHORE_CLOSED);
     tokio::task::spawn_blocking(move || verify_password(&password, &password_hash))
         .await
         .unwrap_or(Err(PasswordError::TaskJoin))

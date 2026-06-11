@@ -2,8 +2,10 @@
 
 use std::collections::HashSet;
 use std::io;
+use std::net::IpAddr;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::warn;
 
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{
@@ -12,6 +14,7 @@ use nexus_common::io::{
 };
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::rate_limiter::{RateCheck, RateLimiter};
 use nexus_common::validators::{self, PasswordError, VersionError};
 use nexus_common::version::{self, CompatibilityResult};
 
@@ -19,19 +22,21 @@ use crate::constants::{
     ERR_TRANSFER_ACCOUNT_DISABLED, ERR_TRANSFER_CONNECTION_CLOSED, ERR_TRANSFER_DB_ERROR,
     ERR_TRANSFER_HANDSHAKE_CLOSED, ERR_TRANSFER_HANDSHAKE_EXPECTED,
     ERR_TRANSFER_INVALID_CREDENTIALS, ERR_TRANSFER_LOGIN_CLOSED, ERR_TRANSFER_LOGIN_EXPECTED,
-    ERR_TRANSFER_PASSWORD_INVALID, ERR_TRANSFER_PASSWORD_VERIFY_ERROR, ERR_TRANSFER_READ_HANDSHAKE,
-    ERR_TRANSFER_READ_LOGIN, ERR_TRANSFER_READ_MESSAGE, ERR_TRANSFER_USER_NOT_FOUND,
-    ERR_TRANSFER_USERNAME_INVALID, ERR_TRANSFER_VERSION_CLIENT_TOO_NEW,
-    ERR_TRANSFER_VERSION_INVALID, ERR_TRANSFER_VERSION_MAJOR_MISMATCH,
-    ERR_TRANSFER_VERSION_MINOR_MISMATCH,
+    ERR_TRANSFER_LOGIN_RATE_LIMITED, ERR_TRANSFER_PASSWORD_INVALID,
+    ERR_TRANSFER_PASSWORD_VERIFY_ERROR, ERR_TRANSFER_READ_HANDSHAKE, ERR_TRANSFER_READ_LOGIN,
+    ERR_TRANSFER_READ_MESSAGE, ERR_TRANSFER_USER_NOT_FOUND, ERR_TRANSFER_USERNAME_INVALID,
+    ERR_TRANSFER_VERSION_CLIENT_TOO_NEW, ERR_TRANSFER_VERSION_INVALID,
+    ERR_TRANSFER_VERSION_MAJOR_MISMATCH, ERR_TRANSFER_VERSION_MINOR_MISMATCH,
+    LOG_LOGIN_RATE_LIMITED,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, Database};
 use crate::handlers::{
     err_account_disabled, err_authentication, err_database, err_guest_disabled,
-    err_handshake_required, err_invalid_credentials, err_message_not_supported, err_not_logged_in,
-    err_version_client_too_new, err_version_empty, err_version_invalid_semver,
-    err_version_major_mismatch, err_version_minor_mismatch, err_version_too_long,
+    err_handshake_required, err_invalid_credentials, err_login_rate_limited,
+    err_message_not_supported, err_not_logged_in, err_version_client_too_new, err_version_empty,
+    err_version_invalid_semver, err_version_major_mismatch, err_version_minor_mismatch,
+    err_version_too_long,
 };
 
 use super::helpers::{login_error_response, send_error_and_close};
@@ -185,6 +190,9 @@ pub(crate) async fn handle_transfer_login<R, W>(
     frame_writer: &mut FrameWriter<W>,
     db: &Database,
     locale: &mut String,
+    login_limiter: &RateLimiter,
+    login_ip: IpAddr,
+    login_ip_trusted: bool,
 ) -> io::Result<TransferLoginAuth>
 where
     R: AsyncReadExt + Unpin,
@@ -221,6 +229,17 @@ where
     // Update locale for subsequent error messages
     *locale = request_locale.clone();
 
+    // Per-IP failed-login limiter, shared with the BBS port and checked
+    // before the account lookup and any Argon2 work. Uniform for every
+    // username, so it cannot reopen username enumeration. Trusted IPs
+    // bypass it; successes never debit it.
+    if !login_ip_trusted && login_limiter.check_only(login_ip) == RateCheck::Limited {
+        warn!(ip = %login_ip, "{}", LOG_LOGIN_RATE_LIMITED);
+        let response = login_error_response(err_login_rate_limited(locale));
+        send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        return Err(io::Error::other(ERR_TRANSFER_LOGIN_RATE_LIMITED));
+    }
+
     // Normalize empty username to "guest"
     let username = if raw_username.is_empty() {
         GUEST_USERNAME.to_string()
@@ -247,6 +266,14 @@ where
     let account = match db.users.get_user_by_username(&username).await {
         Ok(Some(acc)) => acc,
         Ok(None) => {
+            // Match the wrong-password path's Argon2 cost so response timing
+            // does not reveal whether the username exists — same defense as
+            // the BBS port's login handler.
+            let min_strength = db.config.get_min_password_strength().await;
+            let _ = db::hash_password_async(password.clone(), min_strength, false).await;
+            if !login_ip_trusted {
+                login_limiter.record_failure(login_ip);
+            }
             let response = login_error_response(err_invalid_credentials(locale));
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other(ERR_TRANSFER_USER_NOT_FOUND));
@@ -276,12 +303,18 @@ where
     };
 
     if !password_valid {
+        if !login_ip_trusted {
+            login_limiter.record_failure(login_ip);
+        }
         let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_INVALID_CREDENTIALS));
     }
 
     if !account.enabled {
+        if !login_ip_trusted {
+            login_limiter.record_failure(login_ip);
+        }
         let error_msg = if fold_name(&username) == GUEST_USERNAME {
             err_guest_disabled(locale)
         } else {

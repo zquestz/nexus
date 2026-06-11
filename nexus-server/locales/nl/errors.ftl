@@ -34,6 +34,7 @@ err-avatar-unsupported-type = Niet-ondersteund avatar-type (alleen PNG, JPEG, We
 err-avatar-undecodable = Avatar kon niet worden gedecodeerd als een geldige afbeelding
 err-authentication = Authenticatiefout
 err-invalid-credentials = Ongeldige gebruikersnaam of wachtwoord
+err-login-rate-limited = Te veel mislukte aanmeldpogingen. Probeer het later opnieuw.
 err-handshake-required = Handshake vereist
 err-already-logged-in = Al ingelogd
 err-handshake-already-completed = Handshake al voltooid

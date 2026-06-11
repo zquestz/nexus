@@ -34,6 +34,7 @@ err-avatar-unsupported-type = Неподдерживаемый тип авата
 err-avatar-undecodable = Не удалось декодировать аватар как корректное изображение
 err-authentication = Ошибка аутентификации
 err-invalid-credentials = Неверное имя пользователя или пароль
+err-login-rate-limited = Слишком много неудачных попыток входа. Повторите попытку позже.
 err-handshake-required = Требуется рукопожатие
 err-already-logged-in = Вы уже вошли в систему
 err-handshake-already-completed = Рукопожатие уже выполнено

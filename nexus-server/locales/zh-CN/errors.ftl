@@ -34,6 +34,7 @@ err-avatar-unsupported-type = 不支持的头像类型（仅支持PNG、JPEG、W
 err-avatar-undecodable = 无法将头像解码为有效图像
 err-authentication = 身份验证错误
 err-invalid-credentials = 用户名或密码无效
+err-login-rate-limited = 登录失败次数过多。请稍后再试。
 err-handshake-required = 需要握手
 err-already-logged-in = 已经登录
 err-handshake-already-completed = 握手已完成

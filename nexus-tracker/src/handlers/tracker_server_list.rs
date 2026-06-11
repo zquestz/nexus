@@ -31,8 +31,8 @@ use crate::errors::{
     err_tracker_password_too_long, err_tracker_rate_limited, err_tracker_unauthorized,
     err_tracker_version_invalid, err_tracker_version_too_long,
 };
-use crate::rate_limiter::RateCheck;
 use crate::state::TrackerState;
+use nexus_common::rate_limiter::RateCheck;
 
 /// Decoded `TrackerServerList` request fields.
 pub struct ListParams {

@@ -3645,6 +3645,7 @@ mod tests {
                 tracker_manager: &test_ctx.tracker_manager,
                 fingerprint: TEST_FINGERPRINT,
                 flood_config: test_ctx.flood_config.clone(),
+                login_limiter: test_ctx.login_limiter.clone(),
             };
             let mut delete_ctx = HandlerContext {
                 writer: DirectWriter::new(&mut delete_writer),
@@ -3671,6 +3672,7 @@ mod tests {
                 tracker_manager: &test_ctx.tracker_manager,
                 fingerprint: TEST_FINGERPRINT,
                 flood_config: test_ctx.flood_config.clone(),
+                login_limiter: test_ctx.login_limiter.clone(),
             };
 
             tokio::join!(

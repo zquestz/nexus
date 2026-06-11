@@ -334,6 +334,10 @@ pub fn err_invalid_credentials(locale: &str) -> String {
     t(locale, "err-invalid-credentials")
 }
 
+pub fn err_login_rate_limited(locale: &str) -> String {
+    t(locale, "err-login-rate-limited")
+}
+
 pub fn err_invalid_message_format(locale: &str) -> String {
     t(locale, "err-invalid-message-format")
 }

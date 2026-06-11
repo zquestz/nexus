@@ -103,6 +103,14 @@ impl IpRuleState {
     pub async fn should_allow(&self, ip: IpAddr) -> bool {
         matches!(self.check_admission(ip).await, IpAdmission::Allowed)
     }
+
+    /// True if `ip` matches a non-expired trust entry. Used to exempt
+    /// operator-trusted IPs (e.g. a shared NAT) from login rate limiting.
+    /// Does not trigger an expiry rebuild; `check_admission` on the accept
+    /// path rebuilds frequently enough.
+    pub fn is_trusted(&self, ip: IpAddr) -> bool {
+        self.read().is_trusted_read_only(ip)
+    }
 }
 
 /// In-memory cache for IP access rules (trusts and bans). O(log n) lookups via

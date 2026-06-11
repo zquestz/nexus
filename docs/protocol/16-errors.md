@@ -212,6 +212,7 @@ These errors terminate the connection after sending:
 | Critical validation | Invalid handshake, malformed login                |
 | Some validation     | Chat message too long, broadcast validation       |
 | Flood protection    | 3 consecutive rate limit violations               |
+| Login rate limiting | Too many failed login attempts from the same IP   |
 | Slow client         | Session cannot keep up with server messages       |
 
 ### Non-Disconnect Errors
@@ -426,6 +427,7 @@ Servers log security-relevant errors:
 - Protocol errors (invalid frames) may not result in any error message before disconnect
 - Some validation errors in broadcast/chat disconnect to prevent spam
 - Flood protection sends a warning with the wait time before disconnecting; the 3rd consecutive violation disconnects
+- Failed logins are rate limited per IP (IPv6 per /64) on both the BBS and transfer ports. Successful logins never count toward the limit, the rejection is identical for every username, and operator-trusted IPs are exempt
 
 ## See Also
 

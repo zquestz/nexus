@@ -13,9 +13,9 @@ use crate::constants::{
     ERR_LISTING_HASH_LOCK_POISONED, ERR_PASSWORD_HASH_LOCK_POISONED,
     ERR_REGISTRATION_HASH_LOCK_POISONED, LOG_PASSWORD_RELOAD_FAILED, LOG_PASSWORD_RELOADED,
 };
-use crate::rate_limiter::RateLimiter;
 use crate::registry::Registry;
 use crate::resolver::{Resolver, TokioResolver};
+use nexus_common::rate_limiter::RateLimiter;
 
 /// Daemon-level state shared across connection tasks. The password
 /// hashes are `RwLock` because SIGHUP may swap them at runtime; handlers

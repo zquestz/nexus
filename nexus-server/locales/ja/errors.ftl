@@ -34,6 +34,7 @@ err-avatar-unsupported-type = サポートされていないアバタータイ�
 err-avatar-undecodable = アバターを有効な画像としてデコードできませんでした
 err-authentication = 認証エラー
 err-invalid-credentials = ユーザー名またはパスワードが無効です
+err-login-rate-limited = ログイン失敗の回数が多すぎます。後でもう一度お試しください。
 err-handshake-required = ハンドシェイクが必要です
 err-already-logged-in = 既にログインしています
 err-handshake-already-completed = ハンドシェイクは既に完了しています

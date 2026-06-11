@@ -45,9 +45,9 @@ use crate::handlers::tracker_server_list::{ListParams, handle_tracker_server_lis
 use crate::handlers::tracker_server_register::{
     InitialRegisterOutcome, RefreshOutcome, RegisterParams, handle_initial_register, handle_refresh,
 };
-use crate::rate_limiter::RateCheck;
 use crate::registry::ConnectionId;
 use crate::state::TrackerState;
+use nexus_common::rate_limiter::RateCheck;
 
 /// Drive a single accepted connection through TLS, handshake, and the post-handshake flow.
 ///

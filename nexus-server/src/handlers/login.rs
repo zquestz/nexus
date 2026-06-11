@@ -9,6 +9,7 @@ use tracing::{debug, error, info, warn};
 
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ChannelJoinInfo, ServerMessage};
+use nexus_common::rate_limiter::RateCheck;
 use nexus_common::validators::{
     self, AvatarError, FeaturesError, LocaleError, NicknameError, PasswordError, UsernameError,
 };
@@ -22,9 +23,10 @@ use super::{
     err_features_feature_too_long, err_features_invalid_characters, err_features_too_many,
     err_guest_disabled, err_handshake_required, err_internal_error, err_invalid_credentials,
     err_locale_invalid_characters, err_locale_too_long, err_login_bandwidth_failed,
-    err_login_group_failed, err_login_permissions_failed, err_nickname_empty, err_nickname_in_use,
-    err_nickname_invalid, err_nickname_is_username, err_nickname_required, err_nickname_too_long,
-    err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
+    err_login_group_failed, err_login_permissions_failed, err_login_rate_limited,
+    err_nickname_empty, err_nickname_in_use, err_nickname_invalid, err_nickname_is_username,
+    err_nickname_required, err_nickname_too_long, err_password_too_long, err_username_empty,
+    err_username_invalid, err_username_too_long,
 };
 use crate::constants::{
     FEATURE_CHAT, FEATURE_VOICE, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
@@ -33,7 +35,7 @@ use crate::constants::{
     LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR,
     LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS,
     LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR,
-    LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS, SUPPORTED_FEATURES,
+    LOG_LOGIN_RATE_LIMITED, LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS, SUPPORTED_FEATURES,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, LoginSnapshotError, Permission};
@@ -248,6 +250,20 @@ where
     }
     let activated_features = activate_supported_features(features);
 
+    // Per-IP failed-login limiter, checked before the account lookup and any
+    // Argon2 work. The rejection is uniform for every username — limited IPs
+    // can't distinguish existing from nonexistent accounts — so this cannot
+    // reopen username enumeration. Trusted IPs (e.g. an operator-trusted
+    // shared NAT) bypass the limiter; successes never debit it.
+    let login_ip = ctx.peer_addr.ip();
+    let login_ip_trusted = ctx.ip_rule_cache.is_trusted(login_ip);
+    if !login_ip_trusted && ctx.login_limiter.check_only(login_ip) == RateCheck::Limited {
+        warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_RATE_LIMITED);
+        return ctx
+            .send_error_and_disconnect(&err_login_rate_limited(&locale), Some(HANDLER_LOGIN))
+            .await;
+    }
+
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
@@ -282,6 +298,9 @@ where
         if password_valid {
             if !account.enabled {
                 warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
+                if !login_ip_trusted {
+                    ctx.login_limiter.record_failure(login_ip);
+                }
                 let error_msg = if fold_name(&username) == GUEST_USERNAME {
                     err_guest_disabled(&locale)
                 } else {
@@ -294,6 +313,9 @@ where
             account
         } else {
             warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_INVALID_CREDENTIALS);
+            if !login_ip_trusted {
+                ctx.login_limiter.record_failure(login_ip);
+            }
             return ctx
                 .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
                 .await;
@@ -316,12 +338,18 @@ where
             // credentials either way.
             let min_strength = ctx.db.config.get_min_password_strength().await;
             let _ = db::hash_password_async(password.clone(), min_strength, false).await;
+            if !login_ip_trusted {
+                ctx.login_limiter.record_failure(login_ip);
+            }
             return ctx
                 .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
                 .await;
         }
 
         if let Err(error_msg) = validate_login_avatar(&avatar, &locale, ctx.peer_addr).await {
+            if !login_ip_trusted {
+                ctx.login_limiter.record_failure(login_ip);
+            }
             return ctx
                 .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
                 .await;
@@ -335,6 +363,12 @@ where
             Ok(hash) => hash,
             Err(e) => {
                 error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
+                // Attacker-influenced on a fresh server: hash_password
+                // revalidates password strength, so a weak password fails
+                // here. Debit like any other failed unauthenticated login.
+                if !login_ip_trusted {
+                    ctx.login_limiter.record_failure(login_ip);
+                }
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
@@ -358,6 +392,9 @@ where
             Ok(None) => {
                 // Reuse the invalid-credentials error so we don't reveal whether
                 // the username exists.
+                if !login_ip_trusted {
+                    ctx.login_limiter.record_failure(login_ip);
+                }
                 return ctx
                     .send_error_and_disconnect(
                         &err_invalid_credentials(&locale),
@@ -1323,6 +1360,198 @@ mod tests {
                 assert_eq!(message, err_invalid_credentials(DEFAULT_TEST_LOCALE));
             }
             _ => panic!("Expected Error message"),
+        }
+    }
+
+    async fn create_plain_user(test_ctx: &mut crate::handlers::testing::TestContext, name: &str) {
+        let hashed = get_cached_password_hash("password");
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: name,
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    fn login_request_for(username: &str, password: &str) -> LoginRequest {
+        LoginRequest {
+            username: username.to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_rate_limited_after_failed_attempts() {
+        let mut test_ctx = create_test_context().await;
+        // Small burst so the test exercises the limit quickly.
+        test_ctx.login_limiter = std::sync::Arc::new(
+            nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(2, 1)
+                .key_ipv6_by_prefix(),
+        );
+        create_plain_user(&mut test_ctx, "bob").await;
+
+        for _ in 0..2 {
+            let mut session_id = None;
+            let request = login_request_for("bob", "wrongpassword");
+            let result =
+                handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+            assert!(result.is_err());
+            let msg = read_server_message(&mut test_ctx).await;
+            match msg {
+                ServerMessage::Error { message, .. } => {
+                    assert_eq!(message, err_invalid_credentials(DEFAULT_TEST_LOCALE));
+                }
+                other => panic!("expected Error, got {other:?}"),
+            }
+        }
+
+        // Burst exhausted: even a correct password is rejected before any
+        // account lookup or Argon2 work.
+        let mut session_id = None;
+        let request = login_request_for("bob", "password");
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+        assert!(result.is_err());
+        assert!(session_id.is_none());
+        let msg = read_server_message(&mut test_ctx).await;
+        match msg {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_login_rate_limited(DEFAULT_TEST_LOCALE));
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+
+        // Uniform response: a nonexistent username gets the identical error,
+        // so the limited state cannot be used for username enumeration.
+        let mut session_id = None;
+        let request = login_request_for("ghost", "password");
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+        assert!(result.is_err());
+        let msg = read_server_message(&mut test_ctx).await;
+        match msg {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_login_rate_limited(DEFAULT_TEST_LOCALE));
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_login_success_does_not_debit_limiter() {
+        let mut test_ctx = create_test_context().await;
+        test_ctx.login_limiter = std::sync::Arc::new(
+            nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(1, 1)
+                .key_ipv6_by_prefix(),
+        );
+        create_plain_user(&mut test_ctx, "bob").await;
+
+        let mut session_id = None;
+        let request = login_request_for("bob", "password");
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        assert!(session_id.is_some());
+
+        // A successful login must not consume the (single) token.
+        let login_ip = test_ctx.peer_addr.ip();
+        assert_eq!(
+            test_ctx.login_limiter.check_only(login_ip),
+            nexus_common::rate_limiter::RateCheck::Allowed
+        );
+    }
+
+    #[tokio::test]
+    async fn test_login_rate_limit_trusted_ip_bypasses() {
+        let mut test_ctx = create_test_context().await;
+        test_ctx.login_limiter = std::sync::Arc::new(
+            nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(1, 1)
+                .key_ipv6_by_prefix(),
+        );
+        create_plain_user(&mut test_ctx, "bob").await;
+        let login_ip = test_ctx.peer_addr.ip();
+        assert!(
+            test_ctx
+                .ip_rule_cache
+                .write()
+                .add_trust(&login_ip.to_string(), None)
+        );
+
+        // Trusted IPs are never limited and never debited: repeated failures
+        // keep yielding invalid-credentials, not the rate-limited error.
+        for _ in 0..3 {
+            let mut session_id = None;
+            let request = login_request_for("bob", "wrongpassword");
+            let result =
+                handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+            assert!(result.is_err());
+            let msg = read_server_message(&mut test_ctx).await;
+            match msg {
+                ServerMessage::Error { message, .. } => {
+                    assert_eq!(message, err_invalid_credentials(DEFAULT_TEST_LOCALE));
+                }
+                other => panic!("expected Error, got {other:?}"),
+            }
+        }
+        assert_eq!(
+            test_ctx.login_limiter.check_only(login_ip),
+            nexus_common::rate_limiter::RateCheck::Allowed
+        );
+    }
+
+    #[tokio::test]
+    async fn test_first_admin_failures_debit_limiter() {
+        let mut test_ctx = create_test_context().await;
+        test_ctx.login_limiter = std::sync::Arc::new(
+            nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(1, 1)
+                .key_ipv6_by_prefix(),
+        );
+
+        // Fresh server (no accounts): a failed first-admin attempt is still an
+        // unauthenticated failed login and must debit the limiter.
+        let mut session_id = None;
+        let mut request = login_request_for("alice", "password123");
+        request.avatar = Some(INVALID_AVATAR_FORMAT.to_string());
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+        assert!(result.is_err());
+        assert!(session_id.is_none());
+        let msg = read_server_message(&mut test_ctx).await;
+        match msg {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_avatar_invalid_format(DEFAULT_TEST_LOCALE));
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+
+        let login_ip = test_ctx.peer_addr.ip();
+        assert_eq!(
+            test_ctx.login_limiter.check_only(login_ip),
+            nexus_common::rate_limiter::RateCheck::Limited
+        );
+
+        // The drained bucket now rejects further attempts up front.
+        let mut session_id = None;
+        let request = login_request_for("alice", "password123");
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+        assert!(result.is_err());
+        let msg = read_server_message(&mut test_ctx).await;
+        match msg {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_login_rate_limited(DEFAULT_TEST_LOCALE));
+            }
+            other => panic!("expected Error, got {other:?}"),
         }
     }
 

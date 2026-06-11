@@ -34,6 +34,7 @@ err-avatar-unsupported-type = Nicht unterstützter Avatar-Typ (nur PNG, JPEG, We
 err-avatar-undecodable = Avatar konnte nicht als gültiges Bild dekodiert werden
 err-authentication = Authentifizierungsfehler
 err-invalid-credentials = Ungültiger Benutzername oder Passwort
+err-login-rate-limited = Zu viele fehlgeschlagene Anmeldeversuche. Versuchen Sie es später erneut.
 err-handshake-required = Handshake erforderlich
 err-already-logged-in = Bereits angemeldet
 err-handshake-already-completed = Handshake bereits abgeschlossen

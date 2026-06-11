@@ -285,7 +285,6 @@ pub const ERR_SIGNAL_SIGHUP: &str = "SIGHUP handler installation failed";
 // unrecoverable.
 
 pub const ERR_REGISTRY_MUTEX_POISONED: &str = "registry mutex poisoned";
-pub const ERR_RATE_LIMITER_MUTEX_POISONED: &str = "rate limiter mutex poisoned";
 pub const ERR_REGISTRATION_HASH_LOCK_POISONED: &str = "registration password hash lock poisoned";
 pub const ERR_LISTING_HASH_LOCK_POISONED: &str = "listing password hash lock poisoned";
 

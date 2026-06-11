@@ -19,6 +19,7 @@ use nexus_common::io::{
     read_client_message_with_timeout,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::rate_limiter::RateLimiter;
 use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::channels::ChannelManager;
@@ -63,6 +64,7 @@ pub struct ConnectionParams {
     pub tracker_manager: Arc<TrackerManager>,
     pub fingerprint: &'static str,
     pub flood_config: Arc<FloodConfig>,
+    pub login_limiter: Arc<RateLimiter>,
     pub egress: EgressHandle,
     pub egress_connection_id: ConnectionId,
     pub lan_egress_bypass_enabled: bool,
@@ -303,6 +305,7 @@ where
         tracker_manager,
         fingerprint,
         flood_config,
+        login_limiter,
         egress,
         egress_connection_id,
         lan_egress_bypass_enabled: _,
@@ -454,6 +457,7 @@ where
                             tracker_manager: &tracker_manager,
                             fingerprint,
                             flood_config: flood_config.clone(),
+                            login_limiter: login_limiter.clone(),
                         };
 
                         if let Err(e) = handle_client_message(
@@ -1224,6 +1228,13 @@ mod tests {
             voice_control: test_ctx.voice_control.clone(),
             tracker_manager,
             fingerprint: TEST_FINGERPRINT,
+            login_limiter: Arc::new(
+                nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(
+                    crate::constants::LOGIN_FAILURE_BURST,
+                    crate::constants::LOGIN_FAILURE_REFILL_PER_MINUTE,
+                )
+                .key_ipv6_by_prefix(),
+            ),
             flood_config: test_ctx.flood_config.clone(),
             egress: egress.clone(),
             egress_connection_id,
@@ -1391,6 +1402,13 @@ mod tests {
             voice_control: test_ctx.voice_control.clone(),
             tracker_manager,
             fingerprint: TEST_FINGERPRINT,
+            login_limiter: Arc::new(
+                nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(
+                    crate::constants::LOGIN_FAILURE_BURST,
+                    crate::constants::LOGIN_FAILURE_REFILL_PER_MINUTE,
+                )
+                .key_ipv6_by_prefix(),
+            ),
             flood_config: test_ctx.flood_config.clone(),
             egress,
             egress_connection_id: ConnectionId::new(10_900),
@@ -1494,6 +1512,13 @@ mod tests {
             voice_control: test_ctx.voice_control.clone(),
             tracker_manager,
             fingerprint: TEST_FINGERPRINT,
+            login_limiter: Arc::new(
+                nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(
+                    crate::constants::LOGIN_FAILURE_BURST,
+                    crate::constants::LOGIN_FAILURE_REFILL_PER_MINUTE,
+                )
+                .key_ipv6_by_prefix(),
+            ),
             flood_config: test_ctx.flood_config.clone(),
             egress,
             egress_connection_id,

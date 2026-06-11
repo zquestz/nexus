@@ -102,6 +102,7 @@ pub struct TestContext {
     pub voice_control_rx: tokio::sync::mpsc::UnboundedReceiver<VoiceControlCommand>,
     pub tracker_manager: crate::tracker::TrackerManager,
     pub flood_config: Arc<crate::flood::FloodConfig>,
+    pub login_limiter: Arc<nexus_common::rate_limiter::RateLimiter>,
     /// Keep temp dir alive for tests that use file areas
     _temp_dir: TempDir,
 }
@@ -133,6 +134,7 @@ impl TestContext {
             tracker_manager: &self.tracker_manager,
             fingerprint: TEST_FINGERPRINT,
             flood_config: self.flood_config.clone(),
+            login_limiter: self.login_limiter.clone(),
         }
     }
 }
@@ -243,6 +245,13 @@ pub async fn create_test_context() -> TestContext {
         voice_control_rx,
         tracker_manager,
         flood_config,
+        login_limiter: Arc::new(
+            nexus_common::rate_limiter::RateLimiter::with_burst_and_refill(
+                crate::constants::LOGIN_FAILURE_BURST,
+                crate::constants::LOGIN_FAILURE_REFILL_PER_MINUTE,
+            )
+            .key_ipv6_by_prefix(),
+        ),
         _temp_dir: temp_dir,
     }
 }
@@ -651,6 +660,7 @@ pub fn concurrent_handler_context<'a>(
         tracker_manager: &test_ctx.tracker_manager,
         fingerprint: TEST_FINGERPRINT,
         flood_config: test_ctx.flood_config.clone(),
+        login_limiter: test_ctx.login_limiter.clone(),
     }
 }
 

@@ -157,6 +157,7 @@ use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::{ConnectionWriter, UserSession};
 use crate::voice::{VoiceControlHandle, VoiceRegistry, send_voice_leave_notifications};
+use nexus_common::rate_limiter::RateLimiter;
 
 async fn validate_news_image_blocking(
     image_data: &str,
@@ -304,6 +305,7 @@ pub struct HandlerContext<'a, W> {
     /// Server certificate fingerprint (SHA-256, colon-separated).
     pub fingerprint: &'static str,
     pub flood_config: Arc<FloodConfig>,
+    pub login_limiter: Arc<RateLimiter>,
 }
 
 fn activity_busy_is_source_side(source_key: &Path, target_key: &Path, busy_path: &Path) -> bool {

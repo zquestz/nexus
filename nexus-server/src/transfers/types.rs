@@ -11,6 +11,7 @@ use crate::files::{FileActivityMap, FileIndex};
 use crate::ip_rule_cache::IpRuleState;
 use crate::scheduler::ConnectionId;
 use crate::users::UserManager;
+use nexus_common::rate_limiter::RateLimiter;
 
 use super::registry::TransferRegistry;
 
@@ -24,6 +25,7 @@ pub struct TransferParams {
     pub file_activity: Arc<FileActivityMap>,
     pub transfer_registry: Arc<TransferRegistry>,
     pub ip_rule_cache: Arc<IpRuleState>,
+    pub login_limiter: Arc<RateLimiter>,
     pub user_manager: UserManager,
     /// Sent in HandshakeResponse so the client can detect TLS interception
     /// before sending credentials.

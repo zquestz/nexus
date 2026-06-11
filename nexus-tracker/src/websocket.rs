@@ -15,8 +15,8 @@ use nexus_common::websocket::{WebSocketAdapter, accept_ws_with_timeout};
 
 use crate::connection::handle_connection_inner;
 use crate::constants::LOG_CONNECTION_RATE_LIMITED;
-use crate::rate_limiter::RateCheck;
 use crate::state::TrackerState;
+use nexus_common::rate_limiter::RateCheck;
 
 /// Drive a single WS connection: like `handle_connection`, plus the WS upgrade between TLS and
 /// the protocol layer.

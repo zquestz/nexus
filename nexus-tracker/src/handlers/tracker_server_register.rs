@@ -54,10 +54,10 @@ use crate::errors::{
     err_tracker_unauthorized, err_tracker_version_invalid, err_tracker_version_too_long,
     err_tracker_websocket_port_zero,
 };
-use crate::rate_limiter::RateCheck;
 use crate::registry::{ConnectionId, RegisterError};
 use crate::resolver::Resolver;
 use crate::state::TrackerState;
+use nexus_common::rate_limiter::RateCheck;
 
 /// Decoded `TrackerServerRegister` request fields.
 pub struct RegisterParams {

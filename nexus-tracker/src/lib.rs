@@ -9,7 +9,6 @@ pub mod constants;
 pub mod errors;
 pub mod handlers;
 pub mod i18n;
-pub mod rate_limiter;
 pub mod registry;
 pub mod resolver;
 pub mod state;

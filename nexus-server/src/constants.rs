@@ -309,6 +309,7 @@ pub const ERR_TRANSFER_HANDSHAKE_EXPECTED: &str = "Expected Handshake message";
 pub const ERR_TRANSFER_VERSION_INVALID: &str = "Invalid version string";
 pub const ERR_TRANSFER_VERSION_MAJOR_MISMATCH: &str = "Major version mismatch";
 pub const ERR_TRANSFER_LOGIN_CLOSED: &str = "Connection closed during login";
+pub const ERR_TRANSFER_LOGIN_RATE_LIMITED: &str = "Transfer login rate limited";
 pub const ERR_TRANSFER_LOGIN_EXPECTED: &str = "Expected Login message";
 pub const ERR_TRANSFER_USERNAME_INVALID: &str = "Invalid username";
 pub const ERR_TRANSFER_PASSWORD_INVALID: &str = "Invalid password";
@@ -837,8 +838,19 @@ pub const LOG_HANDSHAKE_MAJOR_MISMATCH: &str = "Handshake: major version mismatc
 pub const LOG_HANDSHAKE_MINOR_MISMATCH: &str = "Handshake: minor version mismatch";
 pub const LOG_HANDSHAKE_CLIENT_TOO_NEW: &str = "Handshake: client too new";
 
+// --- Login rate limiting (per-IP failed attempts; IPv6 keyed by /64) ---
+/// Burst of failed login attempts allowed before an IP is limited.
+pub const LOGIN_FAILURE_BURST: u32 = 10;
+/// Sustained failed-attempt allowance once the burst is spent.
+pub const LOGIN_FAILURE_REFILL_PER_MINUTE: u32 = 2;
+/// How often the login limiter's idle-bucket sweep runs.
+pub const LOGIN_LIMITER_GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+/// Idle TTL after which a refilled login-limiter bucket is dropped.
+pub const LOGIN_LIMITER_GC_IDLE_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
 // --- Handler: Login ---
 pub const LOG_LOGIN_HANDSHAKE_REQUIRED: &str = "Login: handshake required";
+pub const LOG_LOGIN_RATE_LIMITED: &str = "Login: rate limited";
 pub const LOG_LOGIN_ALREADY_LOGGED_IN: &str = "Login: already logged in";
 pub const LOG_LOGIN_INVALID_CREDENTIALS: &str = "Login: invalid credentials";
 pub const LOG_LOGIN_ACCOUNT_DISABLED: &str = "Login: account disabled";
