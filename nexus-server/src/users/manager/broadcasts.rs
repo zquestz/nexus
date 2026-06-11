@@ -282,7 +282,7 @@ mod tests {
             name: "Nexus".to_string(),
             description: "Test server".to_string(),
             public_address: String::new(),
-            version: "0.9.0".to_string(),
+            version: "0.9.1".to_string(),
             image: String::new(),
             max_connections_per_ip: 0,
             max_transfers_per_ip: 0,

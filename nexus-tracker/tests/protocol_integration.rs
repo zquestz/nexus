@@ -1351,7 +1351,7 @@ async fn test_list_filters_incompatible_versions() {
     let registers = [
         make_register_with_version("Old BBS", "0.7.5"),
         make_register_with_version("Match BBS", "0.8.6"),
-        make_register_with_version("New BBS", "0.9.0"),
+        make_register_with_version("New BBS", "0.9.1"),
     ];
     let mut server_conns = Vec::new();
     for msg in &registers {
