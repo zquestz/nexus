@@ -185,8 +185,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::sync::Arc;
+    use std::time::Duration;
+
     use crate::db::Permission;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::files::FileIndex;
+    use crate::handlers::testing::{
+        create_test_context, login_user, read_server_message, setup_file_area_basic,
+    };
 
     #[tokio::test]
     async fn test_file_search_requires_login() {
@@ -349,6 +356,77 @@ mod tests {
                 assert!(success);
                 assert!(error.is_none());
                 assert!(results.is_some());
+            }
+            _ => panic!("Expected FileSearchResponse, got: {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_search_does_not_leak_sibling_user_area() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+        let index_data = tempfile::TempDir::new().expect("index data dir");
+        test_ctx.file_index = Arc::new(FileIndex::new(index_data.path(), file_root));
+
+        fs::create_dir_all(file_area.path().join("users/alice/docs")).unwrap();
+        fs::create_dir_all(file_area.path().join("users/alice2/docs")).unwrap();
+        fs::write(
+            file_area.path().join("users/alice/docs/secret-own.txt"),
+            "content",
+        )
+        .unwrap();
+        fs::write(
+            file_area
+                .path()
+                .join("users/alice2/docs/secret-neighbor.txt"),
+            "content",
+        )
+        .unwrap();
+
+        assert!(test_ctx.file_index.trigger_reindex());
+        for _ in 0..100 {
+            if !test_ctx.file_index.is_reindexing() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!test_ctx.file_index.is_reindexing());
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileSearch],
+            false,
+        )
+        .await;
+
+        let result = handle_file_search(
+            "secret".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileSearchResponse {
+                success,
+                error,
+                results,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let paths: Vec<String> = results
+                    .expect("search results")
+                    .into_iter()
+                    .map(|result| result.path)
+                    .collect();
+                assert_eq!(paths, vec!["/docs/secret-own.txt"]);
             }
             _ => panic!("Expected FileSearchResponse, got: {:?}", response),
         }

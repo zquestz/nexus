@@ -251,6 +251,7 @@ impl FileIndex {
             .map_err(|e| format!("{}{}", ERR_FILE_INDEX_SEARCH_PATTERN, e))?;
 
         let remaining_terms: Vec<String> = terms[1..].iter().map(|t| t.to_lowercase()).collect();
+        let area_filter = area_prefix.map(area_prefix_filter);
 
         let mut results = Vec::new();
 
@@ -263,8 +264,8 @@ impl FileIndex {
                 }
 
                 if let Some(entry) = parse_csv_line(line.trim()) {
-                    if let Some(prefix) = area_prefix
-                        && !entry.path.starts_with(prefix)
+                    if let Some((prefix, prefix_with_slash)) = &area_filter
+                        && !path_is_in_area(&entry.path, prefix, prefix_with_slash)
                     {
                         return Ok(true);
                     }
@@ -297,6 +298,22 @@ impl FileIndex {
 
         Ok(results)
     }
+}
+
+fn area_prefix_filter(prefix: &str) -> (String, String) {
+    let trimmed = prefix.trim_end_matches('/');
+    let normalized = if trimmed.is_empty() { "/" } else { trimmed };
+    let child_prefix = if normalized == "/" {
+        "/".to_string()
+    } else {
+        format!("{normalized}/")
+    };
+
+    (normalized.to_string(), child_prefix)
+}
+
+fn path_is_in_area(path: &str, prefix: &str, prefix_with_slash: &str) -> bool {
+    path == prefix || path.starts_with(prefix_with_slash)
 }
 
 /// Parse one CSV index line; returns `None` for malformed lines (fewer than 5
@@ -556,6 +573,54 @@ mod tests {
         let results = index.search("doc", Some("/users/alice")).unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].path.starts_with("/users/alice"));
+    }
+
+    #[test]
+    fn test_search_area_filter_is_segment_aware_for_user_areas() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let file_root = temp_dir.path().join("files");
+
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::create_dir_all(file_root.join("users/alice/docs")).unwrap();
+        fs::create_dir_all(file_root.join("users/alice2")).unwrap();
+        fs::write(file_root.join("users/alice/docs/secret.txt"), "content").unwrap();
+        fs::write(file_root.join("users/alice2/secret.txt"), "content").unwrap();
+
+        let index = FileIndex::new(&data_dir, &file_root);
+        index.build_index().unwrap();
+
+        let results = index.search("secret", Some("/users/alice")).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "/users/alice/docs/secret.txt");
+
+        let results = index.search("alice", Some("/users/alice")).unwrap();
+        assert!(results.iter().any(|result| result.path == "/users/alice"));
+        assert!(results.iter().all(|result| path_is_in_area(
+            &result.path,
+            "/users/alice",
+            "/users/alice/"
+        )));
+    }
+
+    #[test]
+    fn test_search_area_filter_is_segment_aware_for_shared_area() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let file_root = temp_dir.path().join("files");
+
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::create_dir_all(file_root.join("shared")).unwrap();
+        fs::create_dir_all(file_root.join("shared2")).unwrap();
+        fs::write(file_root.join("shared/target.txt"), "content").unwrap();
+        fs::write(file_root.join("shared2/target.txt"), "content").unwrap();
+
+        let index = FileIndex::new(&data_dir, &file_root);
+        index.build_index().unwrap();
+
+        let results = index.search("target", Some("/shared")).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "/shared/target.txt");
     }
 
     #[test]
