@@ -20,7 +20,7 @@ To send a message that starts with `/` without it being treated as a command:
 
 ## Available Commands
 
-Commands are shown or hidden based on your permissions. If you don't have the required permission, the command won't appear in `/help` and will be treated as unknown.
+Commands are shown or hidden based on your permissions and negotiated server features. If you don't have the required permission or feature, the command won't appear in `/help` and will be treated as unknown.
 
 ### /help
 
@@ -160,6 +160,8 @@ Switch focus to the server console, a channel, or a user message tab.
 
 **Permission:** None
 
+**Feature:** `chat` or `voice`
+
 **Usage:**
 
 ```
@@ -170,7 +172,7 @@ Switch focus to the server console, a channel, or a user message tab.
 /f bob              # Switch to Bob's message tab
 ```
 
-With no arguments, switches to the server console tab. If the target is a user who is online but you don't have a message tab open with them, this command opens one.
+With no arguments, switches to the server console tab. If the target is a user who is online but you don't have a message tab open with them, this command opens one. This works for voice-only sessions too, so you can open a user message tab and then join direct voice.
 
 ### /info
 
@@ -506,35 +508,35 @@ Manage chat tabs (channels and user message conversations).
 
 ## Command Reference Table
 
-| Command      | Aliases                     | Permission                       | Description                           |
-| ------------ | --------------------------- | -------------------------------- | ------------------------------------- |
-| `/away`      | `/a`, `/afk`                | None                             | Set yourself as away                  |
-| `/back`      | `/b`                        | None                             | Clear away status                     |
-| `/ban`       | —                           | `ban_create`                     | Ban a user by IP, CIDR, or nickname   |
-| `/bans`      | `/banlist`                  | `ban_list`                       | List active bans                      |
-| `/broadcast` | `/bc`                       | `user_broadcast`                 | Send a broadcast to all users         |
-| `/channels`  | `/ch`                       | `chat_list`                      | List available channels               |
-| `/clear`     | —                           | None                             | Clear chat history for current tab    |
-| `/focus`     | `/f`                        | None                             | Focus console, channel, or user tab   |
-| `/help`      | `/h`, `/?`                  | None                             | Show available commands               |
-| `/info`      | `/i`, `/userinfo`, `/whois` | `user_info`                      | Show information about a user         |
-| `/join`      | `/j`                        | `chat_join`                      | Join or create a channel              |
-| `/kick`      | `/k`, `/userkick`           | `user_kick`                      | Kick a user from the server           |
-| `/leave`     | `/part`                     | None                             | Leave a channel                       |
-| `/list`      | `/l`, `/userlist`           | `user_list`                      | Show connected/all users              |
-| `/me`        | —                           | `chat_send`                      | Send an action message                |
-| `/message`   | `/m`, `/msg`                | `user_message`                   | Send a message to a user              |
-| `/ping`      | —                           | None                             | Measure server latency                |
-| `/reindex`   | —                           | `file_reindex`                   | Trigger file index rebuild            |
-| `/secret`    | —                           | None / `chat_secret`             | View or toggle channel secret mode    |
-| `/sinfo`     | `/si`, `/serverinfo`        | None                             | Show server information               |
-| `/status`    | `/s`                        | None                             | Set or clear status message           |
-| `/topic`     | `/t`, `/chattopic`          | `chat_topic` / `chat_topic_edit` | View or set channel topic             |
-| `/trust`     | —                           | `trust_create`                   | Trust a user by IP, CIDR, or nickname |
-| `/trusted`   | `/trustlist`                | `trust_list`                     | List trusted IPs                      |
-| `/unban`     | —                           | `ban_delete`                     | Remove an IP ban                      |
-| `/untrust`   | —                           | `trust_delete`                   | Remove a trusted IP entry             |
-| `/window`    | `/w`                        | None                             | Manage chat tabs                      |
+| Command      | Aliases                     | Permission                       | Feature           | Description                           |
+| ------------ | --------------------------- | -------------------------------- | ----------------- | ------------------------------------- |
+| `/away`      | `/a`, `/afk`                | None                             | None              | Set yourself as away                  |
+| `/back`      | `/b`                        | None                             | None              | Clear away status                     |
+| `/ban`       | —                           | `ban_create`                     | None              | Ban a user by IP, CIDR, or nickname   |
+| `/bans`      | `/banlist`                  | `ban_list`                       | None              | List active bans                      |
+| `/broadcast` | `/bc`                       | `user_broadcast`                 | None              | Send a broadcast to all users         |
+| `/channels`  | `/ch`                       | `chat_list`                      | `chat`            | List available channels               |
+| `/clear`     | —                           | None                             | None              | Clear chat history for current tab    |
+| `/focus`     | `/f`                        | None                             | `chat` or `voice` | Focus console, channel, or user tab   |
+| `/help`      | `/h`, `/?`                  | None                             | None              | Show available commands               |
+| `/info`      | `/i`, `/userinfo`, `/whois` | `user_info`                      | None              | Show information about a user         |
+| `/join`      | `/j`                        | `chat_join`                      | `chat`            | Join or create a channel              |
+| `/kick`      | `/k`, `/userkick`           | `user_kick`                      | None              | Kick a user from the server           |
+| `/leave`     | `/part`                     | None                             | `chat`            | Leave a channel                       |
+| `/list`      | `/l`, `/userlist`           | `user_list`                      | None              | Show connected/all users              |
+| `/me`        | —                           | `chat_send`                      | `chat`            | Send an action message                |
+| `/message`   | `/m`, `/msg`                | `user_message`                   | `chat`            | Send a message to a user              |
+| `/ping`      | —                           | None                             | None              | Measure server latency                |
+| `/reindex`   | —                           | `file_reindex`                   | None              | Trigger file index rebuild            |
+| `/secret`    | —                           | None / `chat_secret`             | `chat`            | View or toggle channel secret mode    |
+| `/sinfo`     | `/si`, `/serverinfo`        | None                             | None              | Show server information               |
+| `/status`    | `/s`                        | None                             | None              | Set or clear status message           |
+| `/topic`     | `/t`, `/chattopic`          | `chat_topic` / `chat_topic_edit` | `chat`            | View or set channel topic             |
+| `/trust`     | —                           | `trust_create`                   | None              | Trust a user by IP, CIDR, or nickname |
+| `/trusted`   | `/trustlist`                | `trust_list`                     | None              | List trusted IPs                      |
+| `/unban`     | —                           | `ban_delete`                     | None              | Remove an IP ban                      |
+| `/untrust`   | —                           | `trust_delete`                   | None              | Remove a trusted IP entry             |
+| `/window`    | `/w`                        | None                             | None              | Manage chat tabs                      |
 
 ## Keyboard Shortcuts
 

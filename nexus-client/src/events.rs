@@ -24,12 +24,13 @@ pub static NOTIFICATION_HANDLES: Mutex<Vec<(Instant, NotificationHandle)>> = Mut
 pub const HANDLE_LIFETIME: Duration = Duration::from_secs(6);
 
 use iced_toasts::{ToastLevel, toast};
+use nexus_common::names::fold_name;
 
 use crate::NexusApp;
 use crate::config::events::{EventType, NotificationContent};
 use crate::constants::APP_NAME;
 use crate::i18n::{t, t_args};
-use crate::types::ActivePanel;
+use crate::types::{ActivePanel, ChatTab};
 
 // =============================================================================
 // Constants
@@ -344,27 +345,68 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
             }
             true
         }
-        EventType::VoiceJoined | EventType::VoiceLeft => {
-            // Don't notify if window is focused AND viewing that channel/user message on this connection
+        EventType::VoiceJoined => {
+            // Don't notify for visible channel voice joins. DM voice joins are
+            // call-invite-like, so still surface them even when the DM is focused.
             if app.window_focused
                 && let Some(event_conn_id) = context.connection_id
                 && let Some(active_conn_id) = app.active_connection
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
-                && let Some(ref channel) = context.channel
+                && let Some(ref target) = context.channel
+                && focused_voice_event_is_visible(
+                    &conn.active_chat_tab,
+                    conn.active_panel,
+                    target,
+                    false,
+                )
             {
-                // Check if viewing the channel or user message tab where voice event occurred
-                let viewing_target = if channel.starts_with('#') {
-                    conn.is_active_channel_tab(channel)
-                } else {
-                    conn.is_active_user_message_tab(channel)
-                };
-                if viewing_target && conn.active_panel == ActivePanel::None {
-                    return false;
-                }
+                return false;
             }
             true
         }
+        EventType::VoiceLeft => {
+            // Don't notify for visible channel voice leaves. For DMs, joins stay
+            // loud as call invites, but leaves are suppressed while that DM is
+            // already focused because the tab message and icon clear are visible.
+            if app.window_focused
+                && let Some(event_conn_id) = context.connection_id
+                && let Some(active_conn_id) = app.active_connection
+                && event_conn_id == active_conn_id
+                && let Some(conn) = app.connections.get(&event_conn_id)
+                && let Some(ref target) = context.channel
+                && focused_voice_event_is_visible(
+                    &conn.active_chat_tab,
+                    conn.active_panel,
+                    target,
+                    true,
+                )
+            {
+                return false;
+            }
+            true
+        }
+    }
+}
+
+fn focused_voice_event_is_visible(
+    active_chat_tab: &ChatTab,
+    active_panel: ActivePanel,
+    target: &str,
+    suppress_dm: bool,
+) -> bool {
+    if active_panel != ActivePanel::None {
+        return false;
+    }
+
+    match active_chat_tab {
+        ChatTab::Channel(channel) if target.starts_with('#') => {
+            fold_name(channel) == fold_name(target)
+        }
+        ChatTab::UserMessage(nickname) if suppress_dm && !target.starts_with('#') => {
+            fold_name(nickname) == fold_name(target)
+        }
+        _ => false,
     }
 }
 
@@ -908,11 +950,11 @@ fn build_voice_joined_notification(
         NotificationContent::WithContext | NotificationContent::WithPreview => {
             // "Alice joined voice in #general"
             let summary = match (&context.username, &context.channel) {
-                (Some(username), Some(channel)) => t_args(
+                (Some(username), Some(channel)) if channel.starts_with('#') => t_args(
                     "notification-voice-joined-details",
                     &[("username", username), ("target", channel)],
                 ),
-                (Some(username), None) => {
+                (Some(username), Some(_)) | (Some(username), None) => {
                     t_args("notification-voice-joined-user", &[("username", username)])
                 }
                 _ => t("notification-voice-joined"),
@@ -935,11 +977,11 @@ fn build_voice_left_notification(
         NotificationContent::WithContext | NotificationContent::WithPreview => {
             // "Alice left voice in #general"
             let summary = match (&context.username, &context.channel) {
-                (Some(username), Some(channel)) => t_args(
+                (Some(username), Some(channel)) if channel.starts_with('#') => t_args(
                     "notification-voice-left-details",
                     &[("username", username), ("target", channel)],
                 ),
-                (Some(username), None) => {
+                (Some(username), Some(_)) | (Some(username), None) => {
                     t_args("notification-voice-left-user", &[("username", username)])
                 }
                 _ => t("notification-voice-left"),
@@ -999,5 +1041,95 @@ mod tests {
         assert_eq!(truncated.chars().count(), MAX_NEWS_PREVIEW_LENGTH);
         assert!(truncated.ends_with('…'));
         assert!(!truncated.contains('\n'));
+    }
+
+    #[test]
+    fn voice_dm_notification_omits_target_name() {
+        let context = EventContext::new()
+            .with_username("Alice")
+            .with_channel("Alice");
+
+        assert_eq!(
+            build_voice_joined_notification(&context, NotificationContent::WithContext).0,
+            t_args("notification-voice-joined-user", &[("username", "Alice")])
+        );
+        assert_eq!(
+            build_voice_left_notification(&context, NotificationContent::WithContext).0,
+            t_args("notification-voice-left-user", &[("username", "Alice")])
+        );
+    }
+
+    #[test]
+    fn voice_channel_notification_includes_target_name() {
+        let context = EventContext::new()
+            .with_username("Alice")
+            .with_channel("#general");
+
+        assert_eq!(
+            build_voice_joined_notification(&context, NotificationContent::WithContext).0,
+            t_args(
+                "notification-voice-joined-details",
+                &[("username", "Alice"), ("target", "#general")]
+            )
+        );
+        assert_eq!(
+            build_voice_left_notification(&context, NotificationContent::WithContext).0,
+            t_args(
+                "notification-voice-left-details",
+                &[("username", "Alice"), ("target", "#general")]
+            )
+        );
+    }
+
+    #[test]
+    fn focused_voice_join_suppresses_channel_but_not_dm() {
+        assert!(focused_voice_event_is_visible(
+            &ChatTab::Channel("#General".to_string()),
+            ActivePanel::None,
+            "#general",
+            false,
+        ));
+        assert!(!focused_voice_event_is_visible(
+            &ChatTab::UserMessage("Bob".to_string()),
+            ActivePanel::None,
+            "bob",
+            false,
+        ));
+    }
+
+    #[test]
+    fn focused_voice_left_suppresses_matching_dm() {
+        assert!(focused_voice_event_is_visible(
+            &ChatTab::UserMessage("Bob".to_string()),
+            ActivePanel::None,
+            "bob",
+            true,
+        ));
+    }
+
+    #[test]
+    fn focused_voice_left_does_not_suppress_different_dm() {
+        assert!(!focused_voice_event_is_visible(
+            &ChatTab::UserMessage("Alice".to_string()),
+            ActivePanel::None,
+            "bob",
+            true,
+        ));
+    }
+
+    #[test]
+    fn focused_voice_suppression_ignores_tabs_behind_panels() {
+        assert!(!focused_voice_event_is_visible(
+            &ChatTab::UserMessage("Bob".to_string()),
+            ActivePanel::Settings,
+            "bob",
+            true,
+        ));
+        assert!(!focused_voice_event_is_visible(
+            &ChatTab::Channel("#general".to_string()),
+            ActivePanel::Settings,
+            "#general",
+            false,
+        ));
     }
 }

@@ -114,7 +114,7 @@ Server broadcasts when a user joins a voice session.
 
 **For channels:** Sent to all channel members that activated `voice` and have `voice_listen` permission (not just voice participants). This allows users to see voice indicators even when not in voice themselves.
 
-**For user messages:** Sent only to the other participant's sessions that activated `voice`.
+**For user messages:** Sent to the other participant's sessions that activated `voice` and have `voice_listen` permission, even when that participant is not already in voice. The `target` is the joining user's nickname so clients can route the invite to the correct DM tab.
 
 ### VoiceUserLeft
 
@@ -134,7 +134,7 @@ Server broadcasts when a user leaves a voice session.
 
 **For channels:** Sent to all channel members that activated `voice` and have `voice_listen` permission (not just voice participants).
 
-**For user messages:** Sent only to the other participant's sessions that activated `voice`.
+**For user messages:** Sent to the other participant's sessions that activated `voice` and have `voice_listen` permission, even when that participant is not already in voice. The `target` is the leaving user's nickname so clients can clear the correct DM indicator.
 
 The leaving user also receives this message so their client can clean up voice state. This happens when:
 
@@ -180,11 +180,11 @@ This allows clients to show voice indicators immediately upon joining a channel,
 For user message voice (1-on-1 calls):
 
 - Client sends target as the other user's nickname (e.g., `"bob"`)
-- Direct user-message voice only requires the `voice` feature; text DM
-  support is not required.
+- Direct user-message voice signaling requires the `voice` feature and
+  `voice_listen` permission; text DM support is not required.
 - Server internally creates a canonical session key by sorting nicknames (e.g., `"alice:bob"`)
 - Both users join the same session regardless of who initiates
-- `VoiceUserJoined`/`VoiceUserLeft` broadcasts include the _other_ user's nickname as target and are delivered only to voice-capable sessions
+- `VoiceUserJoined`/`VoiceUserLeft` broadcasts include the _other_ user's nickname as target and are delivered to the other participant's voice-capable `voice_listen` sessions, even if they are not already in voice
 
 ## Audio Protocol (UDP)
 
@@ -321,7 +321,9 @@ address the participant's DTLS connection is bound to.
 On TCP disconnect:
 
 - Server removes all voice sessions for that connection
-- Server broadcasts `VoiceUserLeft` to remaining participants
+- Server broadcasts `VoiceUserLeft` to remaining voice-visible observers:
+  channel members with `voice` and `voice_listen`, or the other DM
+  participant's sessions with `voice` and `voice_listen`
 
 ## Example Flow
 

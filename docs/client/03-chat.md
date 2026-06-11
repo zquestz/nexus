@@ -352,7 +352,7 @@ If you're logged in from multiple devices:
 | `/me action`               | Send action message        |
 | `/clear`                   | Clear current tab history  |
 | `/window`                  | Manage tabs                |
-| `/focus target`            | Switch to tab              |
+| `/focus [#channel\|user]`  | Switch to or open a tab    |
 
 ## Next Steps
 

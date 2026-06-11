@@ -3,7 +3,7 @@
 use iced::Task;
 
 use crate::NexusApp;
-use crate::commands::{command_list_for_permissions, get_command_info};
+use crate::commands::{command_is_available, command_list_for_permissions, get_command_info};
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message};
 
@@ -89,19 +89,7 @@ fn show_command_help(
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     };
 
-    // Check if user can use this command.
-    let has_features = cmd
-        .features
-        .iter()
-        .all(|required| features.iter().any(|feature| feature == *required));
-    let has_permission = cmd.permissions.is_empty()
-        || is_admin
-        || cmd
-            .permissions
-            .iter()
-            .any(|req| permissions.iter().any(|p| p == *req));
-
-    if !has_features || !has_permission {
+    if !command_is_available(cmd, is_admin, permissions, features) {
         let error_msg = t_args("cmd-unknown", &[("command", command_name)]);
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }

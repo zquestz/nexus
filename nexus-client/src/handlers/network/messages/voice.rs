@@ -119,6 +119,8 @@ impl NexusApp {
             }
         };
 
+        let participants = participants.unwrap_or_default();
+
         let (server_address, server_port) = {
             let Some(conn) = self.connections.get_mut(&connection_id) else {
                 return Task::none();
@@ -133,9 +135,22 @@ impl NexusApp {
             }
 
             let can_transmit = conn.has_permission(PERMISSION_VOICE_TALK);
+            if !target.starts_with('#') {
+                let self_nickname = fold_name(&conn.nickname);
+                let target_nickname = fold_name(&target);
+                let peer_is_present = participants.iter().any(|participant| {
+                    let participant = fold_name(participant);
+                    participant != self_nickname && participant == target_nickname
+                });
+                if peer_is_present {
+                    conn.user_message_voiced.insert(target_nickname);
+                } else {
+                    conn.user_message_voiced.remove(&target_nickname);
+                }
+            }
             conn.voice_session = Some(VoiceState::new_with_token(
                 target.clone(),
-                participants.unwrap_or_default(),
+                participants,
                 token,
                 can_transmit,
             ));
@@ -328,6 +343,8 @@ impl NexusApp {
                     .entry(fold_name(&target))
                     .or_default()
                     .insert(fold_name(&nickname));
+            } else {
+                conn.user_message_voiced.insert(fold_name(&nickname));
             }
 
             // Update voice session participants if we're in the same session
@@ -426,6 +443,8 @@ impl NexusApp {
                 && let Some(voiced) = conn.channel_voiced.get_mut(&fold_name(&target))
             {
                 voiced.remove(&fold_name(&nickname));
+            } else if !target.starts_with('#') {
+                conn.user_message_voiced.remove(&fold_name(&nickname));
             }
 
             // Update voice session participants if we're in the same session
@@ -581,6 +600,93 @@ mod tests {
 
         let _ = app.handle_voice_user_left(2, "Bob".to_string(), "#general".to_string());
         assert!(commands.try_recv().is_err());
+    }
+
+    #[test]
+    fn dm_voice_join_tracks_peer_when_not_in_voice() {
+        let mut app = NexusApp::default();
+        app.config.settings.show_join_leave_events = false;
+        let (mut conn, _rx) = test_connection_with_receiver(1, "me", "Alice");
+        conn.voice_session = None;
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_user_joined(1, "Alice".to_string(), "Alice".to_string());
+
+        assert!(
+            app.connections[&1]
+                .user_message_voiced
+                .contains(&fold_name("Alice"))
+        );
+    }
+
+    #[test]
+    fn dm_voice_left_clears_peer_when_not_in_voice() {
+        let mut app = NexusApp::default();
+        app.config.settings.show_join_leave_events = false;
+        let (mut conn, _rx) = test_connection_with_receiver(1, "me", "Alice");
+        conn.voice_session = None;
+        conn.user_message_voiced.insert(fold_name("Alice"));
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_user_left(1, "Alice".to_string(), "Alice".to_string());
+
+        assert!(
+            !app.connections[&1]
+                .user_message_voiced
+                .contains(&fold_name("Alice"))
+        );
+    }
+
+    #[test]
+    fn dm_voice_join_response_seeds_peer_presence() {
+        let mut app = NexusApp::default();
+        let (conn, _rx) = test_connection_with_receiver(1, "me", "Alice");
+        app.connections.insert(1, conn);
+
+        let token = Uuid::new_v4();
+        let _ = app.handle_voice_join_response(
+            1,
+            true,
+            Some(token),
+            Some("Alice".to_string()),
+            Some(vec!["me".to_string(), "Alice".to_string()]),
+            None,
+        );
+
+        assert!(
+            app.connections[&1]
+                .user_message_voiced
+                .contains(&fold_name("Alice"))
+        );
+        assert!(
+            !app.connections[&1]
+                .user_message_voiced
+                .contains(&fold_name("me"))
+        );
+    }
+
+    #[test]
+    fn dm_voice_join_response_clears_stale_peer_presence() {
+        let mut app = NexusApp::default();
+        let (mut conn, _rx) = test_connection_with_receiver(1, "me", "Alice");
+        conn.user_message_voiced.insert(fold_name("Alice"));
+        app.connections.insert(1, conn);
+
+        let token = Uuid::new_v4();
+        let _ = app.handle_voice_join_response(
+            1,
+            true,
+            Some(token),
+            Some("Alice".to_string()),
+            Some(vec!["me".to_string()]),
+            None,
+        );
+
+        assert!(
+            !app.connections[&1]
+                .user_message_voiced
+                .contains(&fold_name("Alice"))
+        );
     }
 
     #[test]

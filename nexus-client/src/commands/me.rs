@@ -33,7 +33,7 @@ pub fn execute(
         let error_msg = match e {
             MessageError::Empty => t("err-message-empty"),
             MessageError::TooLong => t_args(
-                "err-chat-too-long",
+                "err-message-too-long",
                 &[("max", &validators::MAX_MESSAGE_LENGTH.to_string())],
             ),
             MessageError::ContainsNewlines => t("err-message-contains-newlines"),

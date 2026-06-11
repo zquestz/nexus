@@ -66,12 +66,14 @@ permissions in `LoginResponse.permissions` still decide whether a user is
 allowed to perform an action. Features decide which live protocol surfaces this
 session can participate in:
 
-- `chat`: gates chat commands, direct messages, chat auto-join, and chat
-  broadcasts. A session without `chat` cannot participate in chat because it
-  would not receive the live chat event stream.
+- `chat`: gates chat-specific commands, direct messages, chat auto-join, and
+  chat broadcasts. A session without `chat` cannot participate in chat because
+  it would not receive the live chat event stream. Navigation-only commands
+  such as `/focus` may be available through another feature surface.
 - `voice`: gates voice join/leave signaling and voice notifications. Direct
   voice requires `voice`; channel voice also requires channel membership, which
-  is established through chat.
+  is established through chat. A voice-only session can still open a user
+  message tab with `/focus <nickname>` before joining direct voice.
 - `news`: gates unsolicited `NewsUpdated` broadcasts. Direct news requests
   remain permission-gated request/response operations.
 - `files`: advertises file UI/support capability. Direct file requests and

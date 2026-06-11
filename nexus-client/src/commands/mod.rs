@@ -81,7 +81,7 @@ use nexus_common::protocol::ChatAction;
 use crate::NexusApp;
 use crate::constants::ERR_WHITESPACE_CHAR_AT_RFIND_INDEX;
 use crate::i18n::t_args;
-use crate::network::FEATURE_CHAT;
+use crate::network::{FEATURE_CHAT, FEATURE_VOICE};
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_JOIN,
@@ -109,6 +109,14 @@ pub struct CommandInfo {
     pub permissions: &'static [&'static str],
     /// Required negotiated features, if this command belongs to a feature family.
     pub features: &'static [&'static str],
+    /// Whether all listed features are required, or any one listed feature is enough.
+    feature_mode: FeatureMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FeatureMode {
+    All,
+    Any,
 }
 
 /// Command registration entry - links metadata to handler
@@ -127,6 +135,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-away-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: away::execute,
     },
@@ -138,6 +147,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-back-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: back::execute,
     },
@@ -149,6 +159,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-ban-usage",
             permissions: &[PERMISSION_BAN_CREATE],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: ban::execute,
     },
@@ -160,6 +171,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-bans-usage",
             permissions: &[PERMISSION_BAN_LIST],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: bans::execute,
     },
@@ -171,6 +183,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-broadcast-usage",
             permissions: &[PERMISSION_USER_BROADCAST],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: broadcast::execute,
     },
@@ -182,6 +195,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-channels-usage",
             permissions: &[PERMISSION_CHAT_LIST],
             features: &[FEATURE_CHAT],
+            feature_mode: FeatureMode::All,
         },
         handler: channels::execute,
     },
@@ -193,6 +207,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-clear-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: clear::execute,
     },
@@ -203,7 +218,8 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-focus-desc",
             usage_key: "cmd-focus-usage",
             permissions: &[],
-            features: &[FEATURE_CHAT],
+            features: &[FEATURE_CHAT, FEATURE_VOICE],
+            feature_mode: FeatureMode::Any,
         },
         handler: focus::execute,
     },
@@ -215,6 +231,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-help-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: help::execute,
     },
@@ -226,6 +243,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-userinfo-usage",
             permissions: &[PERMISSION_USER_INFO],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: user_info::execute,
     },
@@ -237,6 +255,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-join-usage",
             permissions: &[PERMISSION_CHAT_JOIN],
             features: &[FEATURE_CHAT],
+            feature_mode: FeatureMode::All,
         },
         handler: join::execute,
     },
@@ -248,6 +267,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-kick-usage",
             permissions: &[PERMISSION_USER_KICK],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: user_kick::execute,
     },
@@ -259,6 +279,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-leave-usage",
             permissions: &[],
             features: &[FEATURE_CHAT],
+            feature_mode: FeatureMode::All,
         },
         handler: leave::execute,
     },
@@ -270,6 +291,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-list-usage",
             permissions: &[PERMISSION_USER_LIST],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: list::execute,
     },
@@ -281,6 +303,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-me-usage",
             permissions: &[PERMISSION_CHAT_SEND],
             features: &[FEATURE_CHAT],
+            feature_mode: FeatureMode::All,
         },
         handler: me::execute,
     },
@@ -292,6 +315,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-message-usage",
             permissions: &[PERMISSION_USER_MESSAGE],
             features: &[FEATURE_CHAT],
+            feature_mode: FeatureMode::All,
         },
         handler: message::execute,
     },
@@ -303,6 +327,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-ping-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: ping::execute,
     },
@@ -314,6 +339,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-reindex-usage",
             permissions: &[PERMISSION_FILE_REINDEX],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: reindex::execute,
     },
@@ -325,6 +351,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-secret-usage",
             permissions: &[],
             features: &[FEATURE_CHAT],
+            feature_mode: FeatureMode::All,
         },
         handler: secret::execute,
     },
@@ -336,6 +363,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-serverinfo-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: server_info::execute,
     },
@@ -347,6 +375,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-status-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: status::execute,
     },
@@ -358,6 +387,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-topic-usage",
             permissions: &[PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT],
             features: &[FEATURE_CHAT],
+            feature_mode: FeatureMode::All,
         },
         handler: topic::execute,
     },
@@ -369,6 +399,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-trust-usage",
             permissions: &[PERMISSION_TRUST_CREATE],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: trust::execute,
     },
@@ -380,6 +411,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-trusted-usage",
             permissions: &[PERMISSION_TRUST_LIST],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: trusted::execute,
     },
@@ -391,6 +423,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-unban-usage",
             permissions: &[PERMISSION_BAN_DELETE],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: unban::execute,
     },
@@ -402,6 +435,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-untrust-usage",
             permissions: &[PERMISSION_TRUST_DELETE],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: untrust::execute,
     },
@@ -413,6 +447,7 @@ static COMMANDS: &[CommandRegistration] = &[
             usage_key: "cmd-window-usage",
             permissions: &[],
             features: &[],
+            feature_mode: FeatureMode::All,
         },
         handler: window::execute,
     },
@@ -519,16 +554,22 @@ pub fn last_word(input: &str) -> (usize, &str) {
     }
 }
 
-fn command_is_available(
+pub(crate) fn command_is_available(
     info: &CommandInfo,
     is_admin: bool,
     permissions: &[String],
     features: &[String],
 ) -> bool {
-    let has_features = info
-        .features
-        .iter()
-        .all(|required| features.iter().any(|feature| feature == *required));
+    let has_required_feature =
+        |required: &&str| features.iter().any(|feature| feature == *required);
+    let has_features = if info.features.is_empty() {
+        true
+    } else {
+        match info.feature_mode {
+            FeatureMode::All => info.features.iter().all(has_required_feature),
+            FeatureMode::Any => info.features.iter().any(has_required_feature),
+        }
+    };
     let has_permission = info.permissions.is_empty()
         || is_admin
         || info
@@ -676,6 +717,10 @@ mod tests {
 
     fn chat_features() -> Vec<String> {
         vec![FEATURE_CHAT.to_string()]
+    }
+
+    fn voice_features() -> Vec<String> {
+        vec![FEATURE_VOICE.to_string()]
     }
 
     fn test_connection_with_receiver(
@@ -967,6 +1012,26 @@ mod tests {
         let features = chat_features();
         let commands: Vec<_> = command_list_for_permissions(false, &perms, &features).collect();
         assert!(commands.iter().any(|c| c.name == "join"));
+    }
+
+    #[test]
+    fn test_focus_command_available_with_chat_or_voice_feature() {
+        let focus = get_command_info("focus").expect("focus command should exist");
+
+        assert_eq!(focus.feature_mode, FeatureMode::Any);
+        assert!(!command_is_available(focus, false, &[], &[]));
+        assert!(command_is_available(focus, false, &[], &chat_features()));
+        assert!(command_is_available(focus, false, &[], &voice_features()));
+    }
+
+    #[test]
+    fn test_command_list_allows_focus_with_voice_feature_without_chat() {
+        let perms = vec!["chat_join".to_string()];
+        let features = voice_features();
+        let commands: Vec<_> = command_list_for_permissions(false, &perms, &features).collect();
+
+        assert!(commands.iter().any(|c| c.name == "focus"));
+        assert!(!commands.iter().any(|c| c.name == "join"));
     }
 
     #[test]
@@ -1471,6 +1536,12 @@ mod tests {
         let names = command_names_for_completion(false, &perms, &features);
         assert!(names.iter().any(|n| n == "join"));
         assert!(names.iter().any(|n| n == "j"));
+        assert!(names.iter().any(|n| n == "focus"));
+        assert!(names.iter().any(|n| n == "f"));
+
+        let names = command_names_for_completion(false, &perms, &voice_features());
+        assert!(!names.iter().any(|n| n == "join"));
+        assert!(!names.iter().any(|n| n == "j"));
         assert!(names.iter().any(|n| n == "focus"));
         assert!(names.iter().any(|n| n == "f"));
     }

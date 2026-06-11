@@ -312,6 +312,9 @@ pub struct ServerConnection {
     /// Nicknames currently in voice per channel (lowercase channel name -> set of nicknames)
     /// Tracked even when we're not in voice, so we can show voice indicators in user list
     pub channel_voiced: HashMap<String, HashSet<String>>,
+    /// DM peers currently in voice (folded nickname).
+    /// Tracked even when we're not in voice, so a DM tab can show that the peer is waiting.
+    pub user_message_voiced: HashSet<String>,
     /// Last known activity time for this connection (reset on keyboard events only)
     pub last_activity: std::time::Instant,
     /// Our session's away state — updated only from our own AwayResponse/BackResponse,
@@ -395,6 +398,10 @@ impl ServerConnection {
         // cleared and rebuilt from fresh voice packets/events.
         if let Some(voice_session) = &mut self.voice_session {
             voice_session.rename_user(old_username, new_username);
+        }
+
+        if self.user_message_voiced.remove(&old_folded) {
+            self.user_message_voiced.insert(fold_name(new_username));
         }
 
         // A moderation dialog (kick/ban) open against the renamed user must follow
@@ -682,6 +689,7 @@ impl ServerConnection {
             disconnect_dialog: None,
             voice_session: None,
             channel_voiced: HashMap::new(),
+            user_message_voiced: HashSet::new(),
             last_activity: std::time::Instant::now(),
             is_away: false,
             is_auto_away: false,
@@ -1002,6 +1010,17 @@ mod tests {
             conn.pending_requests.get(&unrelated_id),
             Some(ResponseRouting::OpenMessageTab(name)) if name == "alice"
         ));
+    }
+
+    #[test]
+    fn apply_user_rename_rekeys_dm_voice_presence() {
+        let mut conn = test_connection();
+        conn.user_message_voiced.insert(fold_name("bob"));
+
+        conn.apply_user_rename("bob", "charlie");
+
+        assert!(!conn.user_message_voiced.contains(&fold_name("bob")));
+        assert!(conn.user_message_voiced.contains(&fold_name("charlie")));
     }
 
     // Scenario 3: a case-only rename bob -> Bob still relabels the tab.

@@ -6,9 +6,11 @@
 //! - User message tab: You + the other user (or just you if they're offline)
 //!
 //! Voice indicators:
-//! - Headphones icon: User is in voice (same session as current user)
+//! - Headphones icon: User is in voice for the visible channel/DM
 //! - Speaker icon with highlight: User is currently speaking
 //! - Mute button: Client-side mute (stops hearing that user)
+
+use std::collections::{HashMap, HashSet};
 
 use iced::widget::text::Wrapping;
 use iced::widget::{
@@ -36,7 +38,7 @@ use crate::style::{
     tooltip_container_style, ui, user_toolbar_separator_style,
 };
 use crate::types::ActivePanel;
-use crate::types::{ChatTab, Message, ServerConnection, UserInfo};
+use crate::types::{ChatTab, Message, ServerConnection, UserInfo, VoiceState};
 
 // ============================================================================
 // Helper Functions
@@ -102,6 +104,68 @@ fn toolbar_separator<'a>() -> iced::widget::Container<'a, Message> {
         .width(Fill)
         .height(SEPARATOR_HEIGHT)
         .style(user_toolbar_separator_style)
+}
+
+fn visible_voice_target(active_chat_tab: &ChatTab) -> Option<String> {
+    match active_chat_tab {
+        ChatTab::Channel(name) | ChatTab::UserMessage(name) => Some(fold_name(name)),
+        ChatTab::Console => None,
+    }
+}
+
+fn active_voice_session_contains(
+    active_chat_tab: &ChatTab,
+    voice_session: Option<&VoiceState>,
+    nickname_lower: &str,
+) -> bool {
+    let Some(tab_target) = visible_voice_target(active_chat_tab) else {
+        return false;
+    };
+
+    voice_session.is_some_and(|session| {
+        fold_name(&session.target) == tab_target
+            && session
+                .participants
+                .iter()
+                .any(|participant| fold_name(participant) == nickname_lower)
+    })
+}
+
+fn is_user_in_visible_voice(
+    active_chat_tab: &ChatTab,
+    voice_session: Option<&VoiceState>,
+    channel_voiced: &HashMap<String, HashSet<String>>,
+    user_message_voiced: &HashSet<String>,
+    nickname: &str,
+) -> bool {
+    let nickname_lower = fold_name(nickname);
+    let tracked_presence = match active_chat_tab {
+        ChatTab::Channel(channel_name) => channel_voiced
+            .get(&fold_name(channel_name))
+            .is_some_and(|users| users.contains(&nickname_lower)),
+        ChatTab::UserMessage(other_nickname) => {
+            fold_name(other_nickname) == nickname_lower
+                && user_message_voiced.contains(&nickname_lower)
+        }
+        ChatTab::Console => false,
+    };
+
+    tracked_presence
+        || active_voice_session_contains(active_chat_tab, voice_session, &nickname_lower)
+}
+
+fn is_user_speaking_in_visible_voice(
+    active_chat_tab: &ChatTab,
+    voice_session: Option<&VoiceState>,
+    nickname: &str,
+) -> bool {
+    let Some(tab_target) = visible_voice_target(active_chat_tab) else {
+        return false;
+    };
+
+    voice_session.is_some_and(|session| {
+        fold_name(&session.target) == tab_target && session.is_speaking(nickname)
+    })
 }
 
 // ============================================================================
@@ -383,43 +447,19 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                 None
             };
 
-            // Check if user is in voice for the current tab
-            // Only show voice indicators when viewing the channel/target we're in voice for
-            let nickname_lower = fold_name(nickname);
-            let current_tab_target = match &conn.active_chat_tab {
-                ChatTab::Channel(name) => Some(fold_name(name)),
-                ChatTab::UserMessage(name) => Some(fold_name(name)),
-                ChatTab::Console => None,
-            };
+            let is_in_voice = is_user_in_visible_voice(
+                &conn.active_chat_tab,
+                conn.voice_session.as_ref(),
+                &conn.channel_voiced,
+                &conn.user_message_voiced,
+                nickname,
+            );
 
-            let is_in_voice = if let Some(ref session) = conn.voice_session {
-                // We're in voice - only show indicators if viewing the same target
-                let session_target = fold_name(&session.target);
-                current_tab_target
-                    .as_ref()
-                    .is_some_and(|tab| *tab == session_target)
-                    && session
-                        .participants
-                        .iter()
-                        .any(|p| fold_name(p) == nickname_lower)
-            } else if let ChatTab::Channel(channel_name) = &conn.active_chat_tab {
-                // Not in voice, but viewing a channel - check channel_voiced
-                conn.channel_voiced
-                    .get(&fold_name(channel_name))
-                    .map(|users| users.contains(&nickname_lower))
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-
-            let is_speaking = conn.voice_session.as_ref().is_some_and(|s| {
-                // Only show speaking indicator if viewing the same target as our voice session
-                let session_target = fold_name(&s.target);
-                current_tab_target
-                    .as_ref()
-                    .is_some_and(|tab| *tab == session_target)
-                    && s.is_speaking(nickname)
-            });
+            let is_speaking = is_user_speaking_in_visible_voice(
+                &conn.active_chat_tab,
+                conn.voice_session.as_ref(),
+                nickname,
+            );
 
             // Build nickname as rich_text with inline away/voice icons
             // First icon after nickname uses regular space (word break point).
@@ -544,4 +584,96 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
         .height(Fill)
         .style(sidebar_panel_style)
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn voiced_set(nicknames: &[&str]) -> HashSet<String> {
+        nicknames
+            .iter()
+            .map(|nickname| fold_name(nickname))
+            .collect()
+    }
+
+    #[test]
+    fn channel_voice_presence_uses_visible_tab_while_in_different_voice() {
+        let active_tab = ChatTab::Channel("#support".to_string());
+        let voice_session = VoiceState::new("#general".to_string(), vec!["Alice".to_string()]);
+        let mut channel_voiced = HashMap::new();
+        channel_voiced.insert(fold_name("#support"), voiced_set(&["Bob"]));
+        let user_message_voiced = HashSet::new();
+
+        assert!(is_user_in_visible_voice(
+            &active_tab,
+            Some(&voice_session),
+            &channel_voiced,
+            &user_message_voiced,
+            "Bob",
+        ));
+        assert!(!is_user_in_visible_voice(
+            &active_tab,
+            Some(&voice_session),
+            &channel_voiced,
+            &user_message_voiced,
+            "Alice",
+        ));
+    }
+
+    #[test]
+    fn dm_voice_presence_uses_visible_tab_while_in_different_voice() {
+        let active_tab = ChatTab::UserMessage("Bob".to_string());
+        let voice_session = VoiceState::new("#general".to_string(), vec!["Alice".to_string()]);
+        let channel_voiced = HashMap::new();
+        let user_message_voiced = voiced_set(&["Bob"]);
+
+        assert!(is_user_in_visible_voice(
+            &active_tab,
+            Some(&voice_session),
+            &channel_voiced,
+            &user_message_voiced,
+            "Bob",
+        ));
+        assert!(!is_user_in_visible_voice(
+            &active_tab,
+            Some(&voice_session),
+            &channel_voiced,
+            &user_message_voiced,
+            "Alice",
+        ));
+    }
+
+    #[test]
+    fn active_voice_session_supplements_visible_tab_presence() {
+        let active_tab = ChatTab::Channel("#general".to_string());
+        let voice_session = VoiceState::new("#general".to_string(), vec!["Alice".to_string()]);
+        let channel_voiced = HashMap::new();
+        let user_message_voiced = HashSet::new();
+
+        assert!(is_user_in_visible_voice(
+            &active_tab,
+            Some(&voice_session),
+            &channel_voiced,
+            &user_message_voiced,
+            "Alice",
+        ));
+    }
+
+    #[test]
+    fn speaking_indicator_stays_scoped_to_active_voice_session() {
+        let mut voice_session = VoiceState::new("#general".to_string(), vec!["Bob".to_string()]);
+        voice_session.set_speaking("Bob");
+
+        assert!(is_user_speaking_in_visible_voice(
+            &ChatTab::Channel("#general".to_string()),
+            Some(&voice_session),
+            "Bob",
+        ));
+        assert!(!is_user_speaking_in_visible_voice(
+            &ChatTab::Channel("#support".to_string()),
+            Some(&voice_session),
+            "Bob",
+        ));
+    }
 }

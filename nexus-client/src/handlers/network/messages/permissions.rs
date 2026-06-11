@@ -11,7 +11,9 @@ use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{ChatMessage, Message};
-use crate::views::constants::{PERMISSION_USER_LIST, PERMISSION_VOICE_TALK};
+use crate::views::constants::{
+    PERMISSION_USER_LIST, PERMISSION_VOICE_LISTEN, PERMISSION_VOICE_TALK,
+};
 
 impl NexusApp {
     /// Handle permissions updated notification
@@ -50,13 +52,20 @@ impl NexusApp {
         };
 
         let had_user_list = conn.has_permission(PERMISSION_USER_LIST);
+        let had_voice_listen = conn.has_permission(PERMISSION_VOICE_LISTEN);
         let had_voice_talk = conn.has_permission(PERMISSION_VOICE_TALK);
 
         let has_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
+        let has_voice_listen = is_admin || permissions.iter().any(|p| p == PERMISSION_VOICE_LISTEN);
         let has_voice_talk = is_admin || permissions.iter().any(|p| p == PERMISSION_VOICE_TALK);
 
         conn.is_admin = is_admin;
         conn.permissions = permissions;
+
+        if had_voice_listen && !has_voice_listen {
+            conn.channel_voiced.clear();
+            conn.user_message_voiced.clear();
+        }
 
         // Update server info fields unconditionally (None means "cleared/not set").
         // Exception: image uses a guard because it's not sent in PermissionsUpdated,
@@ -122,5 +131,81 @@ impl NexusApp {
         );
 
         Task::batch([voice_task, notice_task])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use nexus_common::names::fold_name;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+
+    fn test_connection(connection_id: usize) -> ServerConnection {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: "me".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    #[test]
+    fn removing_voice_listen_clears_voice_presence_caches() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let mut conn = test_connection(1);
+        conn.permissions.push(PERMISSION_VOICE_LISTEN.to_string());
+        conn.channel_voiced
+            .entry(fold_name("#general"))
+            .or_default()
+            .insert(fold_name("Alice"));
+        conn.user_message_voiced.insert(fold_name("Bob"));
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_permissions_updated(1, false, Vec::new(), None);
+
+        let conn = app.connections.get(&1).expect("connection remains");
+        assert!(conn.channel_voiced.is_empty());
+        assert!(conn.user_message_voiced.is_empty());
     }
 }

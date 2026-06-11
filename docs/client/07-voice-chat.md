@@ -52,6 +52,10 @@ Configure audio devices in **Settings > Audio** before joining voice.
 2. Click the **microphone icon** (🎤) in the input bar
 3. Voice starts when the other user also joins
 
+If you do not already have a tab open, use `/focus nickname` to open the user
+message tab first. `/focus` is available when either chat or voice is enabled,
+so a voice-only session can still start direct voice.
+
 **Note:** You cannot join voice from the Console tab.
 
 ### One Session at a Time

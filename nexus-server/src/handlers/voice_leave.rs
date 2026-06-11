@@ -180,6 +180,13 @@ mod tests {
         }
     }
 
+    fn expect_no_session_message(rx: &mut SessionRx) {
+        assert!(
+            rx.try_recv().is_err(),
+            "session should not receive another voice notification"
+        );
+    }
+
     fn drain_session_rx(rx: &mut SessionRx) {
         while rx.try_recv().is_ok() {}
     }
@@ -380,6 +387,7 @@ mod tests {
         .await
         .unwrap();
         let _ = read_server_message(&mut test_ctx).await;
+        expect_voice_user_joined(&mut test_ctx.rx, "bob", "bob").await;
 
         handle_voice_join(
             "bob".to_string(),
@@ -407,6 +415,175 @@ mod tests {
 
         expect_voice_user_left(&mut test_ctx.rx, "alice", "alice").await;
         expect_voice_user_left(&mut bob_second_rx, "alice", "alice").await;
+        expect_no_session_message(&mut test_ctx.rx);
+        expect_no_session_message(&mut bob_second_rx);
+    }
+
+    #[tokio::test]
+    async fn test_voice_leave_user_message_notifies_target_not_in_voice() {
+        let mut test_ctx = create_test_context().await;
+
+        let alice_session = login_voice_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        let _bob_session = login_voice_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        handle_voice_join(
+            "bob".to_string(),
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(&mut test_ctx).await;
+        expect_voice_user_joined(&mut test_ctx.rx, "alice", "alice").await;
+
+        handle_voice_leave(Some(alice_session), &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceLeaveResponse {
+                success: true,
+                error: None,
+            }
+        ));
+
+        expect_voice_user_left(&mut test_ctx.rx, "alice", "alice").await;
+        expect_no_session_message(&mut test_ctx.rx);
+    }
+
+    #[tokio::test]
+    async fn test_voice_leave_user_message_skips_target_without_voice_listen() {
+        let mut test_ctx = create_test_context().await;
+
+        let alice_session = login_voice_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        let (_bob_session, mut bob_rx) =
+            login_observer_user(&mut test_ctx, "bob", "password", &[], voice_features()).await;
+
+        handle_voice_join(
+            "bob".to_string(),
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+        expect_no_session_message(&mut bob_rx);
+
+        handle_voice_leave(Some(alice_session), &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceLeaveResponse {
+                success: true,
+                error: None,
+            }
+        ));
+        expect_no_session_message(&mut bob_rx);
+    }
+
+    #[tokio::test]
+    async fn test_voice_leave_user_message_keeps_quiet_while_same_nickname_session_remains() {
+        let mut test_ctx = create_test_context().await;
+
+        let alice_session = login_voice_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+        let (alice_second_session, _alice_second_rx) =
+            add_observer_session_for_existing_regular_user_with_features(
+                &mut test_ctx,
+                "alice",
+                &[Permission::VoiceListen],
+                voice_features(),
+            )
+            .await;
+
+        let (_bob_session, mut bob_rx) = login_observer_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen],
+            voice_features(),
+        )
+        .await;
+
+        handle_voice_join(
+            "bob".to_string(),
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+        expect_voice_user_joined(&mut bob_rx, "alice", "alice").await;
+
+        handle_voice_join(
+            "bob".to_string(),
+            Some(alice_second_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+        expect_no_session_message(&mut bob_rx);
+
+        handle_voice_leave(Some(alice_session), &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceLeaveResponse {
+                success: true,
+                error: None,
+            }
+        ));
+        expect_no_session_message(&mut bob_rx);
     }
 
     #[tokio::test]

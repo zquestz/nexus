@@ -67,17 +67,20 @@ pub async fn send_voice_leave_notifications(
                 }
             }
         } else {
-            // User messages: only notify the other participant.
-            for participant_nickname in &info.remaining_participants {
+            // User messages: notify the other DM participant even if they
+            // are not currently in voice, so their waiting indicator clears.
+            // Self-DM voice has no "other" participant; `self_target` is empty.
+            if !info.self_target.is_empty() {
                 let leave_notification = ServerMessage::VoiceUserLeft {
                     nickname: info.session.nickname.clone(),
                     target: info.broadcast_target.clone(),
                 };
 
                 user_manager
-                    .broadcast_to_nickname_with_feature(
-                        participant_nickname,
+                    .broadcast_to_nickname_with_feature_and_permission(
+                        &info.self_target,
                         FEATURE_VOICE,
+                        Permission::VoiceListen,
                         &leave_notification,
                     )
                     .await;

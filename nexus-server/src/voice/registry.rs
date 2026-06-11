@@ -23,7 +23,6 @@ pub struct VoiceLeaveInfo {
     pub self_target: String,
     /// Whether this was the last session for the nickname.
     pub should_broadcast: bool,
-    pub remaining_participants: Vec<String>,
     pub broadcast_target: String,
 }
 
@@ -163,25 +162,22 @@ impl VoiceRegistry {
                 .unwrap_or_default()
         };
 
-        let (should_broadcast, remaining_participants, broadcast_target) =
-            if nickname_still_in_voice {
-                (false, Vec::new(), String::new())
+        let (should_broadcast, broadcast_target) = if nickname_still_in_voice {
+            (false, String::new())
+        } else {
+            let target = if is_channel {
+                session.target.first().cloned().unwrap_or_default()
             } else {
-                let participants = self.get_participants(&target_key).await;
-                let target = if is_channel {
-                    session.target.first().cloned().unwrap_or_default()
-                } else {
-                    // User messages: remaining participants get the leaver's nickname.
-                    session.nickname.clone()
-                };
-                (true, participants, target)
+                // User messages: the other participant gets the leaver's nickname.
+                session.nickname.clone()
             };
+            (true, target)
+        };
 
         VoiceLeaveInfo {
             session,
             self_target,
             should_broadcast,
-            remaining_participants,
             broadcast_target,
         }
     }
