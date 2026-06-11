@@ -128,7 +128,9 @@ The `nexus://` scheme is recognized in chat messages and displayed as clickable 
 When clicked:
 
 - `nexus://` links navigate internally (handled by the client)
-- Other URLs open in the system browser
+- `http://`, `https://`, `ftp://`, `ftps://`, `sftp://`, and
+  `mailto:` links open in the system browser or registered OS handler
+- Other schemes are ignored
 
 News posts render links via Markdown syntax.
 

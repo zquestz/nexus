@@ -27,6 +27,10 @@ News posts support markdown formatting:
 - **Blockquotes** — `> quoted text`
 - **Tables** — Standard markdown table syntax
 
+News links open only for `http://`, `https://`, `ftp://`, `ftps://`,
+`sftp://`, `mailto:`, and internal `nexus://` URLs. Other URL schemes are
+ignored.
+
 ### Images
 
 News posts can include images alongside or instead of text.

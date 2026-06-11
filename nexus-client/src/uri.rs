@@ -353,6 +353,19 @@ pub fn is_nexus_uri(s: &str) -> bool {
     s.starts_with("nexus://")
 }
 
+/// Return true when a non-Nexus URL is safe to hand to the OS/browser.
+pub fn is_allowed_external_url(s: &str) -> bool {
+    let url = s.trim();
+    [
+        "http://", "https://", "ftp://", "ftps://", "sftp://", "mailto:",
+    ]
+    .iter()
+    .any(|prefix| {
+        url.get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+    })
+}
+
 /// Format a `host:port` endpoint string for **display** purposes.
 ///
 /// Brackets IPv6 hosts so the rendered string is unambiguous and
@@ -760,6 +773,25 @@ mod tests {
         assert!(!is_nexus_uri("http://example.com"));
         assert!(!is_nexus_uri("https://example.com"));
         assert!(!is_nexus_uri("example.com"));
+    }
+
+    #[test]
+    fn test_allowed_external_url_schemes() {
+        assert!(is_allowed_external_url("http://example.com"));
+        assert!(is_allowed_external_url("https://example.com"));
+        assert!(is_allowed_external_url("ftp://example.com/file.zip"));
+        assert!(is_allowed_external_url("ftps://example.com/file.zip"));
+        assert!(is_allowed_external_url("sftp://example.com/file.zip"));
+        assert!(is_allowed_external_url("mailto:alice@example.com"));
+        assert!(is_allowed_external_url("HTTPS://example.com"));
+        assert!(is_allowed_external_url("  sftp://example.com/file.zip  "));
+
+        assert!(!is_allowed_external_url("nexus://example.com"));
+        assert!(!is_allowed_external_url("file:///etc/passwd"));
+        assert!(!is_allowed_external_url("smb://server/share"));
+        assert!(!is_allowed_external_url("data:text/plain,hello"));
+        assert!(!is_allowed_external_url("javascript:alert(1)"));
+        assert!(!is_allowed_external_url("example.com"));
     }
 
     #[test]

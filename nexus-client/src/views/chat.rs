@@ -124,7 +124,7 @@ fn split_into_segments(text: &str) -> Vec<TextSegment<'_>> {
 /// If the URL doesn't have a scheme, prepend "https://".
 /// nexus:// URIs are preserved as-is for internal handling.
 fn make_openable_url(url: &str) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("nexus://") {
+    if crate::uri::is_nexus_uri(url) || crate::uri::is_allowed_external_url(url) {
         url.to_string()
     } else {
         format!("https://{}", url)
@@ -663,5 +663,43 @@ pub fn chat_view<'a>(
         .into()
     } else {
         chat_content.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::make_openable_url;
+
+    #[test]
+    fn make_openable_url_preserves_allowed_schemes() {
+        assert_eq!(
+            make_openable_url("http://example.com"),
+            "http://example.com"
+        );
+        assert_eq!(
+            make_openable_url("https://example.com"),
+            "https://example.com"
+        );
+        assert_eq!(
+            make_openable_url("ftp://example.com/file"),
+            "ftp://example.com/file"
+        );
+        assert_eq!(
+            make_openable_url("ftps://example.com/file"),
+            "ftps://example.com/file"
+        );
+        assert_eq!(
+            make_openable_url("sftp://example.com/file"),
+            "sftp://example.com/file"
+        );
+        assert_eq!(
+            make_openable_url("nexus://example.com/news"),
+            "nexus://example.com/news"
+        );
+    }
+
+    #[test]
+    fn make_openable_url_defaults_schemeless_to_https() {
+        assert_eq!(make_openable_url("example.com"), "https://example.com");
     }
 }
