@@ -2,6 +2,7 @@
 
 use nexus_common::names::fold_name;
 use nexus_common::protocol::NewsItem;
+use nexus_common::validators::ImageDecodeProfile;
 
 use crate::image::{CachedImage, decode_data_uri_max_width};
 use crate::style::NEWS_IMAGE_MAX_CACHE_WIDTH;
@@ -179,7 +180,11 @@ impl NewsManagementState {
         self.cached_form_image = if self.form_image.is_empty() {
             None
         } else {
-            decode_data_uri_max_width(&self.form_image, NEWS_IMAGE_MAX_CACHE_WIDTH)
+            decode_data_uri_max_width(
+                &self.form_image,
+                NEWS_IMAGE_MAX_CACHE_WIDTH,
+                ImageDecodeProfile::News,
+            )
         };
         self.form_error = None;
 

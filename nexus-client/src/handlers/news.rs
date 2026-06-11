@@ -3,7 +3,7 @@
 use iced::Task;
 use iced::widget::text_editor;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, NewsBodyError};
+use nexus_common::validators::{self, ImageDecodeProfile, NewsBodyError};
 use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
@@ -302,7 +302,11 @@ impl NexusApp {
 
         match result {
             Ok(data_uri) => {
-                let cached = decode_data_uri_max_width(&data_uri, NEWS_IMAGE_MAX_CACHE_WIDTH);
+                let cached = decode_data_uri_max_width(
+                    &data_uri,
+                    NEWS_IMAGE_MAX_CACHE_WIDTH,
+                    ImageDecodeProfile::News,
+                );
                 if cached.is_some() {
                     conn.news_management.form_image = data_uri;
                     conn.news_management.cached_form_image = cached;

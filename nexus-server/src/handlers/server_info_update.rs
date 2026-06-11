@@ -9,9 +9,8 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
     self, BandwidthChunkSizeError, MAX_BANDWIDTH_CHUNK_SIZE, MIN_BANDWIDTH_CHUNK_SIZE,
-    PublicAddressError, ServerDescriptionError, ServerImageError, ServerNameError,
-    validate_bandwidth_chunk_size, validate_channel, validate_public_address,
-    validate_server_description, validate_server_image, validate_server_name,
+    PublicAddressError, ServerDescriptionError, ServerNameError, validate_bandwidth_chunk_size,
+    validate_channel, validate_public_address, validate_server_description, validate_server_name,
 };
 
 use super::{
@@ -24,9 +23,12 @@ use super::{
     err_public_address_contains_zone_id, err_public_address_invalid_format,
     err_public_address_too_long, err_server_description_contains_newlines,
     err_server_description_invalid_characters, err_server_description_too_long,
-    err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
     err_server_name_contains_newlines, err_server_name_empty, err_server_name_invalid_characters,
     err_server_name_too_long,
+};
+#[cfg(test)]
+use super::{
+    err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
 };
 use crate::constants::{
     HANDLER_SERVER_INFO_UPDATE, LOG_EGRESS_CHUNK_SIZE_UPDATE_FAILED, LOG_EGRESS_RATE_UPDATE_FAILED,
@@ -38,7 +40,7 @@ use crate::constants::{
     LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT,
     LOG_SERVER_INFO_DB_PUBLIC_ADDRESS, LOG_SERVER_INFO_DB_REINDEX,
     LOG_SERVER_INFO_DB_SCHEDULER_CHUNK_SIZE, LOG_SERVER_INFO_DB_TRANSFERS,
-    LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
+    LOG_SERVER_INFO_IMAGE_VALIDATE_ERROR, LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
 };
 use crate::db::{ChannelDb, ConfigDb, channels::ChannelSettings};
 
@@ -243,13 +245,14 @@ where
     // Empty string clears the image (skip validation in that case).
     if let Some(ref img) = image
         && !img.is_empty()
-        && let Err(e) = validate_server_image(img)
+        && let Err(error_msg) = super::validate_server_image_blocking(
+            img,
+            ctx.locale,
+            ctx.peer_addr,
+            LOG_SERVER_INFO_IMAGE_VALIDATE_ERROR,
+        )
+        .await
     {
-        let error_msg = match e {
-            ServerImageError::TooLarge => err_server_image_too_large(ctx.locale),
-            ServerImageError::InvalidFormat => err_server_image_invalid_format(ctx.locale),
-            ServerImageError::UnsupportedType => err_server_image_unsupported_type(ctx.locale),
-        };
         return send_failure(ctx, error_msg).await;
     }
 
@@ -604,6 +607,8 @@ mod tests {
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
     };
+
+    const VALID_PNG_DATA_URI: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
     #[tokio::test]
     async fn test_server_info_update_requires_login() {
@@ -1481,7 +1486,7 @@ mod tests {
         test_ctx
             .db
             .config
-            .set_server_image("data:image/png;base64,iVBORw0KGgo=")
+            .set_server_image(VALID_PNG_DATA_URI)
             .await
             .unwrap();
 

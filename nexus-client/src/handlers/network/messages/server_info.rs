@@ -3,7 +3,7 @@
 use iced::Task;
 use nexus_common::protocol::ServerInfo;
 
-use nexus_common::validators::PasswordStrength;
+use nexus_common::validators::{ImageDecodeProfile, PasswordStrength};
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
@@ -52,7 +52,11 @@ impl NexusApp {
             conn.cached_server_image = if image.is_empty() {
                 None
             } else {
-                decode_data_uri_max_width(&image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+                decode_data_uri_max_width(
+                    &image,
+                    SERVER_IMAGE_MAX_CACHE_WIDTH,
+                    ImageDecodeProfile::Server,
+                )
             };
             conn.server_image = image;
         }

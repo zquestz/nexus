@@ -6,6 +6,7 @@ use crate::config::events::EventType;
 use crate::avatar::generate_identicon;
 use crate::image::{CachedImage, decode_data_uri_square};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
+use nexus_common::validators::ImageDecodeProfile;
 
 // =============================================================================
 // Settings Tab
@@ -94,11 +95,9 @@ impl SettingsFormState {
     /// The `last_event_type` parameter restores the previously selected event type in the Events tab.
     pub fn new(config: &Config, last_tab: SettingsTab, last_event_type: EventType) -> Self {
         // Decode avatar from config if present
-        let cached_avatar = config
-            .settings
-            .avatar
-            .as_ref()
-            .and_then(|data_uri| decode_data_uri_square(data_uri, AVATAR_MAX_CACHE_SIZE));
+        let cached_avatar = config.settings.avatar.as_ref().and_then(|data_uri| {
+            decode_data_uri_square(data_uri, AVATAR_MAX_CACHE_SIZE, ImageDecodeProfile::Avatar)
+        });
         // Generate default avatar for settings preview
         let default_avatar = generate_identicon("default");
 

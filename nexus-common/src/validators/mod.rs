@@ -20,6 +20,8 @@ mod error;
 mod features;
 mod file_path;
 mod group_name;
+#[cfg(feature = "image-decode")]
+mod image_decode;
 mod ip_rule_reason;
 mod kick_reason;
 mod locale;
@@ -74,6 +76,11 @@ pub use error::{
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use file_path::{FilePathError, MAX_FILE_PATH_LENGTH, validate_file_path};
 pub use group_name::{GroupNameError, MAX_GROUP_NAME_LENGTH, validate_group_name};
+#[cfg(feature = "image-decode")]
+pub use image_decode::{
+    ImageDecodeError, ImageDecodeLimits, ImageDecodeProfile, decode_image_data_uri_payload,
+    image_crate_limits, validate_image_bytes_decode, validate_image_data_uri_decodes,
+};
 pub use ip_rule_reason::{IpRuleReasonError, MAX_IP_RULE_REASON_LENGTH, validate_ip_rule_reason};
 pub use kick_reason::{KickReasonError, MAX_KICK_REASON_LENGTH, validate_kick_reason};
 pub use locale::{LocaleError, MAX_LOCALE_LENGTH, validate_locale};

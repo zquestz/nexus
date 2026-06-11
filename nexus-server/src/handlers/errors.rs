@@ -661,6 +661,10 @@ pub fn err_server_image_unsupported_type(locale: &str) -> String {
     t(locale, "err-server-image-unsupported-type")
 }
 
+pub fn err_server_image_undecodable(locale: &str) -> String {
+    t(locale, "err-server-image-undecodable")
+}
+
 pub fn err_public_address_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -781,6 +785,10 @@ pub fn err_news_image_invalid_format(locale: &str) -> String {
 
 pub fn err_news_image_unsupported_type(locale: &str) -> String {
     t(locale, "err-news-image-unsupported-type")
+}
+
+pub fn err_news_image_undecodable(locale: &str) -> String {
+    t(locale, "err-news-image-undecodable")
 }
 
 /// Fires when neither body nor image is provided.

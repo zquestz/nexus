@@ -8,7 +8,7 @@ description = "Cross-platform BBS server"
 
 [dependencies]
 nexus-common = { path = "../nexus-common", features = [
-    "avatar-decode",
+    "image-decode",
     "logging",
     "tls",
     "upnp",

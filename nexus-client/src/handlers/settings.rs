@@ -4,7 +4,7 @@ use iced_toasts::{ToastLevel, toast};
 
 use crate::config::audio::PttReleaseDelay;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators;
+use nexus_common::validators::{self, ImageDecodeProfile};
 
 #[cfg(all(unix, not(target_os = "macos")))]
 use std::time::Instant;
@@ -489,7 +489,11 @@ impl NexusApp {
                     // real decode — usvg for SVG) — the exact check the server runs at
                     // login, so the picker can't store an avatar the server rejects.
                     match validators::validate_avatar(&data_uri) {
-                        Ok(()) => match decode_data_uri_square(&data_uri, AVATAR_MAX_CACHE_SIZE) {
+                        Ok(()) => match decode_data_uri_square(
+                            &data_uri,
+                            AVATAR_MAX_CACHE_SIZE,
+                            ImageDecodeProfile::Avatar,
+                        ) {
                             Some(cached) => {
                                 form.error = None;
                                 form.cached_avatar = Some(cached);

@@ -135,12 +135,13 @@ use crate::constants::{
 };
 
 use tokio::io::AsyncWrite;
-use tracing::warn;
+use tracing::{error, warn};
 
 use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::server_message_to_frame_bytes;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::{self, NewsImageError, ServerImageError};
 
 use crate::channels::ChannelManager;
 use crate::connection_io::send_server_message_with_write_timeout;
@@ -156,6 +157,50 @@ use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::{ConnectionWriter, UserSession};
 use crate::voice::{VoiceControlHandle, VoiceRegistry, send_voice_leave_notifications};
+
+async fn validate_news_image_blocking(
+    image_data: &str,
+    locale: &str,
+    peer_addr: SocketAddr,
+    task_failed_log: &'static str,
+) -> Result<(), String> {
+    let owned = image_data.to_string();
+    match tokio::task::spawn_blocking(move || validators::validate_news_image(&owned)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(match e {
+            NewsImageError::TooLarge => err_news_image_too_large(locale),
+            NewsImageError::InvalidFormat => err_news_image_invalid_format(locale),
+            NewsImageError::UnsupportedType => err_news_image_unsupported_type(locale),
+            NewsImageError::Undecodable => err_news_image_undecodable(locale),
+        }),
+        Err(e) => {
+            error!(ip = %peer_addr, err = %e, "{}", task_failed_log);
+            Err(err_internal_error(locale))
+        }
+    }
+}
+
+async fn validate_server_image_blocking(
+    image_data: &str,
+    locale: &str,
+    peer_addr: SocketAddr,
+    task_failed_log: &'static str,
+) -> Result<(), String> {
+    let owned = image_data.to_string();
+    match tokio::task::spawn_blocking(move || validators::validate_server_image(&owned)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(match e {
+            ServerImageError::TooLarge => err_server_image_too_large(locale),
+            ServerImageError::InvalidFormat => err_server_image_invalid_format(locale),
+            ServerImageError::UnsupportedType => err_server_image_unsupported_type(locale),
+            ServerImageError::Undecodable => err_server_image_undecodable(locale),
+        }),
+        Err(e) => {
+            error!(ip = %peer_addr, err = %e, "{}", task_failed_log);
+            Err(err_internal_error(locale))
+        }
+    }
+}
 
 /// Direct socket writer for messages sent by the active connection task.
 pub struct DirectWriter<'a, W> {

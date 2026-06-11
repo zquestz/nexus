@@ -3,6 +3,7 @@
 use iced::Task;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ChannelJoinInfo, ClientMessage};
+use nexus_common::validators::ImageDecodeProfile;
 use uuid::Uuid;
 
 use crate::NexusApp;
@@ -485,7 +486,11 @@ impl NexusApp {
         let cached_server_image = if server_image.is_empty() {
             None
         } else {
-            decode_data_uri_max_width(&server_image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+            decode_data_uri_max_width(
+                &server_image,
+                SERVER_IMAGE_MAX_CACHE_WIDTH,
+                ImageDecodeProfile::Server,
+            )
         };
 
         let server_conn = ServerConnection::new(ServerConnectionParams {

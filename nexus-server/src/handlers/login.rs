@@ -133,7 +133,7 @@ async fn validate_login_avatar(
         return Ok(());
     };
 
-    // Decode-validation (raster decode / SVG parse under `avatar-decode`) is
+    // Decode-validation (raster decode / SVG parse under `image-decode`) is
     // CPU-bound; run it on the blocking pool so it can't stall the async
     // runtime's message dispatch. Callers run this only after authentication
     // succeeds, except the fresh-install first-admin path where validation

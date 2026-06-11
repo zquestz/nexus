@@ -3,13 +3,13 @@
 //! This module provides:
 //! - `CachedImage` - Cached image/SVG handle for stable rendering
 //! - `ImagePickerError` - Errors from file picker image loading
-//! - `decode_data_uri_square()` - Decode with square bounding box constraint (for avatars)
-//! - `decode_data_uri_max_width()` - Decode with max width constraint (for server images)
+//! - `decode_data_uri_square()` - Decode with square bounding box constraint
+//! - `decode_data_uri_max_width()` - Decode with max width constraint
 //! - `validate_image_bytes()` - Validate image bytes match expected format
 
 use iced::Element;
 use iced::widget::{image, svg};
-use nexus_common::validators::is_valid_svg;
+use nexus_common::validators::{ImageDecodeProfile, image_crate_limits, is_valid_svg};
 
 // =============================================================================
 // Types
@@ -79,8 +79,12 @@ pub enum ImagePickerError {
 /// - The data URI is malformed (missing `base64,` marker)
 /// - Base64 decoding fails
 /// - The decoded bytes don't match the expected image format signature
-pub fn decode_data_uri_square(data_uri: &str, max_size: u32) -> Option<CachedImage> {
-    decode_data_uri_impl(data_uri, ResizeConstraint::Square(max_size))
+pub fn decode_data_uri_square(
+    data_uri: &str,
+    max_size: u32,
+    profile: ImageDecodeProfile,
+) -> Option<CachedImage> {
+    decode_data_uri_impl(data_uri, ResizeConstraint::Square(max_size), profile)
 }
 
 /// Decode a data URI into a cached image with a max width constraint
@@ -94,8 +98,12 @@ pub fn decode_data_uri_square(data_uri: &str, max_size: u32) -> Option<CachedIma
 /// - The data URI is malformed (missing `base64,` marker)
 /// - Base64 decoding fails
 /// - The decoded bytes don't match the expected image format signature
-pub fn decode_data_uri_max_width(data_uri: &str, max_width: u32) -> Option<CachedImage> {
-    decode_data_uri_impl(data_uri, ResizeConstraint::MaxWidth(max_width))
+pub fn decode_data_uri_max_width(
+    data_uri: &str,
+    max_width: u32,
+    profile: ImageDecodeProfile,
+) -> Option<CachedImage> {
+    decode_data_uri_impl(data_uri, ResizeConstraint::MaxWidth(max_width), profile)
 }
 
 /// Resize constraint for image caching
@@ -107,7 +115,11 @@ enum ResizeConstraint {
 }
 
 /// Internal implementation of data URI decoding with configurable resize constraint
-fn decode_data_uri_impl(data_uri: &str, constraint: ResizeConstraint) -> Option<CachedImage> {
+fn decode_data_uri_impl(
+    data_uri: &str,
+    constraint: ResizeConstraint,
+    profile: ImageDecodeProfile,
+) -> Option<CachedImage> {
     use base64::Engine;
 
     let base64_start = data_uri.find("base64,")?;
@@ -121,10 +133,11 @@ fn decode_data_uri_impl(data_uri: &str, constraint: ResizeConstraint) -> Option<
         if !is_valid_svg(&bytes) {
             return None;
         }
+        usvg::Tree::from_data(&bytes, &usvg::Options::default()).ok()?;
         Some(CachedImage::Svg(svg::Handle::from_memory(bytes)))
     } else {
         // For raster formats (PNG, WebP, JPEG), let the image crate validate during decode
-        resize_and_cache_raster(&bytes, constraint)
+        resize_and_cache_raster(&bytes, constraint, profile)
     }
 }
 
@@ -137,17 +150,21 @@ fn decode_data_uri_impl(data_uri: &str, constraint: ResizeConstraint) -> Option<
 /// Uses Lanczos3 filter for high quality downscaling.
 ///
 /// Returns `None` if the bytes cannot be decoded as a valid image.
-fn resize_and_cache_raster(bytes: &[u8], constraint: ResizeConstraint) -> Option<CachedImage> {
+fn resize_and_cache_raster(
+    bytes: &[u8],
+    constraint: ResizeConstraint,
+    profile: ImageDecodeProfile,
+) -> Option<CachedImage> {
     use ::image::ImageReader;
     use ::image::imageops::FilterType;
     use std::io::Cursor;
 
     // Try to load and decode the image (validates format via image crate)
-    let img = ImageReader::new(Cursor::new(bytes))
+    let mut reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
-        .ok()?
-        .decode()
         .ok()?;
+    reader.limits(image_crate_limits(profile));
+    let img = reader.decode().ok()?;
 
     let (width, height) = (img.width(), img.height());
 
@@ -210,6 +227,26 @@ pub fn validate_image_bytes(bytes: &[u8], mime_type: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn decode_data_uri_square(data_uri: &str, max_size: u32) -> Option<CachedImage> {
+        super::decode_data_uri_square(data_uri, max_size, ImageDecodeProfile::Avatar)
+    }
+
+    fn decode_data_uri_max_width(data_uri: &str, max_width: u32) -> Option<CachedImage> {
+        super::decode_data_uri_max_width(data_uri, max_width, ImageDecodeProfile::News)
+    }
+
+    fn png_data_uri(width: u32, height: u32) -> String {
+        use base64::Engine;
+        use std::io::Cursor;
+
+        let mut png_bytes = Vec::new();
+        let img = ::image::RgbaImage::from_pixel(width, height, ::image::Rgba([0, 0, 0, 255]));
+        img.write_to(&mut Cursor::new(&mut png_bytes), ::image::ImageFormat::Png)
+            .expect("Failed to encode test PNG");
+        let base64_data = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+        format!("data:image/png;base64,{}", base64_data)
+    }
 
     // =========================================================================
     // decode_data_uri tests
@@ -298,6 +335,27 @@ mod tests {
 
         let result = decode_data_uri_square(&data_uri, 64);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_decode_rejects_profile_dimension_limits() {
+        let oversized_avatar = png_data_uri(513, 1);
+        assert!(
+            super::decode_data_uri_square(&oversized_avatar, 64, ImageDecodeProfile::Avatar,)
+                .is_none()
+        );
+
+        let oversized_server = png_data_uri(2049, 1);
+        assert!(
+            super::decode_data_uri_max_width(&oversized_server, 400, ImageDecodeProfile::Server,)
+                .is_none()
+        );
+
+        let oversized_news = png_data_uri(1, 4097);
+        assert!(
+            super::decode_data_uri_max_width(&oversized_news, 400, ImageDecodeProfile::News)
+                .is_none()
+        );
     }
 
     #[test]

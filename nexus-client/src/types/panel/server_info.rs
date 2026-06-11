@@ -2,7 +2,7 @@
 
 use crate::image::{CachedImage, decode_data_uri_max_width};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
-use nexus_common::validators::PasswordStrength;
+use nexus_common::validators::{ImageDecodeProfile, PasswordStrength};
 
 /// Conversion factor between Mbps (megabits per second) and bytes/sec.
 /// 1 Mbps = 1_000_000 bits/sec ÷ 8 bits/byte = 125_000 bytes/sec.
@@ -214,7 +214,11 @@ impl ServerInfoEditState {
         let cached_image = if params.image.is_empty() {
             None
         } else {
-            decode_data_uri_max_width(params.image, SERVER_IMAGE_MAX_CACHE_WIDTH)
+            decode_data_uri_max_width(
+                params.image,
+                SERVER_IMAGE_MAX_CACHE_WIDTH,
+                ImageDecodeProfile::Server,
+            )
         };
 
         Self {

@@ -7,20 +7,21 @@ use tracing::{error, info, warn};
 
 use crate::constants::{
     HANDLER_NEWS_UPDATE, LOG_NEWS_UPDATE_ADMIN, LOG_NEWS_UPDATE_DB_ERROR,
-    LOG_NEWS_UPDATE_DB_ERROR_GET, LOG_NEWS_UPDATE_NOT_LOGGED_IN, LOG_NEWS_UPDATE_PERMISSION_DENIED,
-    LOG_NEWS_UPDATE_SUCCESS,
+    LOG_NEWS_UPDATE_DB_ERROR_GET, LOG_NEWS_UPDATE_IMAGE_VALIDATE_ERROR,
+    LOG_NEWS_UPDATE_NOT_LOGGED_IN, LOG_NEWS_UPDATE_PERMISSION_DENIED, LOG_NEWS_UPDATE_SUCCESS,
 };
 
 use nexus_common::protocol::{NewsAction, NewsItem, ServerMessage};
-use nexus_common::validators::{self, NewsBodyError, NewsImageError};
+use nexus_common::validators::{self, NewsBodyError};
 
+#[cfg(test)]
+use super::err_news_image_invalid_format;
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_cannot_edit_admin_news, err_database, err_news_body_invalid_characters,
-    err_news_body_too_long, err_news_empty_content, err_news_image_invalid_format,
-    err_news_image_too_large, err_news_image_unsupported_type, err_news_not_found,
-    err_no_fields_to_update, err_not_logged_in, err_permission_denied,
+    err_news_body_too_long, err_news_empty_content, err_news_not_found, err_no_fields_to_update,
+    err_not_logged_in, err_permission_denied,
 };
 use crate::constants::FEATURE_NEWS;
 use crate::db::Permission;
@@ -135,13 +136,14 @@ where
 
     if let Some(ref image_data) = image
         && !image_data.is_empty()
-        && let Err(e) = validators::validate_news_image(image_data)
+        && let Err(error_msg) = super::validate_news_image_blocking(
+            image_data,
+            ctx.locale,
+            ctx.peer_addr,
+            LOG_NEWS_UPDATE_IMAGE_VALIDATE_ERROR,
+        )
+        .await
     {
-        let error_msg = match e {
-            NewsImageError::TooLarge => err_news_image_too_large(ctx.locale),
-            NewsImageError::InvalidFormat => err_news_image_invalid_format(ctx.locale),
-            NewsImageError::UnsupportedType => err_news_image_unsupported_type(ctx.locale),
-        };
         let response = ServerMessage::NewsUpdateResponse {
             success: false,
             error: Some(error_msg),
@@ -239,6 +241,8 @@ mod tests {
         create_test_context, login_observer_user, login_user, login_user_with_features,
         read_server_message,
     };
+
+    const VALID_PNG_DATA_URI: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
     #[tokio::test]
     async fn test_news_update_requires_login() {
@@ -392,7 +396,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let image = VALID_PNG_DATA_URI;
         let created = test_ctx
             .db
             .news
@@ -441,7 +445,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let image = VALID_PNG_DATA_URI;
         let created = test_ctx
             .db
             .news
@@ -490,7 +494,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let image = VALID_PNG_DATA_URI;
         let created = test_ctx
             .db
             .news
@@ -912,7 +916,7 @@ mod tests {
         let result = handle_news_update(
             created.id,
             Some("Updated with image".to_string()),
-            Some("data:image/png;base64,iVBORw0KGgo=".to_string()),
+            Some(VALID_PNG_DATA_URI.to_string()),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -930,10 +934,7 @@ mod tests {
                 assert!(error.is_none());
                 let news = news.unwrap();
                 assert_eq!(news.body, Some("Updated with image".to_string()));
-                assert_eq!(
-                    news.image,
-                    Some("data:image/png;base64,iVBORw0KGgo=".to_string())
-                );
+                assert_eq!(news.image, Some(VALID_PNG_DATA_URI.to_string()));
             }
             _ => panic!("Expected NewsUpdateResponse"),
         }

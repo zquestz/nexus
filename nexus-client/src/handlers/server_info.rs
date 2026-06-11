@@ -4,8 +4,9 @@ use iced::Task;
 use iced::widget::Id;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
-    self, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
-    PublicAddressError, ServerDescriptionError, ServerImageError, ServerNameError,
+    self, ImageDecodeProfile, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
+    MAX_SERVER_NAME_LENGTH, PublicAddressError, ServerDescriptionError, ServerImageError,
+    ServerNameError,
 };
 use rfd::AsyncFileDialog;
 
@@ -176,6 +177,7 @@ impl NexusApp {
                 ServerImageError::TooLarge => t("err-server-image-too-large"),
                 ServerImageError::InvalidFormat => t("err-server-image-invalid-format"),
                 ServerImageError::UnsupportedType => t("err-server-image-unsupported-type"),
+                ServerImageError::Undecodable => t("err-server-image-decode-failed"),
             };
             if let Some(edit) = &mut conn.server_info_edit {
                 edit.error = Some(error_msg);
@@ -503,7 +505,11 @@ impl NexusApp {
 
         match result {
             Ok(data_uri) => {
-                let cached = decode_data_uri_max_width(&data_uri, SERVER_IMAGE_MAX_CACHE_WIDTH);
+                let cached = decode_data_uri_max_width(
+                    &data_uri,
+                    SERVER_IMAGE_MAX_CACHE_WIDTH,
+                    ImageDecodeProfile::Server,
+                );
                 if cached.is_some() {
                     edit_state.image = data_uri;
                     edit_state.cached_image = cached;

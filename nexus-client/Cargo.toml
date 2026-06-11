@@ -34,7 +34,7 @@ windows_url_schemes = ["nexus"]
 deb_depends = ["libasound2"]
 
 [dependencies]
-nexus-common = { path = "../nexus-common", features = ["avatar-decode"] }
+nexus-common = { path = "../nexus-common", features = ["image-decode"] }
 idna = "1"
 iced = { version = "0.14", features = ["advanced", "image", "lazy", "markdown", "svg", "tokio"] }
 iced_aw = { version = "0.13", features = ["context_menu", "number_input", "tabs"] }

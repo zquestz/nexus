@@ -3,6 +3,8 @@
 //! Reuses the same validation as server images.
 
 use super::data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_uri};
+#[cfg(feature = "image-decode")]
+use super::{ImageDecodeError, ImageDecodeProfile, validate_image_data_uri_decodes};
 
 /// Maximum length of news image data URI (512KB binary + base64 overhead + prefix).
 /// Same as server image limit.
@@ -14,6 +16,9 @@ pub enum NewsImageError {
     TooLarge,
     InvalidFormat,
     UnsupportedType,
+    /// Passed shape/MIME/size checks but the payload does not decode within
+    /// news-image limits. Only produced with `image-decode` enabled.
+    Undecodable,
 }
 
 impl From<DataUriError> for NewsImageError {
@@ -33,7 +38,7 @@ impl From<DataUriError> for NewsImageError {
 /// ```
 /// use nexus_common::validators::{validate_news_image, NewsImageError};
 ///
-/// assert!(validate_news_image("data:image/png;base64,iVBORw0KGgo=").is_ok());
+/// assert!(validate_news_image("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjwvc3ZnPg==").is_ok());
 /// assert_eq!(
 ///     validate_news_image("data:image/gif;base64,R0lGODlh"),
 ///     Err(NewsImageError::UnsupportedType)
@@ -45,19 +50,32 @@ pub fn validate_news_image(image: &str) -> Result<(), NewsImageError> {
         MAX_NEWS_IMAGE_DATA_URI_LENGTH,
         ALLOWED_IMAGE_MIME_TYPES,
     )?;
+    #[cfg(feature = "image-decode")]
+    validate_news_image_decodes(image)?;
     Ok(())
+}
+
+#[cfg(feature = "image-decode")]
+fn validate_news_image_decodes(image: &str) -> Result<(), NewsImageError> {
+    validate_image_data_uri_decodes(image, ImageDecodeProfile::News).map_err(|err| match err {
+        ImageDecodeError::InvalidFormat => NewsImageError::InvalidFormat,
+        ImageDecodeError::Undecodable => NewsImageError::Undecodable,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const VALID_SVG: &str = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjwvc3ZnPg==";
+
+    #[cfg(not(feature = "image-decode"))]
     #[test]
     fn test_valid_types() {
         for uri in [
             "data:image/png;base64,iVBORw0KGgo=",
             "data:image/webp;base64,UklGRh4=",
-            "data:image/svg+xml;base64,PHN2Zz4=",
+            VALID_SVG,
             "data:image/jpeg;base64,/9j/4AAQ",
             "data:image/png;base64,",
         ] {
@@ -96,10 +114,68 @@ mod tests {
         );
         let over_limit = format!("{}A", at_limit);
 
+        #[cfg(not(feature = "image-decode"))]
         assert!(validate_news_image(&at_limit).is_ok());
+        #[cfg(feature = "image-decode")]
+        assert_eq!(
+            validate_news_image(&at_limit),
+            Err(NewsImageError::Undecodable)
+        );
         assert_eq!(
             validate_news_image(&over_limit),
             Err(NewsImageError::TooLarge)
         );
+    }
+
+    #[cfg(feature = "image-decode")]
+    mod decode {
+        use super::*;
+
+        fn real_png_data_uri(width: u32, height: u32) -> String {
+            use base64::Engine;
+            use std::io::Cursor;
+            let mut png = Vec::new();
+            image::RgbaImage::from_pixel(width, height, image::Rgba([1, 2, 3, 255]))
+                .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+                .expect("encode test PNG");
+            format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(&png)
+            )
+        }
+
+        #[test]
+        fn test_valid_decode_types() {
+            assert!(validate_news_image(&real_png_data_uri(1, 1)).is_ok());
+            assert!(validate_news_image(VALID_SVG).is_ok());
+        }
+
+        #[test]
+        fn test_rejects_undecodable_payloads() {
+            for uri in [
+                "data:image/png;base64,",
+                "data:image/png;base64,iVBORw0KGgo=",
+                "data:image/jpeg;base64,bm90IGFuIGltYWdl",
+                "data:image/svg+xml;base64,bm90IHN2Zw==",
+            ] {
+                assert_eq!(
+                    validate_news_image(uri),
+                    Err(NewsImageError::Undecodable),
+                    "should reject: {uri}"
+                );
+            }
+        }
+
+        #[test]
+        fn test_rejects_raster_over_news_dimensions() {
+            assert_eq!(
+                validate_news_image(&real_png_data_uri(2049, 1)),
+                Err(NewsImageError::Undecodable)
+            );
+            assert_eq!(
+                validate_news_image(&real_png_data_uri(1, 4097)),
+                Err(NewsImageError::Undecodable)
+            );
+        }
     }
 }

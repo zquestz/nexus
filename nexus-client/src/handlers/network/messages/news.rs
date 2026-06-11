@@ -5,6 +5,7 @@ use iced::widget::markdown;
 use nexus_common::framing::MessageId;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{NewsAction, NewsItem};
+use nexus_common::validators::ImageDecodeProfile;
 
 use crate::NexusApp;
 use crate::config::events::EventType;
@@ -41,8 +42,11 @@ impl NexusApp {
                 for item in &items {
                     // Cache image if present
                     if let Some(image_data) = &item.image
-                        && let Some(cached) =
-                            decode_data_uri_max_width(image_data, NEWS_IMAGE_MAX_CACHE_WIDTH)
+                        && let Some(cached) = decode_data_uri_max_width(
+                            image_data,
+                            NEWS_IMAGE_MAX_CACHE_WIDTH,
+                            ImageDecodeProfile::News,
+                        )
                     {
                         conn.news_image_cache.insert(item.id, cached);
                     }
@@ -140,8 +144,11 @@ impl NexusApp {
 
                     // Update image cache
                     if let Some(image_data) = &item.image
-                        && let Some(cached) =
-                            decode_data_uri_max_width(image_data, NEWS_IMAGE_MAX_CACHE_WIDTH)
+                        && let Some(cached) = decode_data_uri_max_width(
+                            image_data,
+                            NEWS_IMAGE_MAX_CACHE_WIDTH,
+                            ImageDecodeProfile::News,
+                        )
                     {
                         conn.news_image_cache.insert(item.id, cached);
                     } else {
@@ -204,8 +211,11 @@ impl NexusApp {
                     if let Some(conn) = self.connections.get_mut(&connection_id) {
                         // Cache image if present
                         if let Some(image_data) = &item.image
-                            && let Some(cached) =
-                                decode_data_uri_max_width(image_data, NEWS_IMAGE_MAX_CACHE_WIDTH)
+                            && let Some(cached) = decode_data_uri_max_width(
+                                image_data,
+                                NEWS_IMAGE_MAX_CACHE_WIDTH,
+                                ImageDecodeProfile::News,
+                            )
                         {
                             conn.news_image_cache.insert(item.id, cached);
                         }
@@ -329,9 +339,11 @@ impl NexusApp {
                     if let Some(conn) = self.connections.get_mut(&connection_id) {
                         // Update image cache
                         if let Some(image_data) = &item.image {
-                            if let Some(cached) =
-                                decode_data_uri_max_width(image_data, NEWS_IMAGE_MAX_CACHE_WIDTH)
-                            {
+                            if let Some(cached) = decode_data_uri_max_width(
+                                image_data,
+                                NEWS_IMAGE_MAX_CACHE_WIDTH,
+                                ImageDecodeProfile::News,
+                            ) {
                                 conn.news_image_cache.insert(item.id, cached);
                             }
                         } else {

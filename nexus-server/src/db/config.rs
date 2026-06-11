@@ -29,7 +29,8 @@ use crate::constants::{
     ERR_PUBLIC_ADDRESS_INVALID_FORMAT, ERR_PUBLIC_ADDRESS_TOO_LONG,
     ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE, ERR_SCHEDULER_CHUNK_SIZE_TOO_SMALL,
     ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG,
-    ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
+    ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNDECODABLE,
+    ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_IMAGE_VALIDATE_TASK_FAILED,
     ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES,
     ERR_SERVER_NAME_TOO_LONG,
 };
@@ -318,15 +319,8 @@ impl ConfigDb {
         image: &str,
     ) -> io::Result<()> {
         // Defense-in-depth (handler also validates); empty string clears the image.
-        if !image.is_empty()
-            && let Err(e) = validate_server_image(image)
-        {
-            let msg = match e {
-                ServerImageError::TooLarge => ERR_SERVER_IMAGE_TOO_LARGE,
-                ServerImageError::InvalidFormat => ERR_SERVER_IMAGE_INVALID_FORMAT,
-                ServerImageError::UnsupportedType => ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
-            };
-            return Err(io::Error::other(msg));
+        if !image.is_empty() {
+            validate_server_image_for_db(image).await?;
         }
 
         sqlx::query(sql::SQL_SET_CONFIG)
@@ -661,11 +655,33 @@ impl ConfigDb {
     }
 }
 
+async fn validate_server_image_for_db(image: &str) -> io::Result<()> {
+    let owned = image.to_string();
+    match tokio::task::spawn_blocking(move || validate_server_image(&owned)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(io::Error::other(server_image_error_message(e))),
+        Err(e) => Err(io::Error::other(format!(
+            "{ERR_SERVER_IMAGE_VALIDATE_TASK_FAILED}: {e}"
+        ))),
+    }
+}
+
+fn server_image_error_message(error: ServerImageError) -> &'static str {
+    match error {
+        ServerImageError::TooLarge => ERR_SERVER_IMAGE_TOO_LARGE,
+        ServerImageError::InvalidFormat => ERR_SERVER_IMAGE_INVALID_FORMAT,
+        ServerImageError::UnsupportedType => ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
+        ServerImageError::Undecodable => ERR_SERVER_IMAGE_UNDECODABLE,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::testing::create_test_db;
     use nexus_common::validators;
+
+    const VALID_PNG_DATA_URI: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
     #[tokio::test]
     async fn test_get_max_connections_per_ip_default() {
@@ -832,7 +848,7 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let image = VALID_PNG_DATA_URI;
         config_db.set_server_image(image).await.unwrap();
         let result = config_db.get_all().await.server_image;
         assert_eq!(result, image);
@@ -844,7 +860,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         config_db
-            .set_server_image("data:image/png;base64,iVBORw0KGgo=")
+            .set_server_image(VALID_PNG_DATA_URI)
             .await
             .unwrap();
 

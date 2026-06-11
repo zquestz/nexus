@@ -1,6 +1,8 @@
 //! Avatar validation (128KB max, data URI format).
 
 use super::data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_uri};
+#[cfg(feature = "image-decode")]
+use super::{ImageDecodeError, ImageDecodeProfile, validate_image_data_uri_decodes};
 
 /// Maximum length of avatar data URI (128KB binary + base64 overhead + prefix).
 pub const MAX_AVATAR_DATA_URI_LENGTH: usize = 176_000;
@@ -12,7 +14,7 @@ pub enum AvatarError {
     InvalidFormat,
     UnsupportedType,
     /// Passed shape/MIME/size checks but the base64 payload doesn't decode to a
-    /// valid image. Only produced when the `avatar-decode` feature is enabled.
+    /// valid image. Only produced when the `image-decode` feature is enabled.
     Undecodable,
 }
 
@@ -27,7 +29,7 @@ impl From<DataUriError> for AvatarError {
 }
 
 /// Validate an avatar data URI: shape, MIME allowlist, and size always; plus a
-/// real decode (raster via `image`, SVG parsed via `usvg`) when the `avatar-decode`
+/// real decode (raster via `image`, SVG parsed via `usvg`) when the `image-decode`
 /// feature is enabled, so a well-formed-but-undecodable avatar is rejected at the
 /// boundary rather than reaching a client that can't render it.
 ///
@@ -36,7 +38,7 @@ impl From<DataUriError> for AvatarError {
 /// ```
 /// use nexus_common::validators::{validate_avatar, AvatarError};
 ///
-/// // A complete SVG document (also decodes under the `avatar-decode` feature).
+/// // A complete SVG document (also decodes under the `image-decode` feature).
 /// let svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjwvc3ZnPg==";
 /// assert!(validate_avatar(svg).is_ok());
 /// assert_eq!(
@@ -46,7 +48,7 @@ impl From<DataUriError> for AvatarError {
 /// ```
 pub fn validate_avatar(avatar: &str) -> Result<(), AvatarError> {
     validate_image_data_uri(avatar, MAX_AVATAR_DATA_URI_LENGTH, ALLOWED_IMAGE_MIME_TYPES)?;
-    #[cfg(feature = "avatar-decode")]
+    #[cfg(feature = "image-decode")]
     validate_avatar_decodes(avatar)?;
     Ok(())
 }
@@ -58,37 +60,12 @@ pub fn validate_avatar(avatar: &str) -> Result<(), AvatarError> {
 /// engines the client renders with, so the server accepts exactly what the client
 /// can display. `validate_image_data_uri` has already confirmed the `;base64,`
 /// marker and an allowed MIME type.
-#[cfg(feature = "avatar-decode")]
+#[cfg(feature = "image-decode")]
 fn validate_avatar_decodes(avatar: &str) -> Result<(), AvatarError> {
-    use base64::Engine;
-
-    let base64_pos = avatar.find(";base64,").ok_or(AvatarError::InvalidFormat)?;
-    let mime = &avatar[5..base64_pos];
-    let payload = &avatar[base64_pos + ";base64,".len()..];
-
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(payload)
-        .map_err(|_| AvatarError::Undecodable)?;
-
-    let decodes = if mime == "image/svg+xml" {
-        // Parse with usvg — the engine the client renders SVG with — for parse-level
-        // parity (not identical rendering: the client may load system fonts while the
-        // server runs fontless). An empty fontdb changes how text would *render*, not
-        // whether the document *parses*, so server and client agree on acceptance.
-        usvg::Tree::from_data(&bytes, &usvg::Options::default()).is_ok()
-    } else {
-        image::ImageReader::new(std::io::Cursor::new(&bytes))
-            .with_guessed_format()
-            .ok()
-            .and_then(|reader| reader.decode().ok())
-            .is_some()
-    };
-
-    if decodes {
-        Ok(())
-    } else {
-        Err(AvatarError::Undecodable)
-    }
+    validate_image_data_uri_decodes(avatar, ImageDecodeProfile::Avatar).map_err(|err| match err {
+        ImageDecodeError::InvalidFormat => AvatarError::InvalidFormat,
+        ImageDecodeError::Undecodable => AvatarError::Undecodable,
+    })
 }
 
 /// Whether bytes look like an SVG document — starts with `<`, allowing a leading
@@ -112,7 +89,7 @@ pub fn is_valid_svg(bytes: &[u8]) -> bool {
 mod tests {
     use super::*;
 
-    // A complete SVG document, valid with or without the `avatar-decode` feature
+    // A complete SVG document, valid with or without the `image-decode` feature
     // (shape-only accepts it; usvg parses it). `<svg>` alone would pass shape-only
     // but fail the usvg parse, so the fixture must be a real document.
     const VALID_SVG: &str = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjwvc3ZnPg==";
@@ -158,15 +135,15 @@ mod tests {
         assert!(!is_valid_svg(b""));
     }
 
-    #[cfg(feature = "avatar-decode")]
+    #[cfg(feature = "image-decode")]
     mod decode {
         use super::*;
 
-        fn real_png_data_uri() -> String {
+        fn real_png_data_uri(width: u32, height: u32) -> String {
             use base64::Engine;
             use std::io::Cursor;
             let mut png = Vec::new();
-            image::RgbaImage::from_pixel(1, 1, image::Rgba([1, 2, 3, 255]))
+            image::RgbaImage::from_pixel(width, height, image::Rgba([1, 2, 3, 255]))
                 .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
                 .expect("encode test PNG");
             format!(
@@ -177,7 +154,7 @@ mod tests {
 
         #[test]
         fn test_real_raster_decodes() {
-            assert!(validate_avatar(&real_png_data_uri()).is_ok());
+            assert!(validate_avatar(&real_png_data_uri(1, 1)).is_ok());
         }
 
         #[test]
@@ -217,9 +194,21 @@ mod tests {
                 );
             }
         }
+
+        #[test]
+        fn test_rejects_raster_over_avatar_dimensions() {
+            assert_eq!(
+                validate_avatar(&real_png_data_uri(513, 1)),
+                Err(AvatarError::Undecodable)
+            );
+            assert_eq!(
+                validate_avatar(&real_png_data_uri(1, 513)),
+                Err(AvatarError::Undecodable)
+            );
+        }
     }
 
-    #[cfg(not(feature = "avatar-decode"))]
+    #[cfg(not(feature = "image-decode"))]
     #[test]
     fn test_shape_only_accepts_undecodable_without_feature() {
         // Without decode validation, shape-valid-but-undecodable URIs are accepted.

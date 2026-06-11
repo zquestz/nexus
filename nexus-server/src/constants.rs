@@ -54,6 +54,8 @@ pub const ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE: &str = "scheduler chunk size must 
 pub const ERR_SERVER_IMAGE_TOO_LARGE: &str = "Server image is too large";
 pub const ERR_SERVER_IMAGE_INVALID_FORMAT: &str = "Server image has invalid format";
 pub const ERR_SERVER_IMAGE_UNSUPPORTED_TYPE: &str = "Server image has unsupported type";
+pub const ERR_SERVER_IMAGE_UNDECODABLE: &str = "Server image could not be decoded";
+pub const ERR_SERVER_IMAGE_VALIDATE_TASK_FAILED: &str = "Server image validation task failed";
 
 pub const ERR_PUBLIC_ADDRESS_TOO_LONG: &str = "Public address is too long";
 pub const ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME: &str = "Public address must not include a URL scheme";
@@ -706,6 +708,7 @@ pub const LOG_CHAT_TOPIC_DB_ERROR: &str = "ChatTopicUpdate: database error";
 pub const LOG_NEWS_CREATE_NOT_LOGGED_IN: &str = "NewsCreate: not logged in";
 pub const LOG_NEWS_CREATE_PERMISSION_DENIED: &str = "NewsCreate: permission denied";
 pub const LOG_NEWS_CREATE_DB_ERROR: &str = "NewsCreate: database error";
+pub const LOG_NEWS_CREATE_IMAGE_VALIDATE_ERROR: &str = "NewsCreate: image validation task failed";
 pub const LOG_NEWS_CREATE_SUCCESS: &str = "NewsCreate: success";
 pub const LOG_NEWS_DELETE_NOT_LOGGED_IN: &str = "NewsDelete: not logged in";
 pub const LOG_NEWS_DELETE_PERMISSION_DENIED: &str = "NewsDelete: permission denied";
@@ -728,6 +731,7 @@ pub const LOG_NEWS_UPDATE_PERMISSION_DENIED: &str = "NewsUpdate: permission deni
 pub const LOG_NEWS_UPDATE_ADMIN: &str = "NewsUpdate: attempted to edit admin news";
 pub const LOG_NEWS_UPDATE_DB_ERROR_GET: &str = "NewsUpdate: database error getting news";
 pub const LOG_NEWS_UPDATE_DB_ERROR: &str = "NewsUpdate: database error";
+pub const LOG_NEWS_UPDATE_IMAGE_VALIDATE_ERROR: &str = "NewsUpdate: image validation task failed";
 pub const LOG_NEWS_UPDATE_SUCCESS: &str = "NewsUpdate: success";
 
 // --- Handler: File ---
@@ -793,6 +797,8 @@ pub const LOG_SERVER_INFO_DB_CONNECTIONS: &str =
 pub const LOG_SERVER_INFO_DB_TRANSFERS: &str =
     "ServerInfoUpdate: database error setting max_transfers_per_ip";
 pub const LOG_SERVER_INFO_DB_IMAGE: &str = "ServerInfoUpdate: database error setting server image";
+pub const LOG_SERVER_INFO_IMAGE_VALIDATE_ERROR: &str =
+    "ServerInfoUpdate: image validation task failed";
 pub const LOG_SERVER_INFO_DB_PUBLIC_ADDRESS: &str =
     "ServerInfoUpdate: database error setting public_address";
 pub const LOG_SERVER_INFO_DB_REINDEX: &str =

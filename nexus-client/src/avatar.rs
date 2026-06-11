@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 
 use iced::widget::image;
 use nexus_common::names::fold_name;
+use nexus_common::validators::ImageDecodeProfile;
 
 use crate::constants::ERR_IDENTICON_GENERATION;
 use crate::image::{CachedImage, decode_data_uri_square};
@@ -80,7 +81,9 @@ pub fn get_or_create_avatar(
     // Try to decode custom avatar, fall back to identicon
     // Use original nickname for identicon seed to preserve visual consistency
     let avatar = avatar_data_uri
-        .and_then(|uri| decode_data_uri_square(uri, AVATAR_MAX_CACHE_SIZE))
+        .and_then(|uri| {
+            decode_data_uri_square(uri, AVATAR_MAX_CACHE_SIZE, ImageDecodeProfile::Avatar)
+        })
         .unwrap_or_else(|| generate_identicon(nickname));
 
     // Cache and return (keyed by folded nickname).

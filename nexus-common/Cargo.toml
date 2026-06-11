@@ -40,7 +40,7 @@ rcgen = { version = "0.14", optional = true }
 pem = { version = "3.0", optional = true }
 time = { version = "0.3", optional = true }
 
-# Optional, enabled by the `avatar-decode` feature.
+# Optional, enabled by the `image-decode` feature.
 image = { version = "0.25", default-features = false, features = [
     "png",
     "jpeg",
@@ -89,13 +89,13 @@ tls = [
     "tokio/net",
 ]
 
-# Full avatar decode-validation: `validate_avatar` actually decodes the payload
-# (raster via `image`, SVG via the `usvg` parser — the same engine the client
-# renders with) rather than only checking shape/MIME/size, so a
-# well-formed-but-undecodable data URI is rejected at the boundary. Enabled by
-# nexus-client and nexus-server so both accept exactly the same avatars; the tracker
-# doesn't validate avatars, so it stays lean. Pulls in `image`, `base64`, and `usvg`.
-avatar-decode = ["dep:image", "dep:base64", "dep:usvg"]
+# Full image decode-validation: avatar/server/news image validators actually
+# decode the payload (raster via `image`, SVG via the `usvg` parser) rather
+# than only checking shape/MIME/size, so a well-formed-but-undecodable data URI
+# is rejected at the boundary. Enabled by nexus-client and nexus-server; the
+# tracker doesn't validate these images, so it stays lean. Pulls in `image`,
+# `base64`, and `usvg`.
+image-decode = ["dep:image", "dep:base64", "dep:usvg"]
 
 [dev-dependencies]
 tempfile = "3.20"
