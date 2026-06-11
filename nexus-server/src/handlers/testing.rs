@@ -21,8 +21,8 @@ use tokio::io::{BufReader, Sink};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 
-use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
-use nexus_common::io::read_server_message as io_read_server_message;
+use nexus_common::framing::{FrameContexts, FrameReader, FrameWriter, MessageId};
+use nexus_common::io::read_server_message_in_context;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::resolve_bandwidth_weight;
 
@@ -676,12 +676,20 @@ pub async fn assert_tracker_db_and_manager_consistent(test_ctx: &TestContext) {
 }
 
 /// Read one `ServerMessage` from the frame reader (keeps the reader's buffer).
+///
+/// Handler tests read handshake, login, and stream responses through this
+/// single helper, so it spans all three server→client BBS phase contexts.
 pub async fn read_server_message(test_ctx: &mut TestContext) -> ServerMessage {
-    io_read_server_message(&mut test_ctx.frame_reader)
-        .await
-        .expect("Failed to read message")
-        .expect("Connection closed unexpectedly")
-        .message
+    read_server_message_in_context(
+        &mut test_ctx.frame_reader,
+        FrameContexts::SERVER_HANDSHAKE_RESPONSE
+            | FrameContexts::SERVER_LOGIN_RESPONSE
+            | FrameContexts::BBS_SERVER,
+    )
+    .await
+    .expect("Failed to read message")
+    .expect("Connection closed unexpectedly")
+    .message
 }
 
 /// Read until the first `LoginResponse` (5s timeout panic).

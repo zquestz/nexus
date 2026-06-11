@@ -550,7 +550,7 @@ mod tests {
     use tokio::time::{self, Duration};
 
     use nexus_common::io::{
-        read_transfer_server_message as read_server_message, send_client_message,
+        read_server_handshake_response, read_server_login_response, send_client_message,
     };
     use nexus_common::protocol::{ClientMessage, ServerMessage};
 
@@ -687,7 +687,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let handshake = read_server_message(reader)
+        let handshake = read_server_handshake_response(reader)
             .await
             .unwrap()
             .expect("handshake response");
@@ -710,7 +710,7 @@ mod tests {
         .await
         .unwrap();
 
-        read_server_message(reader)
+        read_server_login_response(reader)
             .await
             .unwrap()
             .expect("login response")
@@ -799,7 +799,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let handshake = read_server_message(&mut client_reader)
+        let handshake = read_server_handshake_response(&mut client_reader)
             .await
             .unwrap()
             .expect("handshake response");
@@ -839,7 +839,7 @@ mod tests {
             _ => panic!("expected transfer login transition"),
         }
 
-        let login = read_server_message(&mut client_reader)
+        let login = read_server_login_response(&mut client_reader)
             .await
             .unwrap()
             .expect("login response");

@@ -39,7 +39,8 @@ mod writer;
 pub use error::FrameError;
 pub use frame::RawFrame;
 pub use limits::{
-    MAX_TRACKERS_PER_SERVER, is_known_message_type, known_message_types, max_payload_for_type,
+    FrameContexts, FrameTypeInfo, MAX_TRACKERS_PER_SERVER, frame_type_info, known_message_types,
+    max_payload_for_type,
 };
 pub use message_id::MessageId;
 pub use reader::{
@@ -100,7 +101,11 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame = reader.read_frame().await.unwrap().unwrap();
+        let frame = reader
+            .read_frame_in_context(FrameContexts::CLIENT_HANDSHAKE)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame.message_id, id);
         assert_eq!(frame.message_type, "Handshake");
         assert_eq!(frame.payload, payload);

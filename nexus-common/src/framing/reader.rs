@@ -8,7 +8,7 @@ use tokio::time::timeout;
 
 use super::error::FrameError;
 use super::frame::RawFrame;
-use super::limits::{is_known_message_type, max_payload_for_type};
+use super::limits::{FrameContexts, frame_type_info};
 use super::message_id::MessageId;
 use super::{
     DELIMITER, MAGIC, MAX_PAYLOAD_LENGTH_DIGITS, MAX_TYPE_LENGTH, MAX_TYPE_LENGTH_DIGITS,
@@ -26,6 +26,11 @@ pub const DEFAULT_PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Buffer size for streaming payload reads (64KB)
 const STREAM_BUFFER_SIZE: usize = 64 * 1024;
+
+/// Debug-assert message: a reader passed `FrameContexts::STREAMING`, which
+/// would read unlimited-size streaming types (`FileData`) into memory —
+/// the exact allocation hazard the context system exists to prevent.
+const ERR_STREAMING_READER_CONTEXT: &str = "STREAMING is not a reader context; FileData is read via read_frame_header() + payload streaming";
 
 /// Frame header information returned by `read_frame_header()`
 ///
@@ -70,130 +75,42 @@ impl<R> FrameReader<R> {
 }
 
 impl<R: AsyncReadExt + Unpin> FrameReader<R> {
-    /// Read the next frame from the stream
+    /// Read the next frame, enforcing the reader's connection context.
     ///
-    /// Returns `Ok(None)` if the connection is cleanly closed.
+    /// A known message type whose `MESSAGE_TYPE_LIMITS` row does not allow
+    /// `context` is rejected with [`FrameError::UnexpectedMessageType`] during
+    /// the header read, before any payload allocation occurs.
     ///
-    /// # Errors
-    ///
-    /// Returns an error if the frame is malformed or an I/O error occurs.
-    ///
-    /// # Note
-    ///
-    /// This method has no timeout - it will wait indefinitely for data.
-    /// For production use, prefer [`read_frame_with_timeout`](Self::read_frame_with_timeout).
-    pub async fn read_frame(&mut self) -> Result<Option<RawFrame>, FrameError> {
-        // Step 1: Read the first byte of magic
-        let first_byte = match self.read_byte_allow_eof().await? {
-            Some(b) => b,
-            None => return Ok(None), // Clean disconnect
-        };
-
-        // Complete the frame (no timeout)
-        self.read_frame_after_first_byte(first_byte).await
-    }
-
-    /// Read the next frame from the stream with a timeout
-    ///
-    /// This method waits indefinitely for the first byte (allowing idle connections),
-    /// but once the first byte is received, the entire frame must complete within
-    /// the specified timeout.
-    ///
-    /// Returns `Ok(None)` if the connection is cleanly closed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The frame is malformed
-    /// - An I/O error occurs
-    /// - The frame doesn't complete within the timeout after the first byte
-    pub async fn read_frame_with_timeout(
+    /// `FrameContexts::STREAMING` is not a valid reader context — streaming
+    /// types are read via [`read_frame_header()`](Self::read_frame_header)
+    /// plus payload streaming, never into memory.
+    pub async fn read_frame_in_context(
         &mut self,
-        frame_timeout: Duration,
+        context: FrameContexts,
     ) -> Result<Option<RawFrame>, FrameError> {
-        // Wait indefinitely for the first byte (allows idle connections)
-        let first_byte = match self.read_byte_allow_eof().await? {
-            Some(b) => b,
-            None => return Ok(None), // Clean disconnect
-        };
-
-        // Once we have the first byte, apply timeout for the rest of the frame
-        match timeout(frame_timeout, self.read_frame_after_first_byte(first_byte)).await {
-            Ok(result) => result,
-            Err(_) => Err(FrameError::FrameTimeout),
-        }
-    }
-
-    /// Read the next frame from the stream with a full timeout (including idle wait)
-    ///
-    /// Unlike [`read_frame_with_timeout`](Self::read_frame_with_timeout), this method
-    /// applies a timeout to the entire read operation, including waiting for the first byte.
-    /// This is appropriate for protocols where idle connections should be disconnected,
-    /// such as the file transfer port.
-    ///
-    /// Returns `Ok(None)` if the connection is cleanly closed.
-    ///
-    /// # Arguments
-    ///
-    /// * `idle_timeout` - Maximum time to wait for the first byte
-    /// * `frame_timeout` - Maximum time to complete the frame after the first byte
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The frame is malformed
-    /// - An I/O error occurs
-    /// - No data is received within `idle_timeout`
-    /// - The frame doesn't complete within `frame_timeout` after the first byte
-    pub async fn read_frame_with_full_timeout(
-        &mut self,
-        idle_timeout: Duration,
-        frame_timeout: Duration,
-    ) -> Result<Option<RawFrame>, FrameError> {
-        // Apply timeout waiting for the first byte (no idle connections allowed)
-        let first_byte = match timeout(idle_timeout, self.read_byte_allow_eof()).await {
-            Ok(Ok(Some(b))) => b,
-            Ok(Ok(None)) => return Ok(None), // Clean disconnect
-            Ok(Err(e)) => return Err(e),
-            Err(_) => return Err(FrameError::IdleTimeout),
-        };
-
-        // Once we have the first byte, apply timeout for the rest of the frame
-        match timeout(frame_timeout, self.read_frame_after_first_byte(first_byte)).await {
-            Ok(result) => result,
-            Err(_) => Err(FrameError::FrameTimeout),
-        }
-    }
-
-    /// Read the next frame, validating the header before reading the payload.
-    ///
-    /// This is used by higher protocol layers to enforce connection phase and
-    /// direction before any payload allocation occurs.
-    pub async fn read_frame_checked<F>(
-        &mut self,
-        check_header: F,
-    ) -> Result<Option<RawFrame>, FrameError>
-    where
-        F: Fn(&FrameHeader) -> Result<(), FrameError>,
-    {
+        debug_assert!(
+            !context.intersects(FrameContexts::STREAMING),
+            "{ERR_STREAMING_READER_CONTEXT}"
+        );
         let first_byte = match self.read_byte_allow_eof().await? {
             Some(b) => b,
             None => return Ok(None),
         };
 
-        self.read_frame_after_first_byte_checked(first_byte, check_header)
+        self.read_frame_after_first_byte_in_context(first_byte, Some(context))
             .await
     }
 
-    /// Read the next checked frame with a timeout after the first byte.
-    pub async fn read_frame_checked_with_timeout<F>(
+    /// Read the next context-checked frame with a timeout after the first byte.
+    pub async fn read_frame_in_context_with_timeout(
         &mut self,
         frame_timeout: Duration,
-        check_header: F,
-    ) -> Result<Option<RawFrame>, FrameError>
-    where
-        F: Fn(&FrameHeader) -> Result<(), FrameError>,
-    {
+        context: FrameContexts,
+    ) -> Result<Option<RawFrame>, FrameError> {
+        debug_assert!(
+            !context.intersects(FrameContexts::STREAMING),
+            "{ERR_STREAMING_READER_CONTEXT}"
+        );
         let first_byte = match self.read_byte_allow_eof().await? {
             Some(b) => b,
             None => return Ok(None),
@@ -201,7 +118,7 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
 
         match timeout(
             frame_timeout,
-            self.read_frame_after_first_byte_checked(first_byte, check_header),
+            self.read_frame_after_first_byte_in_context(first_byte, Some(context)),
         )
         .await
         {
@@ -210,16 +127,17 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         }
     }
 
-    /// Read the next checked frame with a full timeout including idle wait.
-    pub async fn read_frame_checked_with_full_timeout<F>(
+    /// Read the next context-checked frame with a full timeout including idle wait.
+    pub async fn read_frame_in_context_with_full_timeout(
         &mut self,
         idle_timeout: Duration,
         frame_timeout: Duration,
-        check_header: F,
-    ) -> Result<Option<RawFrame>, FrameError>
-    where
-        F: Fn(&FrameHeader) -> Result<(), FrameError>,
-    {
+        context: FrameContexts,
+    ) -> Result<Option<RawFrame>, FrameError> {
+        debug_assert!(
+            !context.intersects(FrameContexts::STREAMING),
+            "{ERR_STREAMING_READER_CONTEXT}"
+        );
         let first_byte = match timeout(idle_timeout, self.read_byte_allow_eof()).await {
             Ok(Ok(Some(b))) => b,
             Ok(Ok(None)) => return Ok(None),
@@ -229,7 +147,7 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
 
         match timeout(
             frame_timeout,
-            self.read_frame_after_first_byte_checked(first_byte, check_header),
+            self.read_frame_after_first_byte_in_context(first_byte, Some(context)),
         )
         .await
         {
@@ -347,6 +265,20 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         &mut self,
         first_byte: u8,
     ) -> Result<Option<FrameHeader>, FrameError> {
+        self.read_frame_header_after_first_byte_in_context(first_byte, None)
+            .await
+    }
+
+    /// Read the frame header, optionally enforcing a connection context.
+    ///
+    /// All three header checks share the single `MESSAGE_TYPE_LIMITS` lookup:
+    /// unknown type, type not allowed in `required_context`, and per-type
+    /// payload size. Every rejection happens before any payload allocation.
+    async fn read_frame_header_after_first_byte_in_context(
+        &mut self,
+        first_byte: u8,
+        required_context: Option<FrameContexts>,
+    ) -> Result<Option<FrameHeader>, FrameError> {
         // Step 1: Complete reading magic bytes (we already have the first one)
         if first_byte != MAGIC[0] {
             return Err(FrameError::InvalidMagic);
@@ -376,9 +308,15 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         let message_type = String::from_utf8(type_bytes)
             .map_err(|_| FrameError::UnknownMessageType("<invalid utf8>".to_string()))?;
 
-        // Step 4: Reject unknown message types early
-        if !is_known_message_type(&message_type) {
+        // Step 4: Reject unknown and wrong-context message types early.
+        // One table lookup answers known/context/size for the whole header.
+        let Some(info) = frame_type_info(&message_type) else {
             return Err(FrameError::UnknownMessageType(message_type));
+        };
+        if let Some(required) = required_context
+            && !info.contexts.intersects(required)
+        {
+            return Err(FrameError::UnexpectedMessageType(message_type));
         }
 
         // Step 5: Read delimiter
@@ -407,12 +345,11 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
             )
             .await?;
         // Validate payload length against per-type maximum (0 = unlimited)
-        let max_for_type = max_payload_for_type(&message_type);
-        if max_for_type > 0 && payload_length > max_for_type {
+        if info.max_payload > 0 && payload_length > info.max_payload {
             return Err(FrameError::PayloadLengthExceedsTypeMax {
                 message_type,
                 length: payload_length,
-                max: max_for_type,
+                max: info.max_payload,
             });
         }
 
@@ -423,30 +360,20 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         }))
     }
 
-    /// Complete reading a frame after the first byte has been received
-    async fn read_frame_after_first_byte(
+    async fn read_frame_after_first_byte_in_context(
         &mut self,
         first_byte: u8,
+        required_context: Option<FrameContexts>,
     ) -> Result<Option<RawFrame>, FrameError> {
-        self.read_frame_after_first_byte_checked(first_byte, |_| Ok::<(), FrameError>(()))
-            .await
-    }
-
-    async fn read_frame_after_first_byte_checked<F>(
-        &mut self,
-        first_byte: u8,
-        check_header: F,
-    ) -> Result<Option<RawFrame>, FrameError>
-    where
-        F: Fn(&FrameHeader) -> Result<(), FrameError>,
-    {
-        // Read the header first
-        let header = match self.read_frame_header_after_first_byte(first_byte).await? {
+        // Read the header first; the context check happens during the header
+        // read so rejection precedes any payload allocation.
+        let header = match self
+            .read_frame_header_after_first_byte_in_context(first_byte, required_context)
+            .await?
+        {
             Some(h) => h,
             None => return Ok(None),
         };
-
-        check_header(&header)?;
 
         // Read the payload into memory
         let payload = self.read_payload_into_vec(&header).await?;
@@ -527,7 +454,11 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame = reader.read_frame().await.unwrap().unwrap();
+        let frame = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame.message_type, "ChatSend");
         assert_eq!(
             frame.message_id,
@@ -543,7 +474,11 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame = reader.read_frame().await.unwrap().unwrap();
+        let frame = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame.message_type, "UserList");
         assert!(frame.payload.is_empty());
     }
@@ -555,10 +490,18 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame1 = reader.read_frame().await.unwrap().unwrap();
+        let frame1 = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame1.message_type, "ChatSend");
 
-        let frame2 = reader.read_frame().await.unwrap().unwrap();
+        let frame2 = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame2.message_type, "UserList");
     }
 
@@ -569,7 +512,10 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await.unwrap();
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -580,7 +526,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidMagic)));
     }
 
@@ -591,7 +539,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidMessageId)));
     }
 
@@ -602,7 +552,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::TypeLengthOutOfRange)));
     }
 
@@ -614,7 +566,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::TypeLengthTooManyDigits)));
     }
 
@@ -626,7 +580,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(
             result,
             Err(FrameError::PayloadLengthTooManyDigits)
@@ -641,7 +597,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::ConnectionClosed)));
     }
 
@@ -653,7 +611,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::MissingTerminator)));
     }
 
@@ -668,7 +628,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(
             result,
             Err(FrameError::PayloadLengthExceedsTypeMax {
@@ -686,7 +648,11 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame = reader.read_frame().await.unwrap().unwrap();
+        let frame = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame.payload.len(), 0);
     }
 
@@ -698,7 +664,11 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame = reader.read_frame().await.unwrap().unwrap();
+        let frame = reader
+            .read_frame_in_context(FrameContexts::BBS_SERVER)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame.message_type, "ChatTopicUpdateResponse");
     }
 
@@ -714,7 +684,11 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame = reader.read_frame().await.unwrap().unwrap();
+        let frame = reader
+            .read_frame_in_context(FrameContexts::CLIENT_HANDSHAKE)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame.payload.len(), 78);
     }
 
@@ -730,7 +704,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::CLIENT_HANDSHAKE)
+            .await;
         assert!(matches!(
             result,
             Err(FrameError::PayloadLengthExceedsTypeMax {
@@ -749,7 +725,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         // Should get ConnectionClosed because EOF in middle of frame
         assert!(matches!(result, Err(FrameError::ConnectionClosed)));
     }
@@ -761,7 +739,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::ConnectionClosed)));
     }
 
@@ -772,7 +752,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::ConnectionClosed)));
     }
 
@@ -783,7 +765,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::ConnectionClosed)));
     }
 
@@ -794,7 +778,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(
             result,
             Err(FrameError::UnknownMessageType(t)) if t == "UnknownType"
@@ -816,7 +802,11 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let frame = reader.read_frame().await.unwrap().unwrap();
+        let frame = reader
+            .read_frame_in_context(FrameContexts::BBS_SERVER)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame.message_type, "UserListResponse");
         assert_eq!(frame.payload.len(), payload.len());
     }
@@ -829,7 +819,7 @@ mod tests {
         let mut reader = FrameReader::new(buf_reader);
 
         let frame = reader
-            .read_frame_with_timeout(DEFAULT_FRAME_TIMEOUT)
+            .read_frame_in_context_with_timeout(DEFAULT_FRAME_TIMEOUT, FrameContexts::BBS_CLIENT)
             .await
             .unwrap()
             .unwrap();
@@ -844,7 +834,7 @@ mod tests {
         let mut reader = FrameReader::new(buf_reader);
 
         let result = reader
-            .read_frame_with_timeout(DEFAULT_FRAME_TIMEOUT)
+            .read_frame_in_context_with_timeout(DEFAULT_FRAME_TIMEOUT, FrameContexts::BBS_CLIENT)
             .await
             .unwrap();
         assert!(result.is_none());
@@ -866,7 +856,10 @@ mod tests {
         // Now try to read with a very short timeout - should timeout
         // because the rest of the frame never arrives
         let result = reader
-            .read_frame_with_timeout(Duration::from_millis(10))
+            .read_frame_in_context_with_timeout(
+                Duration::from_millis(10),
+                FrameContexts::BBS_CLIENT,
+            )
             .await;
         assert!(matches!(result, Err(FrameError::FrameTimeout)));
     }
@@ -893,7 +886,7 @@ mod tests {
 
         // Should complete successfully within the timeout
         let frame = reader
-            .read_frame_with_timeout(Duration::from_secs(1))
+            .read_frame_in_context_with_timeout(Duration::from_secs(1), FrameContexts::BBS_CLIENT)
             .await
             .unwrap()
             .unwrap();
@@ -908,7 +901,11 @@ mod tests {
         let mut reader = FrameReader::new(buf_reader);
 
         let frame = reader
-            .read_frame_with_full_timeout(DEFAULT_IDLE_TIMEOUT, DEFAULT_FRAME_TIMEOUT)
+            .read_frame_in_context_with_full_timeout(
+                DEFAULT_IDLE_TIMEOUT,
+                DEFAULT_FRAME_TIMEOUT,
+                FrameContexts::BBS_CLIENT,
+            )
             .await
             .unwrap()
             .unwrap();
@@ -923,7 +920,11 @@ mod tests {
         let mut reader = FrameReader::new(buf_reader);
 
         let result = reader
-            .read_frame_with_full_timeout(DEFAULT_IDLE_TIMEOUT, DEFAULT_FRAME_TIMEOUT)
+            .read_frame_in_context_with_full_timeout(
+                DEFAULT_IDLE_TIMEOUT,
+                DEFAULT_FRAME_TIMEOUT,
+                FrameContexts::BBS_CLIENT,
+            )
             .await
             .unwrap();
         assert!(result.is_none());
@@ -940,7 +941,11 @@ mod tests {
 
         // Don't write anything - should hit idle timeout waiting for first byte
         let result = reader
-            .read_frame_with_full_timeout(Duration::from_millis(10), DEFAULT_FRAME_TIMEOUT)
+            .read_frame_in_context_with_full_timeout(
+                Duration::from_millis(10),
+                DEFAULT_FRAME_TIMEOUT,
+                FrameContexts::BBS_CLIENT,
+            )
             .await;
         assert!(matches!(result, Err(FrameError::IdleTimeout)));
     }
@@ -960,7 +965,11 @@ mod tests {
 
         // Should pass idle timeout but fail frame timeout
         let result = reader
-            .read_frame_with_full_timeout(Duration::from_secs(1), Duration::from_millis(10))
+            .read_frame_in_context_with_full_timeout(
+                Duration::from_secs(1),
+                Duration::from_millis(10),
+                FrameContexts::BBS_CLIENT,
+            )
             .await;
         assert!(matches!(result, Err(FrameError::FrameTimeout)));
     }
@@ -1241,7 +1250,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidTypeLength)));
     }
 
@@ -1253,7 +1264,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidPayloadLength)));
     }
 
@@ -1265,7 +1278,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidTypeLength)));
     }
 
@@ -1277,7 +1292,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidPayloadLength)));
     }
 
@@ -1293,7 +1310,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::MissingDelimiter)));
     }
 
@@ -1305,7 +1324,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::MissingDelimiter)));
     }
 
@@ -1321,7 +1342,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::UnknownMessageType(_))));
     }
 
@@ -1333,7 +1356,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidMagic)));
     }
 
@@ -1345,7 +1370,9 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let result = reader.read_frame().await;
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_CLIENT)
+            .await;
         assert!(matches!(result, Err(FrameError::InvalidMagic)));
     }
 }

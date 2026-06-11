@@ -10,8 +10,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::framing::{
-    DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, FrameError, FrameReader, FrameWriter, MessageId,
-    RawFrame,
+    DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, FrameContexts, FrameError, FrameReader,
+    FrameWriter, MessageId, RawFrame,
 };
 use crate::protocol::{ClientMessage, ServerMessage};
 use crate::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
@@ -147,176 +147,6 @@ pub struct ReceivedServerMessage {
     pub message: ServerMessage,
 }
 
-const CLIENT_HANDSHAKE_FRAME_TYPES: &[&str] = &["Handshake"];
-const CLIENT_LOGIN_FRAME_TYPES: &[&str] = &["Login"];
-const SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES: &[&str] = &["Error", "HandshakeResponse"];
-const SERVER_LOGIN_RESPONSE_FRAME_TYPES: &[&str] = &["Error", "LoginResponse"];
-
-const BBS_CLIENT_FRAME_TYPES: &[&str] = &[
-    "BanCreate",
-    "BanDelete",
-    "BanList",
-    "ChatJoin",
-    "ChatLeave",
-    "ChatList",
-    "ChatSecret",
-    "ChatSend",
-    "ChatTopicUpdate",
-    "ConnectionMonitor",
-    "FileCopy",
-    "FileCreateDir",
-    "FileDelete",
-    "FileInfo",
-    "FileList",
-    "FileMove",
-    "FileReindex",
-    "FileRename",
-    "FileSearch",
-    "GroupCreate",
-    "GroupDelete",
-    "GroupEdit",
-    "GroupList",
-    "GroupUpdate",
-    "Handshake",
-    "Login",
-    "NewsCreate",
-    "NewsDelete",
-    "NewsEdit",
-    "NewsList",
-    "NewsShow",
-    "NewsUpdate",
-    "Ping",
-    "ServerInfoUpdate",
-    "TrackerAcceptFingerprint",
-    "TrackerAdd",
-    "TrackerEdit",
-    "TrackerList",
-    "TrackerRemove",
-    "TrackerUpdate",
-    "TrustCreate",
-    "TrustDelete",
-    "TrustList",
-    "UserAway",
-    "UserBack",
-    "UserBroadcast",
-    "UserCreate",
-    "UserDelete",
-    "UserEdit",
-    "UserInfo",
-    "UserKick",
-    "UserList",
-    "UserMessage",
-    "UserStatus",
-    "UserUpdate",
-    "VoiceJoin",
-    "VoiceLeave",
-];
-
-const BBS_SERVER_FRAME_TYPES: &[&str] = &[
-    "BanCreateResponse",
-    "BanDeleteResponse",
-    "BanListResponse",
-    "ChatJoinResponse",
-    "ChatLeaveResponse",
-    "ChatListResponse",
-    "ChatMessage",
-    "ChatSecretResponse",
-    "ChatTopicUpdateResponse",
-    "ChatUpdated",
-    "ChatUserJoined",
-    "ChatUserLeft",
-    "ChatUserRenamed",
-    "ConnectionMonitorResponse",
-    "Error",
-    "FileCopyResponse",
-    "FileCreateDirResponse",
-    "FileDeleteResponse",
-    "FileInfoResponse",
-    "FileListResponse",
-    "FileMoveResponse",
-    "FileReindexResponse",
-    "FileRenameResponse",
-    "FileSearchResponse",
-    "GroupCreateResponse",
-    "GroupDeleteResponse",
-    "GroupEditResponse",
-    "GroupListResponse",
-    "GroupUpdateResponse",
-    "HandshakeResponse",
-    "LoginResponse",
-    "NewsCreateResponse",
-    "NewsDeleteResponse",
-    "NewsEditResponse",
-    "NewsListResponse",
-    "NewsShowResponse",
-    "NewsUpdateResponse",
-    "NewsUpdated",
-    "PermissionsUpdated",
-    "Pong",
-    "ServerBroadcast",
-    "ServerInfoUpdateResponse",
-    "ServerInfoUpdated",
-    "TrackerAcceptFingerprintResponse",
-    "TrackerAddResponse",
-    "TrackerEditResponse",
-    "TrackerListResponse",
-    "TrackerRemoveResponse",
-    "TrackerUpdateResponse",
-    "TrustCreateResponse",
-    "TrustDeleteResponse",
-    "TrustListResponse",
-    "UserAwayResponse",
-    "UserBackResponse",
-    "UserBroadcastResponse",
-    "UserConnected",
-    "UserCreateResponse",
-    "UserDeleteResponse",
-    "UserDisconnected",
-    "UserEditResponse",
-    "UserInfoResponse",
-    "UserKickResponse",
-    "UserListResponse",
-    "UserMessage",
-    "UserMessageResponse",
-    "UserStatusResponse",
-    "UserUpdateResponse",
-    "UserUpdated",
-    "VoiceJoinResponse",
-    "VoiceLeaveResponse",
-    "VoiceUserJoined",
-    "VoiceUserLeft",
-];
-
-const TRANSFER_CLIENT_FRAME_TYPES: &[&str] = &[
-    "FileDownload",
-    "FileHash",
-    "FileHashing",
-    "FileStart",
-    "FileStartResponse",
-    "FileUpload",
-];
-
-const TRANSFER_SERVER_FRAME_TYPES: &[&str] = &[
-    "Error",
-    "FileDownloadResponse",
-    "FileHash",
-    "FileHashing",
-    "FileStart",
-    "FileStartResponse",
-    "FileUploadResponse",
-    "HandshakeResponse",
-    "LoginResponse",
-    "TransferComplete",
-];
-
-fn check_frame_type(message_type: &str, allowed_types: &[&str]) -> Result<(), FrameError> {
-    if allowed_types.binary_search(&message_type).is_ok() {
-        Ok(())
-    } else {
-        Err(FrameError::UnexpectedMessageType(message_type.to_string()))
-    }
-}
-
 /// Read a `ClientMessage` from the stream
 ///
 /// Returns `Ok(None)` if the connection was cleanly closed.
@@ -332,7 +162,7 @@ where
     R: AsyncReadExt + Unpin,
 {
     let Some(frame) = reader
-        .read_frame_checked(|header| check_frame_type(&header.message_type, BBS_CLIENT_FRAME_TYPES))
+        .read_frame_in_context(FrameContexts::BBS_CLIENT)
         .await?
     else {
         return Ok(None);
@@ -356,9 +186,7 @@ where
     R: AsyncReadExt + Unpin,
 {
     let Some(frame) = reader
-        .read_frame_checked_with_timeout(DEFAULT_FRAME_TIMEOUT, |header| {
-            check_frame_type(&header.message_type, BBS_CLIENT_FRAME_TYPES)
-        })
+        .read_frame_in_context_with_timeout(DEFAULT_FRAME_TIMEOUT, FrameContexts::BBS_CLIENT)
         .await?
     else {
         return Ok(None);
@@ -391,23 +219,16 @@ pub async fn read_client_message_with_full_timeout<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
-    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
-
-    let Some(frame) = reader
-        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
-            check_frame_type(&header.message_type, BBS_CLIENT_FRAME_TYPES)
-        })
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    parse_client_frame(frame)
-        .map(Some)
-        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+    read_client_message_in_context_with_full_timeout(
+        reader,
+        idle_timeout,
+        frame_timeout,
+        FrameContexts::BBS_CLIENT,
+    )
+    .await
 }
 
+/// Read the pre-handshake client frame (`Handshake` only) with full timeout.
 pub async fn read_client_handshake_message_with_full_timeout<R>(
     reader: &mut FrameReader<R>,
     idle_timeout: Option<Duration>,
@@ -416,23 +237,16 @@ pub async fn read_client_handshake_message_with_full_timeout<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
-    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
-
-    let Some(frame) = reader
-        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
-            check_frame_type(&header.message_type, CLIENT_HANDSHAKE_FRAME_TYPES)
-        })
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    parse_client_frame(frame)
-        .map(Some)
-        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+    read_client_message_in_context_with_full_timeout(
+        reader,
+        idle_timeout,
+        frame_timeout,
+        FrameContexts::CLIENT_HANDSHAKE,
+    )
+    .await
 }
 
+/// Read the post-handshake, pre-login client frame (`Login` only) with full timeout.
 pub async fn read_client_login_message_with_full_timeout<R>(
     reader: &mut FrameReader<R>,
     idle_timeout: Option<Duration>,
@@ -441,23 +255,16 @@ pub async fn read_client_login_message_with_full_timeout<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
-    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
-
-    let Some(frame) = reader
-        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
-            check_frame_type(&header.message_type, CLIENT_LOGIN_FRAME_TYPES)
-        })
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    parse_client_frame(frame)
-        .map(Some)
-        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+    read_client_message_in_context_with_full_timeout(
+        reader,
+        idle_timeout,
+        frame_timeout,
+        FrameContexts::CLIENT_LOGIN,
+    )
+    .await
 }
 
+/// Read a logged-in transfer-port JSON control frame with full timeout.
 pub async fn read_transfer_client_message_with_full_timeout<R>(
     reader: &mut FrameReader<R>,
     idle_timeout: Option<Duration>,
@@ -466,13 +273,31 @@ pub async fn read_transfer_client_message_with_full_timeout<R>(
 where
     R: AsyncReadExt + Unpin,
 {
+    read_client_message_in_context_with_full_timeout(
+        reader,
+        idle_timeout,
+        frame_timeout,
+        FrameContexts::TRANSFER_CLIENT,
+    )
+    .await
+}
+
+/// Shared body for the full-timeout client-message readers; the public
+/// readers differ only by the context they enforce.
+async fn read_client_message_in_context_with_full_timeout<R>(
+    reader: &mut FrameReader<R>,
+    idle_timeout: Option<Duration>,
+    frame_timeout: Option<Duration>,
+    context: FrameContexts,
+) -> Result<Option<ReceivedClientMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
     let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
     let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
-            check_frame_type(&header.message_type, TRANSFER_CLIENT_FRAME_TYPES)
-        })
+        .read_frame_in_context_with_full_timeout(idle, frame_time, context)
         .await?
     else {
         return Ok(None);
@@ -540,64 +365,53 @@ pub async fn read_server_message<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    let Some(frame) = reader
-        .read_frame_checked(|header| check_frame_type(&header.message_type, BBS_SERVER_FRAME_TYPES))
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    parse_server_frame(frame).map(Some)
+    read_server_message_in_context(reader, FrameContexts::BBS_SERVER).await
 }
 
+/// Read the handshake response (`HandshakeResponse` or `Error` only).
 pub async fn read_server_handshake_response<R>(
     reader: &mut FrameReader<R>,
 ) -> io::Result<Option<ReceivedServerMessage>>
 where
     R: AsyncReadExt + Unpin,
 {
-    let Some(frame) = reader
-        .read_frame_checked(|header| {
-            check_frame_type(&header.message_type, SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES)
-        })
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    parse_server_frame(frame).map(Some)
+    read_server_message_in_context(reader, FrameContexts::SERVER_HANDSHAKE_RESPONSE).await
 }
 
+/// Read the login response (`LoginResponse` or `Error` only).
 pub async fn read_server_login_response<R>(
     reader: &mut FrameReader<R>,
 ) -> io::Result<Option<ReceivedServerMessage>>
 where
     R: AsyncReadExt + Unpin,
 {
-    let Some(frame) = reader
-        .read_frame_checked(|header| {
-            check_frame_type(&header.message_type, SERVER_LOGIN_RESPONSE_FRAME_TYPES)
-        })
-        .await?
-    else {
-        return Ok(None);
-    };
-
-    parse_server_frame(frame).map(Some)
+    read_server_message_in_context(reader, FrameContexts::SERVER_LOGIN_RESPONSE).await
 }
 
+/// Read a logged-in transfer-port JSON control frame from the server.
 pub async fn read_transfer_server_message<R>(
     reader: &mut FrameReader<R>,
 ) -> io::Result<Option<ReceivedServerMessage>>
 where
     R: AsyncReadExt + Unpin,
 {
-    let Some(frame) = reader
-        .read_frame_checked(|header| {
-            check_frame_type(&header.message_type, TRANSFER_SERVER_FRAME_TYPES)
-        })
-        .await?
-    else {
+    read_server_message_in_context(reader, FrameContexts::TRANSFER_SERVER).await
+}
+
+/// Read a `ServerMessage` in an explicit context.
+///
+/// Shared body for the phase/port server-message readers above, which are
+/// what production code should use. Public for callers that legitimately
+/// span phases with one reader — e.g. test harnesses that read handshake,
+/// login, and stream responses through a single helper with a union context.
+pub async fn read_server_message_in_context<R>(
+    reader: &mut FrameReader<R>,
+    context: FrameContexts,
+) -> io::Result<Option<ReceivedServerMessage>>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let Some(frame) = reader.read_frame_in_context(context).await? else {
         return Ok(None);
     };
 
@@ -812,14 +626,6 @@ pub fn tracker_server_message_type(message: &TrackerServerMessage) -> &'static s
     }
 }
 
-const TRACKER_CLIENT_FRAME_TYPES: &[&str] = &["TrackerServerList", "TrackerServerRegister"];
-
-const TRACKER_SERVER_FRAME_TYPES: &[&str] = &[
-    "Error",
-    "TrackerServerListResponse",
-    "TrackerServerRegisterResponse",
-];
-
 /// Send a `TrackerServerMessage` to the peer with a fresh message ID.
 pub async fn send_tracker_server_message<W>(
     writer: &mut FrameWriter<W>,
@@ -875,9 +681,7 @@ where
     let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
-            check_frame_type(&header.message_type, TRACKER_CLIENT_FRAME_TYPES)
-        })
+        .read_frame_in_context_with_full_timeout(idle, frame_time, FrameContexts::TRACKER_CLIENT)
         .await?
     else {
         return Ok(None);
@@ -930,9 +734,7 @@ where
     let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_checked_with_full_timeout(idle, frame_time, |header| {
-            check_frame_type(&header.message_type, TRACKER_SERVER_FRAME_TYPES)
-        })
+        .read_frame_in_context_with_full_timeout(idle, frame_time, FrameContexts::TRACKER_SERVER)
         .await?
     else {
         return Ok(None);
@@ -972,10 +774,8 @@ fn parse_tracker_server_frame(frame: RawFrame) -> io::Result<ReceivedTrackerServ
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framing::{known_message_types, max_payload_for_type};
     use crate::protocol::ChatAction;
     use crate::validators::DEFAULT_CHANNEL;
-    use std::collections::HashSet;
     use std::io::Cursor;
     use tokio::io::BufReader;
 
@@ -1202,7 +1002,10 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let received = read_client_message(&mut reader).await.unwrap().unwrap();
+        let received = read_client_handshake_message_with_full_timeout(&mut reader, None, None)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(received.message_id, sent_id);
     }
 
@@ -1231,7 +1034,10 @@ mod tests {
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
 
-        let received = read_server_message(&mut reader).await.unwrap().unwrap();
+        let received = read_server_handshake_response(&mut reader)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(received.message_id, specific_id);
     }
 
@@ -1337,6 +1143,41 @@ mod tests {
             result,
             Err(FrameError::UnexpectedMessageType(message_type)) if message_type == "FileUpload"
         ));
+    }
+
+    #[tokio::test]
+    async fn bbs_client_reader_rejects_handshake_and_login_after_login() {
+        for message_type in ["Handshake", "Login"] {
+            let cursor = Cursor::new(header_only_frame(message_type, 64));
+            let buf_reader = BufReader::new(cursor);
+            let mut reader = FrameReader::new(buf_reader);
+
+            let result = read_client_message_with_full_timeout(&mut reader, None, None).await;
+            assert!(
+                matches!(
+                    result,
+                    Err(FrameError::UnexpectedMessageType(ref unexpected))
+                        if unexpected == message_type
+                ),
+                "{message_type} must not be accepted by the logged-in BBS reader"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn bbs_server_reader_rejects_handshake_and_login_responses() {
+        for message_type in ["HandshakeResponse", "LoginResponse"] {
+            let cursor = Cursor::new(header_only_frame(message_type, 64));
+            let buf_reader = BufReader::new(cursor);
+            let mut reader = FrameReader::new(buf_reader);
+
+            let err = read_server_message(&mut reader).await.unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains(&format!("unexpected message type: '{message_type}'")),
+                "{message_type} must not be accepted by the logged-in BBS stream reader"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1619,96 +1460,5 @@ mod tests {
             Err(FrameError::UnexpectedMessageType(message_type))
                 if message_type == "UserListResponse"
         ));
-    }
-
-    #[test]
-    fn untrusted_reader_allowlists_have_nonzero_payload_limits() {
-        let checked_allowlists = [
-            CLIENT_HANDSHAKE_FRAME_TYPES,
-            CLIENT_LOGIN_FRAME_TYPES,
-            SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES,
-            SERVER_LOGIN_RESPONSE_FRAME_TYPES,
-            BBS_CLIENT_FRAME_TYPES,
-            TRANSFER_CLIENT_FRAME_TYPES,
-            TRANSFER_SERVER_FRAME_TYPES,
-            TRACKER_CLIENT_FRAME_TYPES,
-            TRACKER_SERVER_FRAME_TYPES,
-        ];
-
-        for allowlist in checked_allowlists {
-            for message_type in allowlist {
-                assert_ne!(
-                    max_payload_for_type(message_type),
-                    0,
-                    "{message_type} is accepted from an untrusted/semi-trusted peer and must not have an unlimited payload limit"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn every_known_message_type_is_in_a_reader_allowlist_or_streamed() {
-        let allowlists = [
-            CLIENT_HANDSHAKE_FRAME_TYPES,
-            CLIENT_LOGIN_FRAME_TYPES,
-            SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES,
-            SERVER_LOGIN_RESPONSE_FRAME_TYPES,
-            BBS_CLIENT_FRAME_TYPES,
-            BBS_SERVER_FRAME_TYPES,
-            TRANSFER_CLIENT_FRAME_TYPES,
-            TRANSFER_SERVER_FRAME_TYPES,
-            TRACKER_CLIENT_FRAME_TYPES,
-            TRACKER_SERVER_FRAME_TYPES,
-        ];
-
-        let mut covered: HashSet<&str> = allowlists.into_iter().flatten().copied().collect();
-        covered.insert("FileData");
-
-        for message_type in known_message_types() {
-            assert!(
-                covered.contains(message_type),
-                "{message_type} has a payload limit but is not accepted by any reader allowlist"
-            );
-        }
-
-        for message_type in covered {
-            assert!(
-                known_message_types().contains(&message_type),
-                "{message_type} is present in a reader allowlist but has no payload limit"
-            );
-        }
-    }
-
-    #[test]
-    fn reader_allowlists_are_sorted() {
-        let allowlists = [
-            ("CLIENT_HANDSHAKE_FRAME_TYPES", CLIENT_HANDSHAKE_FRAME_TYPES),
-            ("CLIENT_LOGIN_FRAME_TYPES", CLIENT_LOGIN_FRAME_TYPES),
-            (
-                "SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES",
-                SERVER_HANDSHAKE_RESPONSE_FRAME_TYPES,
-            ),
-            (
-                "SERVER_LOGIN_RESPONSE_FRAME_TYPES",
-                SERVER_LOGIN_RESPONSE_FRAME_TYPES,
-            ),
-            ("BBS_CLIENT_FRAME_TYPES", BBS_CLIENT_FRAME_TYPES),
-            ("BBS_SERVER_FRAME_TYPES", BBS_SERVER_FRAME_TYPES),
-            ("TRANSFER_CLIENT_FRAME_TYPES", TRANSFER_CLIENT_FRAME_TYPES),
-            ("TRANSFER_SERVER_FRAME_TYPES", TRANSFER_SERVER_FRAME_TYPES),
-            ("TRACKER_CLIENT_FRAME_TYPES", TRACKER_CLIENT_FRAME_TYPES),
-            ("TRACKER_SERVER_FRAME_TYPES", TRACKER_SERVER_FRAME_TYPES),
-        ];
-
-        for (name, allowlist) in allowlists {
-            for pair in allowlist.windows(2) {
-                assert!(
-                    pair[0] <= pair[1],
-                    "{name} is not sorted: {} should come after {}",
-                    pair[0],
-                    pair[1]
-                );
-            }
-        }
     }
 }

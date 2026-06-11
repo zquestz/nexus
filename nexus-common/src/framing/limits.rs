@@ -23,9 +23,9 @@ use crate::validators::{
 // =============================================================================
 
 /// Panic message: [`max_payload_for_type`] called with a message type
-/// that isn't in `MESSAGE_TYPE_LIMITS`. Programmer-error: the framing
-/// layer rejects unknown types in `read_frame()` before any code can
-/// reach this lookup.
+/// that isn't in `MESSAGE_TYPE_LIMITS`. Programmer-error: the frame
+/// header read rejects unknown types before any code can reach this
+/// lookup.
 const ERR_UNKNOWN_MESSAGE_TYPE: &str =
     "unknown message types should be rejected before calling max_payload_for_type";
 
@@ -1338,407 +1338,1113 @@ const fn pad_limit(base: u64) -> u64 {
     (base * 6) / 5
 }
 
-/// Maximum payload sizes for each message type
+/// Connection contexts in which a frame type may be read into memory.
 ///
-/// These limits are enforced after parsing the frame header but before reading
-/// the payload, allowing early rejection of oversized messages.
+/// A context is one reader position in the protocol: a direction (client→server
+/// or server→client) on a port (BBS, transfer, tracker), optionally narrowed to
+/// a phase (handshake, login). Each message type's [`MESSAGE_TYPE_LIMITS`] row
+/// declares every context allowed to accept it; readers pass their own context
+/// so the frame header check rejects wrong-direction or wrong-phase types
+/// before any payload allocation.
+///
+/// Phase contexts are strict: `Handshake`, `Login`, `HandshakeResponse`, and
+/// `LoginResponse` are valid *only* in their handshake/login contexts, so a
+/// logged-in peer re-sending them is rejected at the frame layer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct FrameContexts(u16);
+
+impl FrameContexts {
+    /// Server reading the first client frame on any port (pre-handshake).
+    pub const CLIENT_HANDSHAKE: Self = Self(1 << 0);
+    /// BBS or transfer server reading the post-handshake, pre-login frame.
+    pub const CLIENT_LOGIN: Self = Self(1 << 1);
+    /// Client reading the handshake response (BBS, transfer, and tracker).
+    pub const SERVER_HANDSHAKE_RESPONSE: Self = Self(1 << 2);
+    /// Client reading the login response (BBS and transfer ports).
+    pub const SERVER_LOGIN_RESPONSE: Self = Self(1 << 3);
+    /// BBS server reading logged-in client commands.
+    pub const BBS_CLIENT: Self = Self(1 << 4);
+    /// Client reading the logged-in BBS event stream (server-trusted).
+    pub const BBS_SERVER: Self = Self(1 << 5);
+    /// Transfer server reading logged-in JSON control frames.
+    pub const TRANSFER_CLIENT: Self = Self(1 << 6);
+    /// Client reading transfer-port JSON control frames.
+    pub const TRANSFER_SERVER: Self = Self(1 << 7);
+    /// Tracker daemon reading post-handshake tracker requests.
+    pub const TRACKER_CLIENT: Self = Self(1 << 8);
+    /// BBS server or client reading post-handshake tracker responses.
+    pub const TRACKER_SERVER: Self = Self(1 << 9);
+    /// Binary streaming phase only — read via `read_frame_header()` plus
+    /// payload streaming, never into a JSON reader's payload buffer.
+    /// Crate-private so no reader outside `nexus-common` can pass it as a
+    /// reader context (which would accept unlimited streaming types into
+    /// memory); inside the crate the reader entry points `debug_assert!`
+    /// against it.
+    pub(crate) const STREAMING: Self = Self(1 << 10);
+
+    /// Whether `self` allows any of the contexts in `other`.
+    #[must_use]
+    pub const fn intersects(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
+
+    /// Whether no contexts are set.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl std::fmt::Debug for FrameContexts {
+    /// List set context names (`FrameContexts(BBS_CLIENT | BBS_SERVER)`) so
+    /// test assertion failures are readable, instead of the raw bit value.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const NAMES: [(FrameContexts, &str); 11] = [
+            (FrameContexts::CLIENT_HANDSHAKE, "CLIENT_HANDSHAKE"),
+            (FrameContexts::CLIENT_LOGIN, "CLIENT_LOGIN"),
+            (
+                FrameContexts::SERVER_HANDSHAKE_RESPONSE,
+                "SERVER_HANDSHAKE_RESPONSE",
+            ),
+            (
+                FrameContexts::SERVER_LOGIN_RESPONSE,
+                "SERVER_LOGIN_RESPONSE",
+            ),
+            (FrameContexts::BBS_CLIENT, "BBS_CLIENT"),
+            (FrameContexts::BBS_SERVER, "BBS_SERVER"),
+            (FrameContexts::TRANSFER_CLIENT, "TRANSFER_CLIENT"),
+            (FrameContexts::TRANSFER_SERVER, "TRANSFER_SERVER"),
+            (FrameContexts::TRACKER_CLIENT, "TRACKER_CLIENT"),
+            (FrameContexts::TRACKER_SERVER, "TRACKER_SERVER"),
+            (FrameContexts::STREAMING, "STREAMING"),
+        ];
+
+        write!(f, "FrameContexts(")?;
+        if self.is_empty() {
+            write!(f, "<none>")?;
+        } else {
+            let mut first = true;
+            for (context, name) in NAMES {
+                if self.intersects(context) {
+                    if !first {
+                        write!(f, " | ")?;
+                    }
+                    write!(f, "{name}")?;
+                    first = false;
+                }
+            }
+        }
+        write!(f, ")")
+    }
+}
+
+impl std::ops::BitOr for FrameContexts {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+/// Per-message-type framing policy: payload size limit plus the contexts
+/// allowed to read the type into memory.
+#[derive(Debug, Clone, Copy)]
+pub struct FrameTypeInfo {
+    /// Maximum payload bytes (0 = unlimited; only safe for contexts where the
+    /// peer is trusted, i.e. the client reading the logged-in BBS stream).
+    pub max_payload: u64,
+    /// Contexts allowed to read this type into memory.
+    pub contexts: FrameContexts,
+}
+
+impl FrameTypeInfo {
+    fn new(max_payload: u64, contexts: FrameContexts) -> Self {
+        Self {
+            max_payload,
+            contexts,
+        }
+    }
+}
+
+/// Framing policy for each message type: maximum payload size plus the
+/// connection contexts allowed to read it.
+///
+/// Size limits are enforced after parsing the frame header but before reading
+/// the payload, allowing early rejection of oversized messages. Context checks
+/// happen at the same point, so a known type sent in the wrong direction or
+/// phase is also rejected before any payload allocation.
 ///
 /// Base limits match the maximum possible serialized JSON size based on
 /// validator constraints, then 20% padding is added for safety margin.
 /// Tests verify the base values fit within the padded limits.
 ///
-/// A limit of `0` means "unlimited" (no per-type limit). This is used for
-/// server-to-client messages where the client has already chosen to trust
-/// the server. The global `MAX_PAYLOAD_LENGTH` sanity check still applies.
+/// A limit of `0` means "unlimited" (no per-type limit). This is only safe for
+/// contexts where the peer is trusted (the client reading the logged-in BBS
+/// stream); a test pins that no untrusted context carries a 0 limit. The
+/// global `MAX_PAYLOAD_LENGTH` sanity check still applies.
 ///
 /// ## Shared Message Type Names
 ///
 /// Some message type names exist in both `ClientMessage` and `ServerMessage`
 /// (e.g., `FileStart`, `FileStartResponse`, `FileData`, `UserMessage`). These
-/// are **intentional mirrors** - same structure, same payload limit, opposite
-/// direction. The HashMap naturally enforces this constraint: one limit per
-/// type name guarantees both enums use the same limit for shared types.
-static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new(|| {
+/// are **intentional mirrors** - same structure, same payload limit, both
+/// directions' contexts on one row. The HashMap naturally enforces this
+/// constraint: one entry per type name guarantees both enums use the same
+/// limit for shared types.
+static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = LazyLock::new(|| {
     let mut m = HashMap::new();
 
     // Client messages - Chat (self-documenting via const calculations)
-    m.insert("ChatSend", pad_limit(CHAT_SEND_SIZE as u64));
-    m.insert("ChatTopicUpdate", pad_limit(CHAT_TOPIC_UPDATE_SIZE as u64));
-    m.insert("ChatJoin", pad_limit(CHAT_JOIN_SIZE as u64));
-    m.insert("ChatLeave", pad_limit(CHAT_LEAVE_SIZE as u64));
-    m.insert("ChatList", pad_limit(CHAT_LIST_SIZE as u64));
-    m.insert("ChatSecret", pad_limit(CHAT_SECRET_SIZE as u64));
+    m.insert(
+        "ChatSend",
+        FrameTypeInfo::new(pad_limit(CHAT_SEND_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "ChatTopicUpdate",
+        FrameTypeInfo::new(
+            pad_limit(CHAT_TOPIC_UPDATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "ChatJoin",
+        FrameTypeInfo::new(pad_limit(CHAT_JOIN_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "ChatLeave",
+        FrameTypeInfo::new(pad_limit(CHAT_LEAVE_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "ChatList",
+        FrameTypeInfo::new(pad_limit(CHAT_LIST_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "ChatSecret",
+        FrameTypeInfo::new(
+            pad_limit(CHAT_SECRET_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
 
     // Client messages - Basic (self-documenting via const calculations)
-    m.insert("Handshake", pad_limit(HANDSHAKE_SIZE as u64));
-    m.insert("Login", pad_limit(LOGIN_SIZE as u64));
-    m.insert("UserBroadcast", pad_limit(USER_BROADCAST_SIZE as u64));
-    m.insert("UserCreate", pad_limit(USER_CREATE_SIZE as u64));
-    m.insert("UserDelete", pad_limit(USER_DELETE_SIZE as u64));
-    m.insert("UserEdit", pad_limit(USER_EDIT_SIZE as u64));
-    m.insert("UserInfo", pad_limit(USER_INFO_SIZE as u64));
-    m.insert("UserKick", pad_limit(USER_KICK_SIZE as u64));
-    m.insert("UserList", pad_limit(USER_LIST_SIZE as u64));
-    m.insert("UserUpdate", pad_limit(USER_UPDATE_SIZE as u64));
-    m.insert("UserAway", pad_limit(USER_AWAY_SIZE as u64));
-    m.insert("UserBack", pad_limit(USER_BACK_SIZE as u64));
-    m.insert("UserStatus", pad_limit(USER_STATUS_SIZE as u64));
+    m.insert(
+        "Handshake",
+        FrameTypeInfo::new(
+            pad_limit(HANDSHAKE_SIZE as u64),
+            FrameContexts::CLIENT_HANDSHAKE,
+        ),
+    );
+    m.insert(
+        "Login",
+        FrameTypeInfo::new(pad_limit(LOGIN_SIZE as u64), FrameContexts::CLIENT_LOGIN),
+    );
+    m.insert(
+        "UserBroadcast",
+        FrameTypeInfo::new(
+            pad_limit(USER_BROADCAST_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "UserCreate",
+        FrameTypeInfo::new(
+            pad_limit(USER_CREATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "UserDelete",
+        FrameTypeInfo::new(
+            pad_limit(USER_DELETE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "UserEdit",
+        FrameTypeInfo::new(pad_limit(USER_EDIT_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "UserInfo",
+        FrameTypeInfo::new(pad_limit(USER_INFO_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "UserKick",
+        FrameTypeInfo::new(pad_limit(USER_KICK_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "UserList",
+        FrameTypeInfo::new(pad_limit(USER_LIST_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "UserUpdate",
+        FrameTypeInfo::new(
+            pad_limit(USER_UPDATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "UserAway",
+        FrameTypeInfo::new(pad_limit(USER_AWAY_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "UserBack",
+        FrameTypeInfo::new(pad_limit(USER_BACK_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "UserStatus",
+        FrameTypeInfo::new(
+            pad_limit(USER_STATUS_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
     m.insert(
         "ServerInfoUpdate",
-        pad_limit(SERVER_INFO_UPDATE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(SERVER_INFO_UPDATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
     );
 
     // Ban client messages (self-documenting via const calculations)
-    m.insert("BanCreate", pad_limit(BAN_CREATE_SIZE as u64));
-    m.insert("BanDelete", pad_limit(BAN_DELETE_SIZE as u64));
-    m.insert("BanList", pad_limit(BAN_LIST_SIZE as u64));
+    m.insert(
+        "BanCreate",
+        FrameTypeInfo::new(pad_limit(BAN_CREATE_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "BanDelete",
+        FrameTypeInfo::new(pad_limit(BAN_DELETE_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "BanList",
+        FrameTypeInfo::new(pad_limit(BAN_LIST_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
 
     // Trust client messages (self-documenting via const calculations)
-    m.insert("TrustCreate", pad_limit(TRUST_CREATE_SIZE as u64));
-    m.insert("TrustDelete", pad_limit(TRUST_DELETE_SIZE as u64));
-    m.insert("TrustList", pad_limit(TRUST_LIST_SIZE as u64));
+    m.insert(
+        "TrustCreate",
+        FrameTypeInfo::new(
+            pad_limit(TRUST_CREATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "TrustDelete",
+        FrameTypeInfo::new(
+            pad_limit(TRUST_DELETE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "TrustList",
+        FrameTypeInfo::new(pad_limit(TRUST_LIST_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
 
     // Connection monitor client message
     m.insert(
         "ConnectionMonitor",
-        pad_limit(CONNECTION_MONITOR_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(CONNECTION_MONITOR_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
     );
 
     // Group client messages
-    m.insert("GroupList", pad_limit(GROUP_LIST_SIZE as u64));
-    m.insert("GroupCreate", pad_limit(GROUP_CREATE_SIZE as u64));
-    m.insert("GroupEdit", pad_limit(GROUP_EDIT_SIZE as u64));
-    m.insert("GroupUpdate", pad_limit(GROUP_UPDATE_SIZE as u64));
-    m.insert("GroupDelete", pad_limit(GROUP_DELETE_SIZE as u64));
+    m.insert(
+        "GroupList",
+        FrameTypeInfo::new(pad_limit(GROUP_LIST_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "GroupCreate",
+        FrameTypeInfo::new(
+            pad_limit(GROUP_CREATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "GroupEdit",
+        FrameTypeInfo::new(pad_limit(GROUP_EDIT_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "GroupUpdate",
+        FrameTypeInfo::new(
+            pad_limit(GROUP_UPDATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "GroupDelete",
+        FrameTypeInfo::new(
+            pad_limit(GROUP_DELETE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
 
     // Tracker client messages
     m.insert(
         "TrackerAcceptFingerprint",
-        pad_limit(TRACKER_ACCEPT_FINGERPRINT_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_ACCEPT_FINGERPRINT_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
     );
-    m.insert("TrackerAdd", pad_limit(TRACKER_ADD_SIZE as u64));
-    m.insert("TrackerEdit", pad_limit(TRACKER_EDIT_SIZE as u64));
-    m.insert("TrackerList", pad_limit(TRACKER_LIST_SIZE as u64));
-    m.insert("TrackerRemove", pad_limit(TRACKER_REMOVE_SIZE as u64));
-    m.insert("TrackerUpdate", pad_limit(TRACKER_UPDATE_SIZE as u64));
+    m.insert(
+        "TrackerAdd",
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_ADD_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "TrackerEdit",
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_EDIT_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "TrackerList",
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_LIST_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "TrackerRemove",
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_REMOVE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "TrackerUpdate",
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_UPDATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
 
     // News client messages (self-documenting via const calculations)
-    m.insert("NewsList", pad_limit(NEWS_LIST_SIZE as u64));
-    m.insert("NewsShow", pad_limit(NEWS_SHOW_SIZE as u64));
-    m.insert("NewsCreate", pad_limit(NEWS_CREATE_SIZE as u64));
-    m.insert("NewsEdit", pad_limit(NEWS_EDIT_SIZE as u64));
-    m.insert("NewsUpdate", pad_limit(NEWS_UPDATE_SIZE as u64));
-    m.insert("NewsDelete", pad_limit(NEWS_DELETE_SIZE as u64));
+    m.insert(
+        "NewsList",
+        FrameTypeInfo::new(pad_limit(NEWS_LIST_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "NewsShow",
+        FrameTypeInfo::new(pad_limit(NEWS_SHOW_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "NewsCreate",
+        FrameTypeInfo::new(
+            pad_limit(NEWS_CREATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "NewsEdit",
+        FrameTypeInfo::new(pad_limit(NEWS_EDIT_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "NewsUpdate",
+        FrameTypeInfo::new(
+            pad_limit(NEWS_UPDATE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "NewsDelete",
+        FrameTypeInfo::new(
+            pad_limit(NEWS_DELETE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
 
     // File client messages (self-documenting via const calculations)
-    m.insert("FileList", pad_limit(FILE_LIST_SIZE as u64));
-    m.insert("FileCreateDir", pad_limit(FILE_CREATE_DIR_SIZE as u64));
-    m.insert("FileDelete", pad_limit(FILE_DELETE_SIZE as u64));
-    m.insert("FileInfo", pad_limit(FILE_INFO_SIZE as u64));
-    m.insert("FileRename", pad_limit(FILE_RENAME_SIZE as u64));
-    m.insert("FileMove", pad_limit(FILE_MOVE_SIZE as u64));
-    m.insert("FileCopy", pad_limit(FILE_COPY_SIZE as u64));
-    m.insert("FileDownload", pad_limit(FILE_DOWNLOAD_SIZE as u64));
-    m.insert("FileUpload", pad_limit(FILE_UPLOAD_SIZE as u64));
-    m.insert("FileSearch", pad_limit(FILE_SEARCH_SIZE as u64));
-    m.insert("FileReindex", pad_limit(FILE_REINDEX_SIZE as u64));
+    m.insert(
+        "FileList",
+        FrameTypeInfo::new(pad_limit(FILE_LIST_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "FileCreateDir",
+        FrameTypeInfo::new(
+            pad_limit(FILE_CREATE_DIR_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "FileDelete",
+        FrameTypeInfo::new(
+            pad_limit(FILE_DELETE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "FileInfo",
+        FrameTypeInfo::new(pad_limit(FILE_INFO_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "FileRename",
+        FrameTypeInfo::new(
+            pad_limit(FILE_RENAME_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "FileMove",
+        FrameTypeInfo::new(pad_limit(FILE_MOVE_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "FileCopy",
+        FrameTypeInfo::new(pad_limit(FILE_COPY_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "FileDownload",
+        FrameTypeInfo::new(
+            pad_limit(FILE_DOWNLOAD_SIZE as u64),
+            FrameContexts::TRANSFER_CLIENT,
+        ),
+    );
+    m.insert(
+        "FileUpload",
+        FrameTypeInfo::new(
+            pad_limit(FILE_UPLOAD_SIZE as u64),
+            FrameContexts::TRANSFER_CLIENT,
+        ),
+    );
+    m.insert(
+        "FileSearch",
+        FrameTypeInfo::new(
+            pad_limit(FILE_SEARCH_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
+    m.insert(
+        "FileReindex",
+        FrameTypeInfo::new(
+            pad_limit(FILE_REINDEX_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
 
     // Voice client messages (self-documenting via const calculations)
-    m.insert("VoiceJoin", pad_limit(VOICE_JOIN_SIZE as u64));
-    m.insert("VoiceLeave", pad_limit(VOICE_LEAVE_SIZE as u64));
+    m.insert(
+        "VoiceJoin",
+        FrameTypeInfo::new(pad_limit(VOICE_JOIN_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "VoiceLeave",
+        FrameTypeInfo::new(
+            pad_limit(VOICE_LEAVE_SIZE as u64),
+            FrameContexts::BBS_CLIENT,
+        ),
+    );
 
     // Keepalive messages
-    m.insert("Ping", pad_limit(PING_SIZE as u64));
-    m.insert("Pong", pad_limit(PONG_SIZE as u64));
+    m.insert(
+        "Ping",
+        FrameTypeInfo::new(pad_limit(PING_SIZE as u64), FrameContexts::BBS_CLIENT),
+    );
+    m.insert(
+        "Pong",
+        FrameTypeInfo::new(pad_limit(PONG_SIZE as u64), FrameContexts::BBS_SERVER),
+    );
 
     // Server messages - Chat (self-documenting via const calculations)
-    m.insert("ChatMessage", pad_limit(CHAT_MESSAGE_SIZE as u64));
-    m.insert("ChatUpdated", pad_limit(CHAT_UPDATED_SIZE as u64));
+    m.insert(
+        "ChatMessage",
+        FrameTypeInfo::new(
+            pad_limit(CHAT_MESSAGE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
+    m.insert(
+        "ChatUpdated",
+        FrameTypeInfo::new(
+            pad_limit(CHAT_UPDATED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
     m.insert(
         "ChatTopicUpdateResponse",
-        pad_limit(CHAT_TOPIC_UPDATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(CHAT_TOPIC_UPDATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "ChatJoinResponse",
-        pad_limit(CHAT_JOIN_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(CHAT_JOIN_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "ChatLeaveResponse",
-        pad_limit(CHAT_LEAVE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(CHAT_LEAVE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("ChatListResponse", 0); // unlimited (server-trusted, can have many channels)
+    m.insert(
+        "ChatListResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, can have many channels)
     m.insert(
         "ChatSecretResponse",
-        pad_limit(CHAT_SECRET_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(CHAT_SECRET_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("ChatUserJoined", pad_limit(CHAT_USER_JOINED_SIZE as u64));
-    m.insert("ChatUserLeft", pad_limit(CHAT_USER_LEFT_SIZE as u64));
-    m.insert("ChatUserRenamed", pad_limit(CHAT_USER_RENAMED_SIZE as u64));
-    m.insert("Error", pad_limit(ERROR_SIZE as u64));
+    m.insert(
+        "ChatUserJoined",
+        FrameTypeInfo::new(
+            pad_limit(CHAT_USER_JOINED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
+    m.insert(
+        "ChatUserLeft",
+        FrameTypeInfo::new(
+            pad_limit(CHAT_USER_LEFT_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
+    m.insert(
+        "ChatUserRenamed",
+        FrameTypeInfo::new(
+            pad_limit(CHAT_USER_RENAMED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
+    m.insert(
+        "Error",
+        FrameTypeInfo::new(
+            pad_limit(ERROR_SIZE as u64),
+            FrameContexts::SERVER_HANDSHAKE_RESPONSE
+                | FrameContexts::SERVER_LOGIN_RESPONSE
+                | FrameContexts::BBS_SERVER
+                | FrameContexts::TRANSFER_SERVER
+                | FrameContexts::TRACKER_SERVER,
+        ),
+    );
     m.insert(
         "HandshakeResponse",
-        pad_limit(HANDSHAKE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(HANDSHAKE_RESPONSE_SIZE as u64),
+            FrameContexts::SERVER_HANDSHAKE_RESPONSE,
+        ),
     );
-    m.insert("LoginResponse", pad_limit(LOGIN_RESPONSE_SIZE as u64));
+    m.insert(
+        "LoginResponse",
+        FrameTypeInfo::new(
+            pad_limit(LOGIN_RESPONSE_SIZE as u64),
+            FrameContexts::SERVER_LOGIN_RESPONSE,
+        ),
+    );
     m.insert(
         "PermissionsUpdated",
-        pad_limit(PERMISSIONS_UPDATED_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(PERMISSIONS_UPDATED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("ServerBroadcast", pad_limit(SERVER_BROADCAST_SIZE as u64));
+    m.insert(
+        "ServerBroadcast",
+        FrameTypeInfo::new(
+            pad_limit(SERVER_BROADCAST_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
     m.insert(
         "ServerInfoUpdated",
-        pad_limit(SERVER_INFO_UPDATED_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(SERVER_INFO_UPDATED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "ServerInfoUpdateResponse",
-        pad_limit(SERVER_INFO_UPDATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(SERVER_INFO_UPDATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("UserConnected", pad_limit(USER_CONNECTED_SIZE as u64));
+    m.insert(
+        "UserConnected",
+        FrameTypeInfo::new(
+            pad_limit(USER_CONNECTED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
     m.insert(
         "UserCreateResponse",
-        pad_limit(USER_CREATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_CREATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "UserDeleteResponse",
-        pad_limit(USER_DELETE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_DELETE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("UserDisconnected", pad_limit(USER_DISCONNECTED_SIZE as u64));
+    m.insert(
+        "UserDisconnected",
+        FrameTypeInfo::new(
+            pad_limit(USER_DISCONNECTED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
     m.insert(
         "UserEditResponse",
-        pad_limit(USER_EDIT_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_EDIT_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "UserBroadcastResponse",
-        pad_limit(USER_BROADCAST_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_BROADCAST_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "UserInfoResponse",
-        pad_limit(USER_INFO_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_INFO_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "UserKickResponse",
-        pad_limit(USER_KICK_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_KICK_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("UserListResponse", 0); // unlimited (server-trusted)
-    m.insert("UserMessage", pad_limit(USER_MESSAGE_SIZE as u64));
+    m.insert(
+        "UserListResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted)
+    m.insert(
+        "UserMessage",
+        FrameTypeInfo::new(
+            pad_limit(USER_MESSAGE_SIZE as u64),
+            FrameContexts::BBS_CLIENT | FrameContexts::BBS_SERVER,
+        ),
+    );
     m.insert(
         "UserMessageResponse",
-        pad_limit(USER_MESSAGE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_MESSAGE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("UserUpdated", pad_limit(USER_UPDATED_SIZE as u64));
+    m.insert(
+        "UserUpdated",
+        FrameTypeInfo::new(
+            pad_limit(USER_UPDATED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
     m.insert(
         "UserAwayResponse",
-        pad_limit(USER_AWAY_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_AWAY_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "UserBackResponse",
-        pad_limit(USER_BACK_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_BACK_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "UserStatusResponse",
-        pad_limit(USER_STATUS_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_STATUS_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "UserUpdateResponse",
-        pad_limit(USER_UPDATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(USER_UPDATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
 
     // Ban server messages (self-documenting via const calculations)
     m.insert(
         "BanCreateResponse",
-        pad_limit(BAN_CREATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(BAN_CREATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "BanDeleteResponse",
-        pad_limit(BAN_DELETE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(BAN_DELETE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("BanListResponse", 0); // unlimited (server-trusted, can have many bans)
+    m.insert(
+        "BanListResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, can have many bans)
 
     // Trust server messages (self-documenting via const calculations)
     m.insert(
         "TrustCreateResponse",
-        pad_limit(TRUST_CREATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRUST_CREATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "TrustDeleteResponse",
-        pad_limit(TRUST_DELETE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRUST_DELETE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("TrustListResponse", 0); // unlimited (server-trusted, can have many trusts)
+    m.insert(
+        "TrustListResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, can have many trusts)
 
     // Connection monitor server message
-    m.insert("ConnectionMonitorResponse", 0); // unlimited (server-trusted, can have many connections)
+    m.insert(
+        "ConnectionMonitorResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, can have many connections)
 
     // Group server messages
-    m.insert("GroupListResponse", 0); // unlimited (server-trusted, can have many groups)
+    m.insert(
+        "GroupListResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, can have many groups)
     m.insert(
         "GroupCreateResponse",
-        pad_limit(GROUP_CREATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(GROUP_CREATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "GroupEditResponse",
-        pad_limit(GROUP_EDIT_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(GROUP_EDIT_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "GroupUpdateResponse",
-        pad_limit(GROUP_UPDATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(GROUP_UPDATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "GroupDeleteResponse",
-        pad_limit(GROUP_DELETE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(GROUP_DELETE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
 
     // Tracker server messages
     m.insert(
         "TrackerAcceptFingerprintResponse",
-        pad_limit(TRACKER_ACCEPT_FINGERPRINT_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_ACCEPT_FINGERPRINT_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "TrackerAddResponse",
-        pad_limit(TRACKER_ADD_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_ADD_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "TrackerEditResponse",
-        pad_limit(TRACKER_EDIT_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_EDIT_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "TrackerListResponse",
-        pad_limit(TRACKER_LIST_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_LIST_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "TrackerRemoveResponse",
-        pad_limit(TRACKER_REMOVE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_REMOVE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "TrackerUpdateResponse",
-        pad_limit(TRACKER_UPDATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_UPDATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
 
     // News server messages (self-documenting via const calculations)
-    m.insert("NewsListResponse", 0); // unlimited (server-trusted, can have many items)
+    m.insert(
+        "NewsListResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, can have many items)
     m.insert(
         "NewsShowResponse",
-        pad_limit(NEWS_SHOW_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(NEWS_SHOW_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "NewsCreateResponse",
-        pad_limit(NEWS_CREATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(NEWS_CREATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "NewsEditResponse",
-        pad_limit(NEWS_EDIT_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(NEWS_EDIT_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "NewsUpdateResponse",
-        pad_limit(NEWS_UPDATE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(NEWS_UPDATE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "NewsDeleteResponse",
-        pad_limit(NEWS_DELETE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(NEWS_DELETE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("NewsUpdated", pad_limit(NEWS_UPDATED_SIZE as u64));
+    m.insert(
+        "NewsUpdated",
+        FrameTypeInfo::new(
+            pad_limit(NEWS_UPDATED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
 
     // File server messages
-    m.insert("FileListResponse", 0); // unlimited (server-trusted, can have many entries)
+    m.insert(
+        "FileListResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, can have many entries)
     m.insert(
         "FileCreateDirResponse",
-        pad_limit(FILE_CREATE_DIR_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_CREATE_DIR_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "FileDeleteResponse",
-        pad_limit(FILE_DELETE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_DELETE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "FileInfoResponse",
-        pad_limit(FILE_INFO_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_INFO_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "FileRenameResponse",
-        pad_limit(FILE_RENAME_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_RENAME_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "FileMoveResponse",
-        pad_limit(FILE_MOVE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_MOVE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "FileCopyResponse",
-        pad_limit(FILE_COPY_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_COPY_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "FileDownloadResponse",
-        pad_limit(FILE_DOWNLOAD_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_DOWNLOAD_RESPONSE_SIZE as u64),
+            FrameContexts::TRANSFER_SERVER,
+        ),
     );
     m.insert(
         "FileUploadResponse",
-        pad_limit(FILE_UPLOAD_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_UPLOAD_RESPONSE_SIZE as u64),
+            FrameContexts::TRANSFER_SERVER,
+        ),
     );
-    m.insert("FileSearchResponse", 0); // unlimited (server-trusted)
+    m.insert(
+        "FileSearchResponse",
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted)
     m.insert(
         "FileReindexResponse",
-        pad_limit(FILE_REINDEX_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_REINDEX_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
 
     // Voice server messages (self-documenting via const calculations)
     m.insert(
         "VoiceJoinResponse",
-        pad_limit(VOICE_JOIN_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(VOICE_JOIN_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
     m.insert(
         "VoiceLeaveResponse",
-        pad_limit(VOICE_LEAVE_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(VOICE_LEAVE_RESPONSE_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
     );
-    m.insert("VoiceUserJoined", pad_limit(VOICE_USER_JOINED_SIZE as u64));
-    m.insert("VoiceUserLeft", pad_limit(VOICE_USER_LEFT_SIZE as u64));
+    m.insert(
+        "VoiceUserJoined",
+        FrameTypeInfo::new(
+            pad_limit(VOICE_USER_JOINED_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
+    m.insert(
+        "VoiceUserLeft",
+        FrameTypeInfo::new(
+            pad_limit(VOICE_USER_LEFT_SIZE as u64),
+            FrameContexts::BBS_SERVER,
+        ),
+    );
 
     // Transfer messages (self-documenting via const calculations)
-    m.insert("FileStart", pad_limit(FILE_START_SIZE as u64));
+    m.insert(
+        "FileStart",
+        FrameTypeInfo::new(
+            pad_limit(FILE_START_SIZE as u64),
+            FrameContexts::TRANSFER_CLIENT | FrameContexts::TRANSFER_SERVER,
+        ),
+    );
     m.insert(
         "FileStartResponse",
-        pad_limit(FILE_START_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(FILE_START_RESPONSE_SIZE as u64),
+            FrameContexts::TRANSFER_CLIENT | FrameContexts::TRANSFER_SERVER,
+        ),
     );
-    m.insert("FileData", 0); // unlimited - streaming binary data
-    m.insert("TransferComplete", pad_limit(TRANSFER_COMPLETE_SIZE as u64));
-    m.insert("FileHashing", pad_limit(FILE_HASHING_SIZE as u64));
-    m.insert("FileHash", pad_limit(FILE_HASH_SIZE as u64));
+    m.insert("FileData", FrameTypeInfo::new(0, FrameContexts::STREAMING)); // unlimited - streaming binary data
+    m.insert(
+        "TransferComplete",
+        FrameTypeInfo::new(
+            pad_limit(TRANSFER_COMPLETE_SIZE as u64),
+            FrameContexts::TRANSFER_SERVER,
+        ),
+    );
+    m.insert(
+        "FileHashing",
+        FrameTypeInfo::new(
+            pad_limit(FILE_HASHING_SIZE as u64),
+            FrameContexts::TRANSFER_CLIENT | FrameContexts::TRANSFER_SERVER,
+        ),
+    );
+    m.insert(
+        "FileHash",
+        FrameTypeInfo::new(
+            pad_limit(FILE_HASH_SIZE as u64),
+            FrameContexts::TRANSFER_CLIENT | FrameContexts::TRANSFER_SERVER,
+        ),
+    );
 
     // Tracker messages (separate protocol)
     m.insert(
         "TrackerServerRegister",
-        pad_limit(TRACKER_SERVER_REGISTER_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_SERVER_REGISTER_SIZE as u64),
+            FrameContexts::TRACKER_CLIENT,
+        ),
     );
     m.insert(
         "TrackerServerList",
-        pad_limit(TRACKER_SERVER_LIST_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_SERVER_LIST_SIZE as u64),
+            FrameContexts::TRACKER_CLIENT,
+        ),
     );
     m.insert(
         "TrackerServerRegisterResponse",
-        pad_limit(TRACKER_SERVER_REGISTER_RESPONSE_SIZE as u64),
+        FrameTypeInfo::new(
+            pad_limit(TRACKER_SERVER_REGISTER_RESPONSE_SIZE as u64),
+            FrameContexts::TRACKER_SERVER,
+        ),
     );
     m.insert(
         "TrackerServerListResponse",
-        TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE as u64,
+        FrameTypeInfo::new(
+            TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE as u64,
+            FrameContexts::TRACKER_SERVER,
+        ),
     );
 
     m
 });
+
+/// Get the framing policy (payload limit + allowed contexts) for a message type
+///
+/// Returns `None` for unknown types.
+#[must_use]
+pub fn frame_type_info(message_type: &str) -> Option<FrameTypeInfo> {
+    MESSAGE_TYPE_LIMITS.get(message_type).copied()
+}
 
 /// Get the maximum payload size for a message type
 ///
 /// # Panics
 ///
 /// Panics if the message type is unknown. This should never happen in practice
-/// because unknown types are rejected by `read_frame()` before this is called.
+/// because the frame header read rejects unknown types before this is called.
 #[must_use]
 pub fn max_payload_for_type(message_type: &str) -> u64 {
     MESSAGE_TYPE_LIMITS
         .get(message_type)
-        .copied()
         .expect(ERR_UNKNOWN_MESSAGE_TYPE)
-}
-
-/// Check if a message type is known
-#[must_use]
-pub fn is_known_message_type(message_type: &str) -> bool {
-    MESSAGE_TYPE_LIMITS.contains_key(message_type)
+        .max_payload
 }
 
 /// Get all known message type names
@@ -2182,10 +2888,10 @@ mod tests {
     }
 
     #[test]
-    fn test_is_known_message_type() {
-        assert!(is_known_message_type("ChatSend"));
-        assert!(is_known_message_type("Login"));
-        assert!(!is_known_message_type("FakeMessage"));
+    fn test_frame_type_info_known_and_unknown() {
+        assert!(frame_type_info("ChatSend").is_some());
+        assert!(frame_type_info("Login").is_some());
+        assert!(frame_type_info("FakeMessage").is_none());
     }
 
     // Message type counts for protocol completeness tests.
@@ -2234,6 +2940,70 @@ mod tests {
     }
 
     #[test]
+    fn every_frame_type_declares_contexts() {
+        for message_type in known_message_types() {
+            let info = frame_type_info(message_type).expect("known type has info");
+            assert!(
+                !info.contexts.is_empty(),
+                "{message_type} declares no contexts, so no reader can ever accept it"
+            );
+        }
+    }
+
+    #[test]
+    fn untrusted_context_types_have_nonzero_limits() {
+        // Every context except the logged-in BBS server→client stream reads
+        // from an untrusted or semi-trusted peer, so a 0 ("unlimited") payload
+        // limit there would reopen the pre-auth allocation crash.
+        let untrusted = FrameContexts::CLIENT_HANDSHAKE
+            | FrameContexts::CLIENT_LOGIN
+            | FrameContexts::SERVER_HANDSHAKE_RESPONSE
+            | FrameContexts::SERVER_LOGIN_RESPONSE
+            | FrameContexts::BBS_CLIENT
+            | FrameContexts::TRANSFER_CLIENT
+            | FrameContexts::TRANSFER_SERVER
+            | FrameContexts::TRACKER_CLIENT
+            | FrameContexts::TRACKER_SERVER;
+
+        for message_type in known_message_types() {
+            let info = frame_type_info(message_type).expect("known type has info");
+            if info.contexts.intersects(untrusted) {
+                assert_ne!(
+                    info.max_payload, 0,
+                    "{message_type} is readable from an untrusted/semi-trusted \
+                     peer and must not have an unlimited payload limit"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn frame_contexts_debug_lists_set_bits() {
+        assert_eq!(
+            format!(
+                "{:?}",
+                FrameContexts::BBS_CLIENT | FrameContexts::BBS_SERVER
+            ),
+            "FrameContexts(BBS_CLIENT | BBS_SERVER)"
+        );
+        assert_eq!(
+            format!("{:?}", FrameContexts::STREAMING),
+            "FrameContexts(STREAMING)"
+        );
+    }
+
+    #[test]
+    fn file_data_is_streaming_only() {
+        let info = frame_type_info("FileData").expect("FileData has info");
+        assert_eq!(
+            info.contexts,
+            FrameContexts::STREAMING,
+            "FileData is read via read_frame_header() + payload streaming and \
+             must never gain a JSON reader context"
+        );
+    }
+
+    #[test]
     fn test_shared_message_type_names_have_limits() {
         // Message type names that exist in both ClientMessage and ServerMessage.
         // These share a single limit entry in the HashMap.
@@ -2252,7 +3022,7 @@ mod tests {
 
         for type_name in &shared_type_names {
             assert!(
-                is_known_message_type(type_name),
+                frame_type_info(type_name).is_some(),
                 "Shared type name '{}' must have a limit defined",
                 type_name
             );

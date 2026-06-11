@@ -11,8 +11,12 @@ use std::time::Duration;
 
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher};
-use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId, RawFrame};
-use nexus_common::io::{read_server_message, send_client_message, tracker_client_message_type};
+use nexus_common::framing::{
+    FrameContexts, FrameError, FrameReader, FrameWriter, MessageId, RawFrame,
+};
+use nexus_common::io::{
+    read_server_handshake_response, send_client_message, tracker_client_message_type,
+};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use nexus_common::websocket::WebSocketAdapter;
@@ -161,7 +165,7 @@ async fn test_handshake_roundtrip_compatible_version() {
     .await
     .expect("send Handshake");
 
-    let received = read_server_message(&mut reader)
+    let received = read_server_handshake_response(&mut reader)
         .await
         .expect("read response")
         .expect("frame");
@@ -219,7 +223,7 @@ async fn test_handshake_roundtrip_incompatible_major_version() {
     .await
     .expect("send Handshake");
 
-    let received = read_server_message(&mut reader)
+    let received = read_server_handshake_response(&mut reader)
         .await
         .expect("read response")
         .expect("frame");
@@ -279,7 +283,7 @@ async fn test_non_handshake_first_message_yields_error() {
     .await
     .expect("send Login");
 
-    let received = read_server_message(&mut reader)
+    let received = read_server_handshake_response(&mut reader)
         .await
         .expect("read response")
         .expect("frame");
@@ -368,7 +372,7 @@ async fn connect_and_handshake(server_addr: std::net::SocketAddr) -> (ClientRead
     .await
     .expect("send Handshake");
 
-    let response = read_server_message(&mut reader)
+    let response = read_server_handshake_response(&mut reader)
         .await
         .expect("read handshake response")
         .expect("frame");
@@ -748,7 +752,11 @@ where
     R: tokio::io::AsyncRead + Unpin,
 {
     let frame = match reader
-        .read_frame_with_full_timeout(Duration::from_secs(5), Duration::from_secs(5))
+        .read_frame_in_context_with_full_timeout(
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+            FrameContexts::TRACKER_SERVER,
+        )
         .await
     {
         Ok(Some(f)) => f,
@@ -975,7 +983,7 @@ async fn test_websocket_handshake_register_list_roundtrip() {
     .await
     .expect("send Handshake");
 
-    let response = read_server_message(&mut reader)
+    let response = read_server_handshake_response(&mut reader)
         .await
         .expect("read handshake response")
         .expect("frame");

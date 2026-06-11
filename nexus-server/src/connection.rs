@@ -1084,9 +1084,9 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use nexus_common::framing::RawFrame;
+    use nexus_common::framing::{FrameContexts, RawFrame};
     use nexus_common::io::{
-        read_server_message, send_client_message_with_id, server_message_to_frame_bytes,
+        read_server_message_in_context, send_client_message_with_id, server_message_to_frame_bytes,
     };
     use nexus_common::protocol::{ChatAction, ServerMessage};
     use nexus_common::validators::{DEFAULT_CHANNEL, MAX_MESSAGE_LENGTH};
@@ -1244,12 +1244,19 @@ mod tests {
         }
     }
 
+    // Tests read handshake, login, and stream responses through this one
+    // helper, so it spans all three server->client BBS phase contexts.
     async fn read_next_server_message(
         connection: &mut TestConnection,
     ) -> nexus_common::io::ReceivedServerMessage {
         time::timeout(
             Duration::from_secs(2),
-            read_server_message(&mut connection.reader),
+            read_server_message_in_context(
+                &mut connection.reader,
+                FrameContexts::SERVER_HANDSHAKE_RESPONSE
+                    | FrameContexts::SERVER_LOGIN_RESPONSE
+                    | FrameContexts::BBS_SERVER,
+            ),
         )
         .await
         .expect("timed out waiting for server message")
@@ -1258,11 +1265,16 @@ mod tests {
     }
 
     async fn read_next_raw_frame(connection: &mut TestConnection) -> RawFrame {
-        time::timeout(Duration::from_secs(2), connection.reader.read_frame())
-            .await
-            .expect("timed out waiting for server frame")
-            .expect("failed to read server frame")
-            .expect("connection closed unexpectedly")
+        time::timeout(
+            Duration::from_secs(2),
+            connection
+                .reader
+                .read_frame_in_context(FrameContexts::BBS_SERVER),
+        )
+        .await
+        .expect("timed out waiting for server frame")
+        .expect("failed to read server frame")
+        .expect("connection closed unexpectedly")
     }
 
     async fn login_test_connection(connection: &mut TestConnection) -> u32 {
@@ -1396,11 +1408,14 @@ mod tests {
         )
         .await
         .expect("handshake send should succeed");
-        let handshake = time::timeout(Duration::from_secs(2), read_server_message(&mut reader))
-            .await
-            .expect("timed out waiting for handshake response")
-            .expect("handshake read should succeed")
-            .expect("handshake response");
+        let handshake = time::timeout(
+            Duration::from_secs(2),
+            nexus_common::io::read_server_handshake_response(&mut reader),
+        )
+        .await
+        .expect("timed out waiting for handshake response")
+        .expect("handshake read should succeed")
+        .expect("handshake response");
         assert!(matches!(
             handshake.message,
             ServerMessage::HandshakeResponse { success: true, .. }
@@ -1420,11 +1435,14 @@ mod tests {
         )
         .await
         .expect("login send should succeed");
-        let login = time::timeout(Duration::from_secs(2), read_server_message(&mut reader))
-            .await
-            .expect("timed out waiting for login response")
-            .expect("login read should succeed")
-            .expect("login response");
+        let login = time::timeout(
+            Duration::from_secs(2),
+            nexus_common::io::read_server_login_response(&mut reader),
+        )
+        .await
+        .expect("timed out waiting for login response")
+        .expect("login read should succeed")
+        .expect("login response");
         assert!(matches!(
             login.message,
             ServerMessage::LoginResponse { success: true, .. }
@@ -1616,6 +1634,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn relogin_after_login_gets_unexpected_message_type_error() {
+        let mut connection = start_test_connection(64, 8192).await;
+        login_test_connection(&mut connection).await;
+
+        send_client_message_with_id(
+            &mut connection.writer,
+            &ClientMessage::Login {
+                username: "alice".to_string(),
+                password: "password".to_string(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: None,
+            },
+            message_id(b"000000000341"),
+        )
+        .await
+        .expect("re-login send should succeed");
+
+        let error = read_next_server_message(&mut connection).await;
+        match error.message {
+            ServerMessage::Error {
+                message,
+                command,
+                disconnect,
+                ..
+            } => {
+                assert_eq!(message, err_unexpected_message_type("en"));
+                assert_eq!(command.as_deref(), Some("Login"));
+                assert!(disconnect);
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn direct_response_does_not_interleave_with_chunked_egress_frame() {
         let mut connection = start_test_connection(32, 128).await;
         let session_id = login_test_connection(&mut connection).await;
@@ -1685,10 +1741,15 @@ mod tests {
             .expect("expected queued frame should serialize");
         assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
 
-        let closed = time::timeout(Duration::from_secs(2), connection.reader.read_frame())
-            .await
-            .expect("timed out waiting for drain disconnect")
-            .expect("read after drain should not fail");
+        let closed = time::timeout(
+            Duration::from_secs(2),
+            connection
+                .reader
+                .read_frame_in_context(FrameContexts::BBS_SERVER),
+        )
+        .await
+        .expect("timed out waiting for drain disconnect")
+        .expect("read after drain should not fail");
         assert!(
             closed.is_none(),
             "priority QueueFull should drain staged egress and close without sending Pong"
@@ -1717,10 +1778,15 @@ mod tests {
             other => panic!("expected slow-client Error, got {other:?}"),
         }
 
-        let closed = time::timeout(Duration::from_secs(2), connection.reader.read_frame())
-            .await
-            .expect("timed out waiting for slow-client close")
-            .expect("read after slow-client error should not fail");
+        let closed = time::timeout(
+            Duration::from_secs(2),
+            connection
+                .reader
+                .read_frame_in_context(FrameContexts::BBS_SERVER),
+        )
+        .await
+        .expect("timed out waiting for slow-client close")
+        .expect("read after slow-client error should not fail");
         assert!(
             closed.is_none(),
             "slow-client egress abort should close after the direct error frame"
@@ -1752,10 +1818,15 @@ mod tests {
             other => panic!("expected decode Error, got {other:?}"),
         }
 
-        let closed = time::timeout(Duration::from_secs(2), connection.reader.read_frame())
-            .await
-            .expect("timed out waiting for decode-error close")
-            .expect("read after decode error should not fail");
+        let closed = time::timeout(
+            Duration::from_secs(2),
+            connection
+                .reader
+                .read_frame_in_context(FrameContexts::BBS_SERVER),
+        )
+        .await
+        .expect("timed out waiting for decode-error close")
+        .expect("read after decode error should not fail");
         assert!(
             closed.is_none(),
             "decode-error egress path should send one error frame then close"

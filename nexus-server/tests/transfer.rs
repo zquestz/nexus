@@ -6,7 +6,7 @@ mod common;
 use std::io::Cursor;
 
 use common::create_test_db;
-use nexus_common::framing::{FrameReader, FrameWriter, MessageId, RawFrame};
+use nexus_common::framing::{FrameContexts, FrameReader, FrameWriter, MessageId, RawFrame};
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_server::db::{self, CreateUserParams, Permission, Permissions};
@@ -439,7 +439,11 @@ async fn test_frame_roundtrip_file_download() {
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
 
-    let frame = reader.read_frame().await.unwrap().unwrap();
+    let frame = reader
+        .read_frame_in_context(FrameContexts::TRANSFER_CLIENT)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(frame.message_id, id);
     assert_eq!(frame.message_type, "FileDownload");
 
@@ -799,7 +803,11 @@ async fn test_frame_roundtrip_file_upload() {
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
 
-    let frame = reader.read_frame().await.unwrap().unwrap();
+    let frame = reader
+        .read_frame_in_context(FrameContexts::TRANSFER_CLIENT)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(frame.message_id, id);
     assert_eq!(frame.message_type, "FileUpload");
 
@@ -841,7 +849,11 @@ async fn test_frame_roundtrip_client_file_start() {
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
 
-    let frame = reader.read_frame().await.unwrap().unwrap();
+    let frame = reader
+        .read_frame_in_context(FrameContexts::TRANSFER_CLIENT)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(frame.message_type, "FileStart");
 
     let parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
@@ -875,7 +887,11 @@ async fn test_frame_roundtrip_file_hash() {
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
 
-    let frame = reader.read_frame().await.unwrap().unwrap();
+    let frame = reader
+        .read_frame_in_context(FrameContexts::TRANSFER_SERVER)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(frame.message_type, "FileHash");
 
     let parsed: ServerMessage = serde_json::from_slice(&frame.payload).unwrap();

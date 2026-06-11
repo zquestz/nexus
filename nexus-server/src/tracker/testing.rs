@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
-    read_client_message, read_tracker_client_message_with_full_timeout, send_server_message,
-    send_tracker_server_message,
+    read_client_handshake_message_with_full_timeout, read_tracker_client_message_with_full_timeout,
+    send_server_message, send_tracker_server_message,
 };
 use nexus_common::protocol::ServerMessage;
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
@@ -174,7 +174,8 @@ async fn handle_connection(
     let mut writer = FrameWriter::new(write_half);
 
     // BBS-style Handshake/HandshakeResponse (reused at the handshake layer).
-    let _handshake = read_client_message(&mut reader).await?;
+    let _handshake =
+        read_client_handshake_message_with_full_timeout(&mut reader, None, None).await?;
     let reported = behavior
         .reported_fingerprint
         .clone()

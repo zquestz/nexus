@@ -405,9 +405,7 @@ mod tests {
     use tokio::net::{TcpListener, TcpStream};
 
     use nexus_common::PROTOCOL_VERSION;
-    use nexus_common::io::{
-        read_transfer_server_message as read_server_message, send_client_message,
-    };
+    use nexus_common::io::{read_server_handshake_response, send_client_message};
 
     use crate::handlers::testing::{DEFAULT_TEST_LOCALE, TEST_FINGERPRINT};
 
@@ -450,7 +448,7 @@ mod tests {
             .await
             .unwrap();
 
-        let received = read_server_message(&mut client_frame_reader)
+        let received = read_server_handshake_response(&mut client_frame_reader)
             .await
             .unwrap()
             .expect("Server should send a HandshakeResponse before closing");

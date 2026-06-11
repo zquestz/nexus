@@ -133,7 +133,7 @@ where
 mod tests {
     use super::*;
     use nexus_common::framing::{FrameReader, FrameWriter};
-    use nexus_common::io::read_server_message;
+    use nexus_common::io::read_server_handshake_response;
 
     /// Write a Handshake response to an in-memory pipe and read it back as
     /// the caller would. Returns `(success, error)` for assertions plus
@@ -156,7 +156,7 @@ mod tests {
         });
 
         let mut reader = FrameReader::new(client_read);
-        let received = read_server_message(&mut reader)
+        let received = read_server_handshake_response(&mut reader)
             .await
             .expect("read")
             .expect("frame");
