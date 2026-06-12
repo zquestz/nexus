@@ -31,6 +31,16 @@ pub fn translate_frame_error(error: &FrameError) -> String {
                 ("max", &max.to_string()),
             ],
         ),
+        FrameError::PayloadAllocationFailed {
+            message_type,
+            length,
+        } => t_args(
+            "err-frame-payload-allocation-failed",
+            &[
+                ("message_type", message_type),
+                ("length", &length.to_string()),
+            ],
+        ),
         FrameError::UnknownMessageType(message_type) => t_args(
             "err-frame-unknown-message-type",
             &[("message_type", message_type)],
@@ -76,6 +86,18 @@ mod tests {
                 &[("message_type", "Login")]
             )
         );
+    }
+
+    #[test]
+    fn translate_frame_error_localizes_payload_allocation_failure() {
+        let error = FrameError::PayloadAllocationFailed {
+            message_type: "UserListResponse".to_string(),
+            length: 42,
+        };
+
+        let translated = translate_frame_error(&error);
+        assert!(translated.contains("42"));
+        assert!(translated.contains("UserListResponse"));
     }
 
     #[test]

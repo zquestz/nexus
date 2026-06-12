@@ -1406,6 +1406,7 @@ label-scheduler-chunk-size = Schedulerblokgrootte (bytes):
 cmd-help-aliases = Aliassen: { $aliases }
 err-frame-invalid = Ongeldig protocolframe
 err-frame-payload-too-large = Payloadlengte { $length } overschrijdt het maximum { $max } voor { $message_type }
+err-frame-payload-allocation-failed = Payloadlengte { $length } is te groot om te reserveren voor { $message_type }
 err-frame-unknown-message-type = Onbekend berichttype: { $message_type }
 err-frame-unexpected-message-type = Onverwacht berichttype: { $message_type }
 err-frame-invalid-json = Ongeldige protocolpayload: { $error }

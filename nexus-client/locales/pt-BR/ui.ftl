@@ -1405,6 +1405,7 @@ label-scheduler-chunk-size = Tamanho do bloco do agendador (bytes):
 cmd-help-aliases = Aliases: { $aliases }
 err-frame-invalid = Frame de protocolo inválido
 err-frame-payload-too-large = O tamanho da carga { $length } excede o máximo { $max } para { $message_type }
+err-frame-payload-allocation-failed = O tamanho da carga { $length } é grande demais para alocar para { $message_type }
 err-frame-unknown-message-type = Tipo de mensagem desconhecido: { $message_type }
 err-frame-unexpected-message-type = Tipo de mensagem inesperado: { $message_type }
 err-frame-invalid-json = Carga de protocolo inválida: { $error }

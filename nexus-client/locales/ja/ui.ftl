@@ -1337,6 +1337,7 @@ label-scheduler-chunk-size = スケジューラーのチャンクサイズ (バ�
 cmd-help-aliases = 別名: { $aliases }
 err-frame-invalid = 無効なプロトコルフレーム
 err-frame-payload-too-large = ペイロード長 { $length } は { $message_type } の最大値 { $max } を超えています
+err-frame-payload-allocation-failed = ペイロード長 { $length } は { $message_type } 用に割り当てるには大きすぎます
 err-frame-unknown-message-type = 不明なメッセージタイプ: { $message_type }
 err-frame-unexpected-message-type = 予期しないメッセージタイプ: { $message_type }
 err-frame-invalid-json = 無効なプロトコルペイロード: { $error }

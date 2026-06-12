@@ -1409,6 +1409,7 @@ label-scheduler-chunk-size = Dimensione blocco scheduler (byte):
 cmd-help-aliases = Alias: { $aliases }
 err-frame-invalid = Frame di protocollo non valido
 err-frame-payload-too-large = La lunghezza del payload { $length } supera il massimo { $max } per { $message_type }
+err-frame-payload-allocation-failed = La lunghezza del payload { $length } è troppo grande da allocare per { $message_type }
 err-frame-unknown-message-type = Tipo di messaggio sconosciuto: { $message_type }
 err-frame-unexpected-message-type = Tipo di messaggio inatteso: { $message_type }
 err-frame-invalid-json = Payload di protocollo non valido: { $error }

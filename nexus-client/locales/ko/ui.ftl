@@ -1337,6 +1337,7 @@ label-scheduler-chunk-size = 스케줄러 청크 크기 (바이트):
 cmd-help-aliases = 별칭: { $aliases }
 err-frame-invalid = 잘못된 프로토콜 프레임
 err-frame-payload-too-large = 페이로드 길이 { $length }이(가) { $message_type }의 최대값 { $max }을(를) 초과합니다
+err-frame-payload-allocation-failed = 페이로드 길이 { $length }은(는) { $message_type }에 할당하기에 너무 큽니다
 err-frame-unknown-message-type = 알 수 없는 메시지 유형: { $message_type }
 err-frame-unexpected-message-type = 예상하지 못한 메시지 유형: { $message_type }
 err-frame-invalid-json = 잘못된 프로토콜 페이로드: { $error }

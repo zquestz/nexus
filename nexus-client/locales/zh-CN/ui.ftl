@@ -1338,6 +1338,7 @@ label-scheduler-chunk-size = 调度器块大小 (字节)：
 cmd-help-aliases = 别名：{ $aliases }
 err-frame-invalid = 无效的协议帧
 err-frame-payload-too-large = 载荷长度 { $length } 超过 { $message_type } 的最大值 { $max }
+err-frame-payload-allocation-failed = 载荷长度 { $length } 太大，无法为 { $message_type } 分配
 err-frame-unknown-message-type = 未知消息类型：{ $message_type }
 err-frame-unexpected-message-type = 意外消息类型：{ $message_type }
 err-frame-invalid-json = 无效的协议载荷：{ $error }

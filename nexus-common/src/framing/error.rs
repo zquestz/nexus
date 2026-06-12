@@ -28,6 +28,8 @@ pub enum FrameError {
         length: u64,
         max: u64,
     },
+    /// Payload allocation failed before reading the payload
+    PayloadAllocationFailed { message_type: String, length: u64 },
     /// Missing delimiter where expected
     MissingDelimiter,
     /// Missing terminator (newline)
@@ -80,6 +82,15 @@ impl fmt::Display for FrameError {
                 write!(
                     f,
                     "payload length {length} exceeds maximum {max} for message type '{message_type}'"
+                )
+            }
+            FrameError::PayloadAllocationFailed {
+                message_type,
+                length,
+            } => {
+                write!(
+                    f,
+                    "failed to allocate payload buffer for {length} bytes for message type '{message_type}'"
                 )
             }
             FrameError::MissingDelimiter => write!(f, "missing delimiter '|'"),
@@ -153,6 +164,14 @@ mod tests {
             }
             .to_string(),
             "payload length 5000 exceeds maximum 2048 for message type 'ChatSend'"
+        );
+        assert_eq!(
+            FrameError::PayloadAllocationFailed {
+                message_type: "UserListResponse".to_string(),
+                length: u64::MAX,
+            }
+            .to_string(),
+            "failed to allocate payload buffer for 18446744073709551615 bytes for message type 'UserListResponse'"
         );
         assert_eq!(
             FrameError::MissingDelimiter.to_string(),

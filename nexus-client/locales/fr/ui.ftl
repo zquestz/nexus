@@ -1405,6 +1405,7 @@ label-scheduler-chunk-size = Taille de bloc du planificateur (octets) :
 cmd-help-aliases = Alias : { $aliases }
 err-frame-invalid = Trame de protocole invalide
 err-frame-payload-too-large = La longueur de charge utile { $length } dépasse le maximum { $max } pour { $message_type }
+err-frame-payload-allocation-failed = La longueur de charge utile { $length } est trop grande pour être allouée pour { $message_type }
 err-frame-unknown-message-type = Type de message inconnu : { $message_type }
 err-frame-unexpected-message-type = Type de message inattendu : { $message_type }
 err-frame-invalid-json = Charge utile de protocole invalide : { $error }

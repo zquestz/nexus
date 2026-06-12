@@ -1478,10 +1478,11 @@ impl FrameTypeInfo {
 /// validator constraints, then 20% padding is added for safety margin.
 /// Tests verify the base values fit within the padded limits.
 ///
-/// A limit of `0` means "unlimited" (no per-type limit). This is only safe for
-/// contexts where the peer is trusted (the client reading the logged-in BBS
-/// stream); a test pins that no untrusted context carries a 0 limit. The
-/// global `MAX_PAYLOAD_LENGTH` sanity check still applies.
+/// A limit of `0` means "unlimited" (no per-type protocol limit). This is only
+/// safe for contexts where the peer is trusted (the client reading the logged-in
+/// BBS stream); a test pins that no untrusted context carries a 0 limit. The
+/// frame reader still uses fallible allocation, so an impossible in-memory
+/// payload fails as a frame error instead of aborting the process.
 ///
 /// ## Shared Message Type Names
 ///
@@ -4089,8 +4090,8 @@ mod tests {
     #[test]
     fn test_limit_user_list_response() {
         // UserListResponse has no per-type limit (0 = unlimited) since it comes
-        // from the server which the client has chosen to trust. The global
-        // MAX_PAYLOAD_LENGTH sanity check still applies.
+        // from the server which the client has chosen to trust. Impossible
+        // local allocations are still reported as frame errors by the reader.
         assert_eq!(max_payload_for_type("UserListResponse"), 0);
     }
 

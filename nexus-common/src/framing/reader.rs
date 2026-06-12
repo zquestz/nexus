@@ -186,7 +186,20 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         &mut self,
         header: &FrameHeader,
     ) -> Result<Vec<u8>, FrameError> {
-        let mut payload = vec![0u8; header.payload_length as usize];
+        let payload_len = usize::try_from(header.payload_length).map_err(|_| {
+            FrameError::PayloadAllocationFailed {
+                message_type: header.message_type.clone(),
+                length: header.payload_length,
+            }
+        })?;
+        let mut payload = Vec::new();
+        payload.try_reserve_exact(payload_len).map_err(|_| {
+            FrameError::PayloadAllocationFailed {
+                message_type: header.message_type.clone(),
+                length: header.payload_length,
+            }
+        })?;
+        payload.resize(payload_len, 0);
         self.reader.read_exact(&mut payload).await?;
 
         // Read terminator
@@ -789,8 +802,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_frame_reader_unlimited_payload_type() {
-        // UserListResponse has no limit (0 = unlimited)
-        // Create a large payload
+        // UserListResponse has no per-type protocol limit (0 = unlimited).
+        // Large-but-allocatable payloads are accepted from the trusted server stream.
         let payload = format!("{{\"users\":[{}]}}", "\"x\",".repeat(1000));
         let data = format!(
             "NX|16|UserListResponse|a1b2c3d4e5f6|{}|{}\n",
@@ -809,6 +822,23 @@ mod tests {
             .unwrap();
         assert_eq!(frame.message_type, "UserListResponse");
         assert_eq!(frame.payload.len(), payload.len());
+    }
+
+    #[tokio::test]
+    async fn test_frame_reader_unlimited_payload_allocation_failure_is_error() {
+        let data = b"NX|16|UserListResponse|a1b2c3d4e5f6|18446744073709551615|";
+        let cursor = Cursor::new(data.as_slice());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = reader
+            .read_frame_in_context(FrameContexts::BBS_SERVER)
+            .await;
+        assert!(matches!(
+            result,
+            Err(FrameError::PayloadAllocationFailed { message_type, length })
+                if message_type == "UserListResponse" && length == u64::MAX
+        ));
     }
 
     #[tokio::test]

@@ -1467,6 +1467,7 @@ err-tracker-query-rejected = Tracker rejected the request: { $message }
 cmd-help-aliases = Aliases: { $aliases }
 err-frame-invalid = Invalid protocol frame
 err-frame-payload-too-large = Payload length { $length } exceeds maximum { $max } for { $message_type }
+err-frame-payload-allocation-failed = Payload length { $length } is too large to allocate for { $message_type }
 err-frame-unknown-message-type = Unknown message type: { $message_type }
 err-frame-unexpected-message-type = Unexpected message type: { $message_type }
 err-frame-invalid-json = Invalid protocol payload: { $error }

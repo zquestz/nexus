@@ -73,9 +73,6 @@ pub const MAX_TYPE_LENGTH: usize = 999;
 /// Maximum digits for payload length field (supports up to u64::MAX, 20 digits)
 pub const MAX_PAYLOAD_LENGTH_DIGITS: usize = 20;
 
-/// Maximum payload length (u64::MAX, ~18 exabytes)
-pub const MAX_PAYLOAD_LENGTH: u64 = u64::MAX;
-
 #[cfg(test)]
 mod tests {
     use super::*;

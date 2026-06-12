@@ -1425,6 +1425,7 @@ label-scheduler-chunk-size = Размер блока планировщика (�
 cmd-help-aliases = Псевдонимы: { $aliases }
 err-frame-invalid = Недопустимый кадр протокола
 err-frame-payload-too-large = Длина полезной нагрузки { $length } превышает максимум { $max } для { $message_type }
+err-frame-payload-allocation-failed = Длина полезной нагрузки { $length } слишком велика для выделения памяти для { $message_type }
 err-frame-unknown-message-type = Неизвестный тип сообщения: { $message_type }
 err-frame-unexpected-message-type = Неожиданный тип сообщения: { $message_type }
 err-frame-invalid-json = Недопустимая полезная нагрузка протокола: { $error }

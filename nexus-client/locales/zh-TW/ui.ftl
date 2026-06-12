@@ -1337,6 +1337,7 @@ label-scheduler-chunk-size = 排程器區塊大小 (位元組)：
 cmd-help-aliases = 別名：{ $aliases }
 err-frame-invalid = 無效的通訊協定訊框
 err-frame-payload-too-large = 負載長度 { $length } 超過 { $message_type } 的最大值 { $max }
+err-frame-payload-allocation-failed = 負載長度 { $length } 太大，無法為 { $message_type } 配置
 err-frame-unknown-message-type = 未知訊息類型：{ $message_type }
 err-frame-unexpected-message-type = 未預期的訊息類型：{ $message_type }
 err-frame-invalid-json = 無效的通訊協定負載：{ $error }
