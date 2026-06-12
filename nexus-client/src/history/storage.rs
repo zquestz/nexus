@@ -304,10 +304,11 @@ impl HistoryManager {
             .encrypt(json.as_bytes())
             .map_err(HistoryError::Crypto)?;
 
-        // Owner-only from creation. The ciphertext is decryptable by anyone who
-        // knows the (public) cert fingerprint, so a failed lock-down is a real
+        // Atomic owner-only replacement. The ciphertext is decryptable by anyone
+        // who knows the (public) cert fingerprint, so a failed lock-down is a real
         // privacy gap — propagate it rather than swallowing it.
-        crate::secure_file::write_owner_only(&new_path, &encrypted).map_err(HistoryError::Io)?;
+        nexus_common::secure_file::write_atomic_unsynced(&new_path, &encrypted)
+            .map_err(HistoryError::Io)?;
 
         Ok(())
     }
@@ -488,8 +489,10 @@ pub fn rotate_fingerprint(old_fingerprint: &str, new_fingerprint: &str) -> usize
                 };
                 let new_file_path = new_user_dir.join(filename);
 
-                // Owner-only from creation.
-                if crate::secure_file::write_owner_only(&new_file_path, &new_encrypted).is_ok() {
+                // Atomic owner-only replacement.
+                if nexus_common::secure_file::write_atomic_unsynced(&new_file_path, &new_encrypted)
+                    .is_ok()
+                {
                     // Delete old file
                     let _ = fs::remove_file(&file_path);
                     rotated_count += 1;

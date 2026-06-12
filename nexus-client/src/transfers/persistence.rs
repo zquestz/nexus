@@ -129,8 +129,8 @@ impl TransferManager {
             )
         })?;
 
-        // Owner-only from creation — transfers.json holds transfer credentials.
-        crate::secure_file::write_owner_only(&path, json.as_bytes())
+        // Atomic owner-only replacement — transfers.json holds transfer credentials.
+        nexus_common::secure_file::write_atomic(&path, json.as_bytes())
             .map_err(|e| t_args("transfer-save-write-failed", &[("error", &e.to_string())]))?;
 
         self.dirty = false;

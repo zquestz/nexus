@@ -53,8 +53,8 @@ impl Config {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| t_args("err-failed-serialize-config", &[("error", &e.to_string())]))?;
 
-        // Owner-only from creation — config holds saved passwords.
-        crate::secure_file::write_owner_only(&path, json.as_bytes())
+        // Atomic owner-only replacement — config holds saved passwords.
+        nexus_common::secure_file::write_atomic(&path, json.as_bytes())
             .map_err(|e| t_args("err-failed-write-config", &[("error", &e.to_string())]))?;
 
         Ok(())

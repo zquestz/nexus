@@ -1,25 +1,27 @@
-//! Atomic owner-only file writes for sensitive daemon state.
+//! Atomic owner-only file writes for sensitive workspace state.
 //!
-//! [`write_atomic`] is the workspace's single implementation of the
-//! "write a sensitive file without a permissions race" pattern: it
-//! writes contents to `<path>.tmp` first (with mode `0o600` set
-//! atomically at create time on Unix), then renames into place. A crash
+//! [`write_atomic`] and [`write_atomic_unsynced`] are the workspace's
+//! implementations of the "write a sensitive file without a permissions
+//! race" pattern: write contents to `<path>.tmp` first (with mode `0o600`
+//! set atomically at create time on Unix), then rename into place. A crash
 //! between write and rename leaves a stray `.tmp` file but never a
 //! partially-written or world-readable target file.
 //!
-//! Used by `nexus-server` for TLS cert + key writes, and by
-//! `nexus-tracker` for TLS cert + key + password-hash writes.
+//! Use [`write_atomic`] for rarely-written critical state that should be
+//! durable on return, such as TLS material, tracker password hashes, client
+//! config, and transfer credentials. Use [`write_atomic_unsynced`] for hotter
+//! paths where atomic replacement and owner-only permissions matter, but
+//! per-write fsync latency is not worth paying, such as client chat history.
 //!
 //! On non-Unix platforms the file is created with platform defaults —
-//! Windows relies on NTFS ACLs to restrict access to the daemon's user.
+//! Windows relies on NTFS ACLs to restrict access to the process user.
 
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-/// Owner-only file mode for sensitive on-disk state on Unix
-/// (`0o600` — read/write for owner only). Set atomically at file
-/// creation by [`write_atomic`].
+/// Owner-only file mode for sensitive on-disk state on Unix (`0o600` —
+/// read/write for owner only). Set atomically at temp-file creation.
 #[cfg(unix)]
 pub const SECURE_FILE_MODE: u32 = 0o600;
 
@@ -51,6 +53,23 @@ pub const SECURE_FILE_MODE: u32 = 0o600;
 /// or `rename`. Callers typically wrap with an operator-facing prefix
 /// and the path; see `nexus-tracker/src/tls.rs` for the convention.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
+    write_atomic_impl(path, contents, true)
+}
+
+/// Atomically write `contents` to `path` with owner-only permissions, without fsync.
+///
+/// This has the same temp-file + rename behavior as [`write_atomic`], so an
+/// app crash or write error before the rename leaves the previous target file
+/// untouched. It deliberately skips `sync_all` calls, so it does **not**
+/// guarantee the new contents survive an immediate power loss after return.
+///
+/// Use for hotter paths where avoiding partial/truncated target files matters,
+/// but forcing storage durability on every write would be too expensive.
+pub fn write_atomic_unsynced(path: &Path, contents: &[u8]) -> io::Result<()> {
+    write_atomic_impl(path, contents, false)
+}
+
+fn write_atomic_impl(path: &Path, contents: &[u8], sync: bool) -> io::Result<()> {
     let tmp = temp_path_for(path);
 
     {
@@ -67,10 +86,12 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         #[cfg(not(unix))]
         let mut file = fs::File::create(&tmp)?;
         file.write_all(contents)?;
-        // Fsync the contents to disk before close — without this, a
-        // crash between this point and writeback could leave the file
-        // metadata claiming bytes that aren't actually on disk.
-        file.sync_all()?;
+        if sync {
+            // Fsync the contents to disk before close — without this, a
+            // crash between this point and writeback could leave the file
+            // metadata claiming bytes that aren't actually on disk.
+            file.sync_all()?;
+        }
     }
 
     fs::rename(&tmp, path)?;
@@ -84,11 +105,13 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     // data-dir so this branch is defensive only.
     #[cfg(unix)]
     {
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        fs::File::open(parent)?.sync_all()?;
+        if sync {
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            fs::File::open(parent)?.sync_all()?;
+        }
     }
 
     Ok(())
@@ -171,6 +194,39 @@ mod tests {
             !tmp_path.exists(),
             "tmp file should have been renamed away: {}",
             tmp_path.display()
+        );
+    }
+
+    #[test]
+    fn unsynced_writer_replaces_contents_and_leaves_no_tmp() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("history");
+        fs::write(&path, b"old").expect("seed");
+
+        write_atomic_unsynced(&path, b"new").expect("write");
+
+        assert_eq!(fs::read(&path).expect("read"), b"new");
+        assert!(
+            !temp_path_for(&path).exists(),
+            "tmp file should have been renamed away: {}",
+            temp_path_for(&path).display()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unsynced_writer_is_owner_only_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("history");
+
+        write_atomic_unsynced(&path, b"x").expect("write");
+
+        let mode = fs::metadata(&path).expect("metadata").permissions().mode();
+        assert_eq!(
+            mode & 0o777,
+            SECURE_FILE_MODE,
+            "fresh file must be created with 0o600"
         );
     }
 }
