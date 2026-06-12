@@ -29,11 +29,10 @@ use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage}
 use nexus_common::validators::MAX_LOCALE_LENGTH;
 
 use crate::constants::{
-    DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED,
-    LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION,
-    REASON_DISCONNECT_CLEAN_CLOSE, REASON_DISCONNECT_FRAME_ERROR, REASON_DISCONNECT_REJECTED,
-    REASON_DISCONNECT_ROLE_VIOLATION, REASON_DISCONNECT_STALE_TIMEOUT, ROLE_ESTABLISH_TIMEOUT,
-    STALE_TIMEOUT_REFRESH_MULTIPLIER,
+    DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED, LOG_HANDSHAKE_REQUIRED,
+    LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, REASON_DISCONNECT_CLEAN_CLOSE,
+    REASON_DISCONNECT_FRAME_ERROR, REASON_DISCONNECT_REJECTED, REASON_DISCONNECT_ROLE_VIOLATION,
+    REASON_DISCONNECT_STALE_TIMEOUT, ROLE_ESTABLISH_TIMEOUT, STALE_TIMEOUT_REFRESH_MULTIPLIER,
 };
 use crate::errors::{
     err_tracker_frame_error, err_tracker_handshake_required, err_tracker_malformed_message,
@@ -229,12 +228,10 @@ where
             };
             let outcome = handle_initial_register(params, state, writer, peer_addr).await?;
             match outcome {
-                InitialRegisterOutcome::Registered(id) => {
+                InitialRegisterOutcome::Registered(guard) => {
                     // Guard frees the registry slot on every refresh-loop exit path.
-                    let _guard = RegistrationGuard {
-                        state: Arc::clone(state),
-                        id,
-                    };
+                    let id = guard.id();
+                    let _guard = guard;
                     run_refresh_loop(reader, writer, id, state, peer_addr).await
                 }
                 InitialRegisterOutcome::Rejected => Ok(()),
@@ -378,25 +375,6 @@ where
                 return Ok(());
             }
         }
-    }
-}
-
-/// Unregisters a server connection's registry entry on task exit. A Drop guard (vs explicit
-/// cleanup) catches every exit path uniformly — clean close, timeout, role violation, frame error,
-/// rejection, panic, async cancellation. `run_refresh_loop` logs the reason, so `Drop` only mutates
-/// the registry (no log → no double-logging; a panic still cleans up, just without attribution).
-struct RegistrationGuard {
-    state: Arc<TrackerState>,
-    id: ConnectionId,
-}
-
-impl Drop for RegistrationGuard {
-    fn drop(&mut self) {
-        self.state
-            .registry
-            .lock()
-            .expect(ERR_REGISTRY_MUTEX_POISONED)
-            .unregister(self.id);
     }
 }
 

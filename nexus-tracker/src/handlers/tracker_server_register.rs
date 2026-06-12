@@ -9,6 +9,7 @@
 
 use std::io;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::io::AsyncWrite;
@@ -56,7 +57,7 @@ use crate::errors::{
 };
 use crate::registry::{ConnectionId, RegisterError};
 use crate::resolver::Resolver;
-use crate::state::TrackerState;
+use crate::state::{RegistrationGuard, TrackerState};
 use nexus_common::rate_limiter::RateCheck;
 
 /// Decoded `TrackerServerRegister` request fields.
@@ -107,16 +108,15 @@ enum RegisterMode {
 
 /// Outcome of [`handle_initial_register`]; the caller decides whether to
 /// enter the refresh loop or close.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InitialRegisterOutcome {
-    /// Accepted; the id is the registry slot to store for refresh/cleanup.
-    Registered(ConnectionId),
+pub(crate) enum InitialRegisterOutcome {
+    /// Accepted; the guard owns the registry slot until the connection exits.
+    Registered(RegistrationGuard),
     Rejected,
 }
 
 /// Outcome of [`handle_refresh`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefreshOutcome {
+pub(crate) enum RefreshOutcome {
     Refreshed,
     /// Rejected (connection should close). Refresh-floor violations land
     /// here too — a too-fast refresh is broken/malicious, so we kick.
@@ -124,11 +124,11 @@ pub enum RefreshOutcome {
 }
 
 /// Drive the initial-register flow (no `existing_id` — this is the
-/// first `TrackerServerRegister` on a fresh connection). Always sends
+/// first `TrackerServerRegister` on a fresh connection). Attempts to send
 /// exactly one `TrackerServerRegisterResponse` to the wire.
-pub async fn handle_initial_register<W>(
+pub(crate) async fn handle_initial_register<W>(
     params: RegisterParams,
-    state: &TrackerState,
+    state: &Arc<TrackerState>,
     writer: &mut FrameWriter<W>,
     peer_addr: SocketAddr,
 ) -> io::Result<InitialRegisterOutcome>
@@ -160,8 +160,9 @@ where
                 "{}",
                 LOG_REGISTER_NEW
             );
+            let guard = RegistrationGuard::new(Arc::clone(state), id);
             send_success(writer, state.refresh_interval).await?;
-            Ok(InitialRegisterOutcome::Registered(id))
+            Ok(InitialRegisterOutcome::Registered(guard))
         }
         Err(RegisterError::Capacity) => {
             reject(
@@ -193,7 +194,7 @@ where
 /// `false` (id-not-found) is normally unreachable; handled defensively
 /// (see [`LOG_REFRESH_GHOST_ID`]) for a future stale-eviction worker.
 /// Always sends exactly one `TrackerServerRegisterResponse`.
-pub async fn handle_refresh<W>(
+pub(crate) async fn handle_refresh<W>(
     params: RegisterParams,
     id: ConnectionId,
     state: &TrackerState,
@@ -654,7 +655,11 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
+
+    use crate::registry::Registry;
 
     /// In-memory resolver keyed by `host → result`. Hosts not in the map
     /// default to `NotFound` (NXDOMAIN-equivalent).
@@ -706,6 +711,47 @@ mod tests {
         MockResolver::new()
     }
 
+    struct FailingWriter;
+
+    impl tokio::io::AsyncWrite for FailingWriter {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "forced write failure",
+            )))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    fn valid_register_params(name: &str) -> RegisterParams {
+        RegisterParams {
+            password: None,
+            locale: "en".to_string(),
+            name: name.to_string(),
+            description: Some("test BBS".to_string()),
+            address: Some("8.8.8.8".to_string()),
+            port: 7500,
+            websocket_port: None,
+            version: "0.8.6".to_string(),
+            fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
+                 AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+                .to_string(),
+            user_count: 1,
+            allows_guest: true,
+        }
+    }
+
     /// A "public" peer (8.8.8.8) — avoids the LAN-peer bypass.
     fn public_peer() -> IpAddr {
         ip("8.8.8.8")
@@ -720,6 +766,50 @@ mod tests {
         resolver: &dyn Resolver,
     ) -> Result<(), &'static str> {
         validate_address(address, peer_ip, resolver, RegisterMode::Initial).await
+    }
+
+    #[tokio::test]
+    async fn initial_register_write_failure_unregisters_inserted_entry() {
+        let state = Arc::new(TrackerState::new(
+            Registry::new(0, 1),
+            None,
+            None,
+            300,
+            0,
+            0,
+            std::time::Duration::ZERO,
+        ));
+        let peer_addr: SocketAddr = "8.8.8.8:12345".parse().expect("peer addr");
+        let mut failing_writer = FrameWriter::new(FailingWriter);
+
+        let result = handle_initial_register(
+            valid_register_params("First"),
+            &state,
+            &mut failing_writer,
+            peer_addr,
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "initial success response write should fail"
+        );
+        assert_eq!(state.registry.lock().expect("registry mutex").len(), 0);
+
+        let mut ok_writer = FrameWriter::new(tokio::io::sink());
+        let outcome = handle_initial_register(
+            valid_register_params("Second"),
+            &state,
+            &mut ok_writer,
+            peer_addr,
+        )
+        .await
+        .expect("second register should reuse freed per-IP slot");
+        let InitialRegisterOutcome::Registered(guard) = outcome else {
+            panic!("second register should succeed");
+        };
+        assert_eq!(state.registry.lock().expect("registry mutex").len(), 1);
+        drop(guard);
+        assert_eq!(state.registry.lock().expect("registry mutex").len(), 0);
     }
 
     #[tokio::test]

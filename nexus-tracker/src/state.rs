@@ -2,7 +2,7 @@
 //! handed to every spawned connection task.
 
 use std::path::Path;
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use tracing::{error, info};
@@ -11,9 +11,10 @@ use crate::args::PasswordKind;
 use crate::auth;
 use crate::constants::{
     ERR_LISTING_HASH_LOCK_POISONED, ERR_PASSWORD_HASH_LOCK_POISONED,
-    ERR_REGISTRATION_HASH_LOCK_POISONED, LOG_PASSWORD_RELOAD_FAILED, LOG_PASSWORD_RELOADED,
+    ERR_REGISTRATION_HASH_LOCK_POISONED, ERR_REGISTRY_MUTEX_POISONED, LOG_PASSWORD_RELOAD_FAILED,
+    LOG_PASSWORD_RELOADED,
 };
-use crate::registry::Registry;
+use crate::registry::{ConnectionId, Registry};
 use crate::resolver::{Resolver, TokioResolver};
 use nexus_common::rate_limiter::RateLimiter;
 
@@ -50,6 +51,38 @@ pub struct TrackerState {
     /// (via [`Resolver`]) is required so `TrackerState` can be shared as
     /// `Arc`. Tests swap a mock via [`with_resolver`](Self::with_resolver).
     pub resolver: Box<dyn Resolver>,
+}
+
+/// Unregisters a server connection's registry entry on task exit.
+///
+/// The guard is armed immediately after a successful registry insert, before
+/// the initial success response is written, so write failures cannot leave an
+/// entry behind without a live connection.
+pub(crate) struct RegistrationGuard {
+    state: Arc<TrackerState>,
+    id: ConnectionId,
+}
+
+impl RegistrationGuard {
+    #[must_use]
+    pub(crate) fn new(state: Arc<TrackerState>, id: ConnectionId) -> Self {
+        Self { state, id }
+    }
+
+    #[must_use]
+    pub(crate) fn id(&self) -> ConnectionId {
+        self.id
+    }
+}
+
+impl Drop for RegistrationGuard {
+    fn drop(&mut self) {
+        self.state
+            .registry
+            .lock()
+            .expect(ERR_REGISTRY_MUTEX_POISONED)
+            .unregister(self.id);
+    }
 }
 
 impl TrackerState {
