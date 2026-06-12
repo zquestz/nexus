@@ -28,16 +28,12 @@ pub fn fingerprint_interception_dialog<'a>(
 
     // Mirror the stage-1 mismatch dialog: only show the leading "name -" when
     // we actually have a friendly name to display. Empty falls back to host:port.
+    let endpoint =
+        crate::uri::format_endpoint(&interception.server_address, interception.server_port);
     let server_line_text = if interception.server_name.is_empty() {
-        format!(
-            "[{}]:{}",
-            interception.server_address, interception.server_port
-        )
+        endpoint
     } else {
-        format!(
-            "{} - [{}]:{}",
-            interception.server_name, interception.server_address, interception.server_port
-        )
+        format!("{} - {}", interception.server_name, endpoint)
     };
     let server_line = shaped_text(server_line_text).size(TEXT_SIZE);
 
