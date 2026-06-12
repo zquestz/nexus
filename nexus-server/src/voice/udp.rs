@@ -30,7 +30,11 @@ use nexus_common::voice::{
 };
 
 const STALE_CLIENT_CHECK_INTERVAL_SECS: u64 = 30;
-const DTLS_HANDSHAKE_TIMEOUT_SECS: u64 = 30;
+/// A pending DTLS handshake holds a slot in the bounded handshake pool until it
+/// completes or this fires. Kept short so a spoofed-ClientHello flood (whose
+/// handshakes can never complete) churns out of the pool quickly and new voice
+/// joins recover fast.
+const DTLS_HANDSHAKE_TIMEOUT_SECS: u64 = 15;
 const MILLIS_PER_SECOND: u64 = 1_000;
 
 static VOICE_IDLE_CLOCK_START: OnceLock<Instant> = OnceLock::new();
