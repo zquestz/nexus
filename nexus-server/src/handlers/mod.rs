@@ -35,6 +35,7 @@ mod news_edit;
 mod news_list;
 mod news_show;
 mod news_update;
+pub mod reaper;
 mod server_info;
 mod server_info_update;
 mod tracker_accept_fingerprint;
@@ -657,6 +658,8 @@ pub(crate) async fn broadcast_chat_user_renamed(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::channels::JoinPolicy;
     use crate::db::ChannelDb;
@@ -947,6 +950,136 @@ mod tests {
             }
         }
         assert_eq!(left_nickname, Some("alice".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_reaper_clears_channel_state_for_dead_session() {
+        let user_manager = UserManager::new();
+        let voice_registry = VoiceRegistry::new();
+        let channel_manager =
+            ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
+
+        // observer (live) + ghost (dead receiver), both joined to #general.
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
+        let observer = user_manager
+            .add_user(regular_session(1, "observer", obs_tx))
+            .await
+            .unwrap();
+        let (ghost_tx, ghost_rx) = ConnectionWriter::channel();
+        let ghost = user_manager
+            .add_user(regular_session(2, "ghost", ghost_tx))
+            .await
+            .unwrap();
+        drop(ghost_rx);
+
+        for session_id in [observer, ghost] {
+            channel_manager
+                .join("#general", session_id, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
+        }
+
+        // Reap ghost as a broadcast would have enqueued it. The old partial sweep
+        // dropped only the user-map entry; the reaper runs full teardown.
+        let mut dead_rx = user_manager
+            .take_dead_session_rx()
+            .expect("dead-session receiver");
+        let reaped = reaper::reap_pending(
+            ghost,
+            &mut dead_rx,
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+        )
+        .await;
+
+        assert_eq!(reaped, vec![ghost]);
+        assert!(
+            user_manager.get_user_by_session_id(ghost).await.is_none(),
+            "reaper removes the dead session from the user map"
+        );
+
+        let mut left = None;
+        while let Ok(event) = obs_rx.try_recv() {
+            if let (ServerMessage::ChatUserLeft { nickname, .. }, _) = event.expect_message() {
+                left = Some(nickname);
+            }
+        }
+        assert_eq!(
+            left,
+            Some("ghost".to_string()),
+            "reaper clears channel state and emits ChatUserLeft — the gap the old partial sweep left open"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reaper_no_op_for_already_removed_session() {
+        let user_manager = UserManager::new();
+        let voice_registry = VoiceRegistry::new();
+        let channel_manager =
+            ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
+
+        // Observer with UserList, so it WOULD see a UserDisconnected if one fired.
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
+        let mut obs_params = regular_session(1, "observer", obs_tx);
+        obs_params.permissions.insert(Permission::UserList);
+        let observer = user_manager.add_user(obs_params).await.unwrap();
+
+        // Reaping a session id that isn't present: `remove_users` yields nothing,
+        // so no teardown and no announcement — safe for an already-swept id.
+        let mut dead_rx = user_manager
+            .take_dead_session_rx()
+            .expect("dead-session receiver");
+        reaper::reap_pending(
+            4242,
+            &mut dead_rx,
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+        )
+        .await;
+
+        assert!(
+            obs_rx.try_recv().is_err(),
+            "reaping an absent session must not announce a disconnect"
+        );
+        assert!(
+            user_manager
+                .get_user_by_session_id(observer)
+                .await
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_does_not_acquire_user_state_lock() {
+        let user_manager = UserManager::new();
+        let (obs_tx, _obs_rx) = ConnectionWriter::channel();
+        user_manager
+            .add_user(regular_session(1, "observer", obs_tx))
+            .await
+            .unwrap();
+        // A dead receiver for the broadcast to discover and enqueue.
+        let (ghost_tx, ghost_rx) = ConnectionWriter::channel();
+        user_manager
+            .add_user(regular_session(2, "ghost", ghost_tx))
+            .await
+            .unwrap();
+        drop(ghost_rx);
+
+        // Hold the user-state WRITE lock, then broadcast. If the broadcast path
+        // re-acquired `user_state` (the naive inline-cleanup regression — the
+        // exact deadlock this design avoids), it would block here behind this
+        // guard. The enqueue path takes no such lock, so the broadcast completes.
+        // Deterministic: no parked-writer timing, robust on any runner.
+        let _guard = user_manager.lock_user_state().await;
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            user_manager.broadcast(ServerMessage::Pong),
+        )
+        .await
+        .expect("broadcast must not acquire user_state while it is held");
     }
 
     #[tokio::test]

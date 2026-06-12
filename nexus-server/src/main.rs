@@ -286,6 +286,21 @@ async fn main() {
     // Needed by the voice server for broadcasts.
     let channel_manager = ChannelManager::new(database.channels.clone(), user_manager.clone());
 
+    // Dead-session reaper: drains sessions that broadcasts find unreachable and
+    // runs the canonical disconnect teardown for them, off any handler's
+    // `read_user_state` guard. See `handlers::reaper`.
+    match user_manager.take_dead_session_rx() {
+        Some(dead_session_rx) => {
+            tokio::spawn(handlers::reaper::run_dead_session_reaper(
+                dead_session_rx,
+                user_manager.clone(),
+                voice_registry.clone(),
+                channel_manager.clone(),
+            ));
+        }
+        None => error!("{}", LOG_DEAD_SESSION_REAPER_NO_RECEIVER),
+    }
+
     let voice_server = voice_listener.map(|listener| {
         Arc::new(VoiceUdpServer::new(
             listener,

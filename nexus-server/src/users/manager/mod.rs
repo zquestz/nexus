@@ -8,10 +8,10 @@ mod queries;
 pub use mutations::AddUserError;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, mpsc};
 
 use crate::users::user::UserSession;
 
@@ -49,20 +49,47 @@ pub struct UserManager {
     /// transaction and in-memory side-effects so login never sees a partial update.
     /// Always dropped before direct socket I/O.
     server_info_lock: Arc<RwLock<()>>,
+    /// Sender for session ids found dead (closed `ConnectionWriter`) during a
+    /// broadcast. The reaper task drains these and runs the canonical disconnect
+    /// teardown, so cleanup never re-enters a broadcast helper or nests a
+    /// `read_user_state` acquisition. Unbounded: volume is capped by live
+    /// sessions and the reaper drains immediately.
+    dead_session_tx: mpsc::UnboundedSender<u32>,
+    /// Handed to the reaper once at startup via `take_dead_session_rx`.
+    dead_session_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<u32>>>>,
 }
 
 impl UserManager {
     pub fn new() -> Self {
+        let (dead_session_tx, dead_session_rx) = mpsc::unbounded_channel();
         Self {
             users: Arc::new(RwLock::new(HashMap::new())),
             next_id: Arc::new(AtomicU32::new(1)),
             user_state_lock: Arc::new(RwLock::new(())),
             server_info_lock: Arc::new(RwLock::new(())),
+            dead_session_tx,
+            dead_session_rx: Arc::new(Mutex::new(Some(dead_session_rx))),
         }
     }
 
     pub(super) fn next_session_id(&self) -> u32 {
         self.next_id.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Queue session ids found dead during a broadcast for the reaper to tear
+    /// down via the canonical disconnect path. Unbounded and reaper-drained, so
+    /// `send` only fails once the reaper is gone (shutdown), which we ignore.
+    pub(super) fn enqueue_dead_sessions(&self, session_ids: &[u32]) {
+        for &session_id in session_ids {
+            let _ = self.dead_session_tx.send(session_id);
+        }
+    }
+
+    /// Take the dead-session receiver for the reaper task. `None` if already
+    /// taken (one reaper only) or the lock is poisoned — the caller logs and
+    /// continues without the safety-net sweep.
+    pub fn take_dead_session_rx(&self) -> Option<mpsc::UnboundedReceiver<u32>> {
+        self.dead_session_rx.lock().ok()?.take()
     }
 
     /// Exclusive lock for user-state mutations (rename, create, delete, group

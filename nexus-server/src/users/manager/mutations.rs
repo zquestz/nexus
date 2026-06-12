@@ -67,18 +67,16 @@ impl UserManager {
     /// active for away/status). `sessions` must already be out of the map (via
     /// `remove_users`) so the re-aggregate reads only the survivors.
     ///
-    /// Not for the dead-channel cleanup sweep (`remove_disconnected`): that runs
-    /// inside `broadcast_user_event`, so broadcasting here would re-enter the
-    /// broadcast → cleanup → broadcast recursion.
+    /// Direct-sends (not via `broadcast_user_event`) so the dead-session reaper
+    /// can call it without re-entering the broadcast → cleanup → broadcast
+    /// recursion. A stale `user_list` receiver discovered here is ignored and
+    /// swept on the next normal broadcast.
     pub async fn broadcast_disconnections(&self, sessions: &[UserSession]) {
         for user_session in sessions {
-            self.broadcast_user_event(
-                ServerMessage::UserDisconnected {
-                    session_id: user_session.session_id,
-                    nickname: user_session.nickname.clone(),
-                },
-                None,
-            )
+            self.direct_send_to_user_list(&ServerMessage::UserDisconnected {
+                session_id: user_session.session_id,
+                nickname: user_session.nickname.clone(),
+            })
             .await;
         }
 
@@ -104,7 +102,7 @@ impl UserManager {
                 )
                 .await
             {
-                self.broadcast_user_event(message, None).await;
+                self.direct_send_to_user_list(&message).await;
             }
         }
     }

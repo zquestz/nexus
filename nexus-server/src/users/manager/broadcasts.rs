@@ -15,7 +15,7 @@ use crate::constants::{FEATURE_CHAT, LOG_BROADCAST_FRAME_SERIALIZE_FAILED};
 use crate::db::Permission;
 use crate::users::user::UserSession;
 
-fn shared_broadcast_frame(message: &ServerMessage) -> Option<Arc<[u8]>> {
+pub(super) fn shared_broadcast_frame(message: &ServerMessage) -> Option<Arc<[u8]>> {
     match server_message_to_frame_bytes(message, MessageId::new()) {
         Ok(frame) => Some(frame),
         Err(e) => {
@@ -58,7 +58,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 
     /// Broadcast to users who both requested `feature` (client preference)
@@ -98,7 +98,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 
     /// Broadcast a per-session message to every session of `user_id`. Use this
@@ -122,7 +122,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 
     /// Broadcast to all sessions with `nickname` that activated `feature`.
@@ -148,7 +148,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 
     /// Broadcast to all sessions with `nickname` that activated `feature` and
@@ -179,7 +179,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 
     /// Broadcast to all users holding `required_permission` (e.g. topic updates
@@ -206,7 +206,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 
     /// Broadcast a UserConnected/UserDisconnected event to user_list holders.
@@ -239,7 +239,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 
     /// Broadcast ServerInfoUpdated to all users. Everyone gets full server info;
@@ -267,7 +267,7 @@ impl UserManager {
             }
         }
 
-        self.remove_disconnected(disconnected).await;
+        self.enqueue_dead_sessions(&disconnected);
     }
 }
 

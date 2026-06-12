@@ -556,7 +556,7 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
 }
 
 #[tokio::test]
-async fn test_broadcast_detects_closed_channels() {
+async fn test_broadcast_enqueues_closed_channels_for_reaper() {
     let db = create_test_db().await;
     let user_manager = UserManager::new();
 
@@ -628,7 +628,8 @@ async fn test_broadcast_detects_closed_channels() {
             .is_some()
     );
 
-    // Broadcast should detect and prune the closed channel.
+    // Broadcast now enqueues closed-channel sessions for the dead-session reaper
+    // rather than pruning inline, keeping teardown off the broadcast path.
     user_manager
         .broadcast_to_feature(
             "chat",
@@ -647,14 +648,30 @@ async fn test_broadcast_detects_closed_channels() {
         )
         .await;
 
+    let mut dead_rx = user_manager
+        .take_dead_session_rx()
+        .expect("dead-session receiver");
+    let mut enqueued = Vec::new();
+    while let Ok(id) = dead_rx.try_recv() {
+        enqueued.push(id);
+    }
+    assert!(
+        enqueued.contains(&session_id1),
+        "broadcast should enqueue the closed-channel session for reaping"
+    );
+    assert!(
+        !enqueued.contains(&session_id2),
+        "the live session must not be enqueued"
+    );
+
+    // Deferred teardown: both sessions stay registered until the reaper drains.
     assert!(
         user_manager
             .get_user_by_session_id(session_id1)
             .await
-            .is_none(),
-        "User 1 should be removed after broadcast detected closed channel"
+            .is_some(),
+        "closed-channel session stays registered until the reaper runs"
     );
-
     assert!(
         user_manager
             .get_user_by_session_id(session_id2)

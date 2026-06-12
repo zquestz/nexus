@@ -334,6 +334,9 @@ pub const ERR_VOICE_READ_CERT_FILE: &str = "Failed to read certificate file: ";
 pub const ERR_VOICE_READ_KEY_FILE: &str = "Failed to read private key file: ";
 pub const ERR_VOICE_PARSE_CERT: &str = "Failed to parse certificate: ";
 
+pub const LOG_DEAD_SESSION_REAPER_NO_RECEIVER: &str =
+    "Dead-session reaper receiver already taken; dead-receiver cleanup is disabled";
+
 pub const LOG_ACCEPT_ERROR: &str = "Accept error";
 pub const LOG_CONNECTION_ERROR: &str = "Connection error";
 pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
