@@ -872,14 +872,12 @@ impl UserDb {
             Err(e) => return Err(e),
         };
 
-        // 0 rows affected: last-admin protection blocked it, or the user
-        // is gone. Roll back and re-read to distinguish the cases (the
-        // caller surfaces a different error for each).
+        // 0 rows affected: last-admin protection blocked it, or the user is
+        // gone. Both map to `Blocked` (its contract covers either reason); the
+        // caller does its own follow-up SELECT to distinguish, so there's nothing
+        // to read here.
         if result.rows_affected() == 0 {
             tx.rollback().await?;
-            if self.get_user_by_username(params.username).await?.is_some() {
-                return Ok(UpdateUserResult::Blocked);
-            }
             return Ok(UpdateUserResult::Blocked);
         }
 
