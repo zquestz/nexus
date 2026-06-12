@@ -10,7 +10,7 @@ use iced::widget::{
     table, text, text_input,
 };
 use iced::{Center, Element, Fill, Length, Theme};
-use iced_aw::{NumberInput, TabLabel, Tabs};
+use iced_aw::{ContextMenu, NumberInput, TabLabel, Tabs};
 use nexus_common::is_shared_account_permission;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{GroupInfo, UserInfo};
@@ -38,7 +38,7 @@ use crate::types::{
     GroupManagementMode, Message, ServerConnection, UserManagementMode, UserManagementSortColumn,
     UserManagementState, UserManagementTab,
 };
-use crate::widgets::{LazyContextMenu, MenuButton};
+use crate::widgets::MenuButton;
 
 // ============================================================================
 // Edit User Context
@@ -463,7 +463,7 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
             };
 
             if can_edit_this || can_delete_this || can_change_own_password {
-                LazyContextMenu::new(content, move || {
+                ContextMenu::new(content, move || {
                     build_user_context_menu(
                         user_id,
                         username_for_menu.clone(),

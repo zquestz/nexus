@@ -37,7 +37,7 @@ deb_depends = ["libasound2"]
 nexus-common = { path = "../nexus-common", features = ["image-decode"] }
 idna = "1"
 iced = { version = "0.14", features = ["advanced", "image", "lazy", "markdown", "svg", "tokio"] }
-iced_aw = { version = "0.13", features = ["context_menu", "number_input", "tabs"] }
+iced_aw = { version = "0.14", features = ["context_menu", "number_input", "tabs"] }
 # Direct dep for `iced_runtime::task::widget(...)` — wraps a widget
 # `Operation` as a `Task` so handlers can query the actually-focused
 # input id (`find_focused`) at Tab time, not a stale local tracker.

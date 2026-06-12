@@ -12,7 +12,7 @@ use iced::widget::{
     text_input,
 };
 use iced::{Center, Element, Fill, Length};
-use iced_aw::NumberInput;
+use iced_aw::{ContextMenu, NumberInput};
 use nexus_common::is_shared_account_permission;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::GroupInfo;
@@ -36,7 +36,7 @@ use crate::types::{
     GroupManagementMode, GroupManagementSortColumn, InputId, Message, ServerConnection,
     UserManagementState,
 };
-use crate::widgets::{LazyContextMenu, MenuButton};
+use crate::widgets::MenuButton;
 
 // ============================================================================
 // Edit Group Context
@@ -276,7 +276,7 @@ fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
             };
 
             if can_edit || can_delete {
-                LazyContextMenu::new(content, move || {
+                ContextMenu::new(content, move || {
                     build_group_context_menu(
                         group_id,
                         group_name_for_menu.clone(),

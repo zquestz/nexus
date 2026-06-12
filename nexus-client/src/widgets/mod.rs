@@ -1,9 +1,8 @@
 //! Custom widgets
 //!
-//! Contains patched versions of iced_aw widgets with performance fixes.
+//! `MenuButton` stores hover state in tree state so it works inside the
+//! per-frame-rebuilt context menu overlay, which Iced's `Button` cannot.
 
-mod context_menu;
 mod menu_button;
 
-pub use context_menu::LazyContextMenu;
 pub use menu_button::{MenuButton, Status as MenuButtonStatus, Style as MenuButtonStyle};

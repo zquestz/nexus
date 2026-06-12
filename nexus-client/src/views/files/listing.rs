@@ -3,6 +3,7 @@
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, container, lazy, row, table};
 use iced::{Center, Element, Fill, Length};
+use iced_aw::ContextMenu;
 
 use super::super::helpers::sort_icon_or_placeholder;
 use super::helpers::{file_icon_for_extension, format_size, format_timestamp};
@@ -18,7 +19,7 @@ use crate::style::{
     transparent_icon_button_style, upload_folder_style,
 };
 use crate::types::{FileSortColumn, FilesManagementState, Message};
-use crate::widgets::{LazyContextMenu, MenuButton};
+use crate::widgets::MenuButton;
 
 pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> {
     lazy(deps, |deps| {
@@ -116,7 +117,7 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
                 || row.perms.file_upload;
 
             if has_any_permission {
-                LazyContextMenu::new(row_element, move || {
+                ContextMenu::new(row_element, move || {
                     build_lazy_context_menu(
                         &row.path,
                         &row.entry.name,

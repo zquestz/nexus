@@ -14,7 +14,7 @@ use iced::widget::{
     text_input, tooltip,
 };
 use iced::{Center, Element, Fill, Length, Theme};
-use iced_aw::NumberInput;
+use iced_aw::{ContextMenu, NumberInput};
 use nexus_common::names::fold_name;
 use nexus_common::protocol::TrackerInfo;
 use nexus_common::{DEFAULT_TRACKER_PORT, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED};
@@ -44,7 +44,7 @@ use crate::types::{
     InputId, Message, ServerConnection, TrackerManagementMode, TrackerManagementSortColumn,
     TrackerManagementState,
 };
-use crate::widgets::{LazyContextMenu, MenuButton};
+use crate::widgets::MenuButton;
 
 // ============================================================================
 // Status Bullet
@@ -338,7 +338,7 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
             };
 
             if can_edit || can_remove {
-                LazyContextMenu::new(content, move || {
+                ContextMenu::new(content, move || {
                     build_tracker_context_menu(
                         tracker_id,
                         name_for_menu.clone(),

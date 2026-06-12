@@ -23,7 +23,7 @@ use iced::widget::{
     text_input, tooltip,
 };
 use iced::{Center, Element, Fill, Length};
-use iced_aw::NumberInput;
+use iced_aw::{ContextMenu, NumberInput};
 use nexus_common::names::fold_name;
 use nexus_common::tracker_protocol::ServerEntry;
 use uuid::Uuid;
@@ -51,7 +51,7 @@ use crate::types::{
     ClientTracker, InputId, Message, TrackerBrowserMode, TrackerBrowserSortColumn,
     TrackerBrowserState, TrackerCacheEntry,
 };
-use crate::widgets::{LazyContextMenu, MenuButton};
+use crate::widgets::MenuButton;
 
 /// Approximate rendered height of an iced 0.14 `pick_list` with
 /// `text_size = TEXT_SIZE` and default padding. The toolbar row's
@@ -268,7 +268,7 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
         // with this row's four fields. Style mirrors files-listing
         // clickable filenames — transparent button background, hover
         // colour from the theme, no underline. The cell is also
-        // wrapped in a `LazyContextMenu` exposing Connect / Bookmark /
+        // wrapped in a `ContextMenu` exposing Connect / Bookmark /
         // Copy URI on right-click.
         let name_column = table::column(
             name_header,
@@ -288,8 +288,7 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
                     .on_press(connect_message)
                     .into();
                 let menu_entry = entry.clone();
-                LazyContextMenu::new(cell, move || build_row_context_menu(menu_entry.clone()))
-                    .into()
+                ContextMenu::new(cell, move || build_row_context_menu(menu_entry.clone())).into()
             },
         )
         .width(Length::FillPortion(1));

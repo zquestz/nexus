@@ -3,6 +3,7 @@
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, container, lazy, row, table};
 use iced::{Center, Element, Fill, Length};
+use iced_aw::ContextMenu;
 use nexus_common::protocol::FileSearchResult;
 
 use super::super::helpers::sort_icon_or_placeholder;
@@ -19,7 +20,7 @@ use crate::style::{
     transparent_icon_button_style,
 };
 use crate::types::{FileSortColumn, Message};
-use crate::widgets::{LazyContextMenu, MenuButton};
+use crate::widgets::MenuButton;
 
 /// Extract the parent directory path from a full file path
 ///
@@ -118,7 +119,7 @@ pub(super) fn lazy_search_results_table(deps: SearchResultsDeps) -> Element<'sta
                 };
 
                 // Build context menu - always show since Open is always available
-                LazyContextMenu::new(row_element, move || {
+                ContextMenu::new(row_element, move || {
                     build_lazy_search_context_menu(result.clone(), perms)
                 })
                 .into()
