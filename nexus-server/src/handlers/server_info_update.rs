@@ -569,25 +569,11 @@ where
         let config = ctx.db.config.get_all().await;
 
         ctx.user_manager
-            .broadcast_server_info_updated(ServerInfoValues {
-                name: config.server_name,
-                description: config.server_description,
-                public_address: config.public_address,
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                max_connections_per_ip: config.max_connections_per_ip,
-                max_transfers_per_ip: config.max_transfers_per_ip,
-                image: config.server_image,
-                transfer_port: ctx.transfer_port,
-                transfer_websocket_port: ctx.transfer_websocket_port,
-                file_reindex_interval: config.file_reindex_interval,
-                persistent_channels: config.persistent_channels,
-                auto_join_channels: config.auto_join_channels,
-                min_password_strength: config.min_password_strength.score(),
-                chat_burst_limit: config.chat_burst_limit,
-                chat_rate_limit: config.chat_rate_limit,
-                max_outbound_rate: config.max_outbound_rate,
-                scheduler_chunk_size: config.scheduler_chunk_size,
-            })
+            .broadcast_server_info_updated(ServerInfoValues::from_config(
+                config,
+                ctx.transfer_port,
+                ctx.transfer_websocket_port,
+            ))
             .await;
 
         info!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_SUCCESS);

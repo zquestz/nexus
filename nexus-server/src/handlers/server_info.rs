@@ -5,6 +5,8 @@
 use nexus_common::logging::current_log_level;
 use nexus_common::protocol::ServerInfo;
 
+use crate::db::config::ServerConfig;
+
 /// Raw server info values before permission filtering, passed to
 /// `build_server_info()`.
 pub struct ServerInfoValues {
@@ -25,6 +27,39 @@ pub struct ServerInfoValues {
     pub chat_rate_limit: u32,
     pub max_outbound_rate: u64,
     pub scheduler_chunk_size: u32,
+}
+
+impl ServerInfoValues {
+    /// Assemble the raw values from the loaded config plus the two runtime
+    /// fields that don't live in config (the transfer ports). `version` is the
+    /// build version. Consumes `config` (its owned fields move straight in).
+    /// The single place each `ServerInfo` source maps config → values, so adding
+    /// a field touches here, not every handler that builds it.
+    pub fn from_config(
+        config: ServerConfig,
+        transfer_port: u16,
+        transfer_websocket_port: Option<u16>,
+    ) -> Self {
+        Self {
+            name: config.server_name,
+            description: config.server_description,
+            public_address: config.public_address,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            image: config.server_image,
+            max_connections_per_ip: config.max_connections_per_ip,
+            max_transfers_per_ip: config.max_transfers_per_ip,
+            transfer_port,
+            transfer_websocket_port,
+            file_reindex_interval: config.file_reindex_interval,
+            persistent_channels: config.persistent_channels,
+            auto_join_channels: config.auto_join_channels,
+            min_password_strength: config.min_password_strength.score(),
+            chat_burst_limit: config.chat_burst_limit,
+            chat_rate_limit: config.chat_rate_limit,
+            max_outbound_rate: config.max_outbound_rate,
+            scheduler_chunk_size: config.scheduler_chunk_size,
+        }
+    }
 }
 
 /// Per-viewer gates controlling which fields the built ServerInfo includes.

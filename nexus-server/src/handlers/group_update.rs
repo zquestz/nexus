@@ -415,25 +415,11 @@ where
                 let mut permissions_info_values = None;
                 if permissions_changed {
                     let config = ctx.db.config.get_all().await;
-                    permissions_info_values = Some(ServerInfoValues {
-                        name: config.server_name,
-                        description: config.server_description,
-                        public_address: config.public_address,
-                        version: env!("CARGO_PKG_VERSION").to_string(),
-                        image: config.server_image,
-                        max_connections_per_ip: config.max_connections_per_ip,
-                        max_transfers_per_ip: config.max_transfers_per_ip,
-                        transfer_port: ctx.transfer_port,
-                        transfer_websocket_port: ctx.transfer_websocket_port,
-                        file_reindex_interval: config.file_reindex_interval,
-                        persistent_channels: config.persistent_channels,
-                        auto_join_channels: config.auto_join_channels,
-                        min_password_strength: config.min_password_strength.score(),
-                        chat_burst_limit: config.chat_burst_limit,
-                        chat_rate_limit: config.chat_rate_limit,
-                        max_outbound_rate: config.max_outbound_rate,
-                        scheduler_chunk_size: config.scheduler_chunk_size,
-                    });
+                    permissions_info_values = Some(ServerInfoValues::from_config(
+                        config,
+                        ctx.transfer_port,
+                        ctx.transfer_websocket_port,
+                    ));
 
                     let mut seen_user_ids: HashSet<i64> = HashSet::new();
                     for session in &member_sessions {
