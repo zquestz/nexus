@@ -77,7 +77,7 @@ nexus-trackerd --data-dir /var/lib/nexus-trackerd
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `unauthorized` | Tracker has a registration password set; the server sent the wrong one or none                                                                                                   |
 | `capacity`     | The tracker hit `--max-entries` or the server's source IP hit `--max-entries-per-ip`                                                                                             |
-| `rate_limited` | The server's source IP hit `--rate-connections` or `--rate-auth-failures`                                                                                                        |
+| `rate_limited` | The server's source IPv4 address or IPv6 `/64` hit `--rate-connections` or `--rate-auth-failures`                                                                                |
 | `invalid`      | Field-validation failure: bad fingerprint format, length over limit, or address-validation rejection (see [Address validation rejections](#address-validation-rejections) below) |
 
 **Protocol-level violations** (wrong protocol version, non-handshake
@@ -179,7 +179,7 @@ reachable on more than one address family.
 
 ### "rate_limited" after a few attempts
 
-**Cause:** The source IP exceeded `--rate-auth-failures` (default: 5/minute).
+**Cause:** The source IPv4 address or IPv6 `/64` exceeded `--rate-auth-failures` (default: 5/minute).
 
 **Solutions:**
 
@@ -288,7 +288,7 @@ grep "registry size" <data-dir>/logs/*.log | tail -5
 
 ### Distinguishing rate-limit drops from connectivity failures
 
-Connection rate limit drops are **silent at the framing layer** — no response is sent and no entry-level log is written at INFO level. To see them, run with `--log-level debug` and look for entries mentioning `rate_connections` or the source IP.
+Connection rate limit drops are **silent at the framing layer** — no response is sent and no entry-level log is written at INFO level. To see them, run with `--log-level debug` and look for entries mentioning `rate_connections` or the source address.
 
 Auth rate limit drops are visible at INFO level (the tracker emits `error_kind: rate_limited` and logs the rejection).
 

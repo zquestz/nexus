@@ -764,17 +764,17 @@ Nexus practice) is recommended.
 
 Trackers SHOULD rate-limit:
 
-- Failed authentication attempts per IP, to deter brute-force guessing.
-- Connection rate per IP, to bound resource usage.
-- `TrackerServerList` requests per IP, separately from connection rate, to
+- Failed authentication attempts per IPv4 address or IPv6 `/64`, to deter brute-force guessing.
+- Connection rate per IPv4 address or IPv6 `/64`, to bound resource usage.
+- `TrackerServerList` requests per IPv4 address or IPv6 `/64`, separately from connection rate, to
   deter scraping.
 
 The protocol does not prescribe specific limits. Trackers are free to
 respond with typed-response rate-limit errors or to drop connections at
 the framing layer.
 
-**Reference implementation.** Two per-IP token-bucket limiters plus a
-per-entry refresh floor:
+**Reference implementation.** Two token-bucket limiters keyed by IPv4
+address or IPv6 `/64`, plus a per-entry refresh floor:
 
 - **Connection rate** (`--rate-connections`, default `20`/min): bucket
   drained at TCP accept; over-limit peers have their connection dropped
@@ -782,7 +782,7 @@ per-entry refresh floor:
 - **Failed auth attempts** (`--rate-auth-failures`, default `5`/min):
   successful authentications don't debit the bucket; only failed
   password verifications do. Once the bucket is empty, further attempts
-  from that IP — including correct passwords — are rejected with
+  from that IPv4 address or IPv6 `/64` — including correct passwords — are rejected with
   `error_kind: rate_limited` until the bucket refills, so an attacker
   who triggered the limit can't sneak through with a guess.
 - **Refresh floor** (60s, hardcoded): a registered server's

@@ -51,7 +51,7 @@ deliberately left out of scope.
 | Feature                | Hotline | KDX | Wired | Nexus | Notes                           |
 | ---------------------- | :-----: | :-: | :---: | :---: | ------------------------------- |
 | Queue reordering       |   ✅    | ✅  |  ✅   |  ✅   |                                 |
-| File hash verification |   ❌    | ❌  |  ❌   |  ✅   | SHA-256                         |
+| File hash verification |   ❌    | ❌  |  ❌   |  ✅   | BLAKE3                          |
 | File copy              |   ❌    | ✅  |  ✅   |  ✅   |                                 |
 | File search            |   ❌    | ✅  |  ✅   |  ✅   | Indexed search                  |
 | Folder comments        |   ✅    | ✅  |  ✅   |  🚫   | Mac: stored in resource fork    |
@@ -110,7 +110,7 @@ deliberately left out of scope.
 | TOFU certificate verification | Trust on first use with fingerprint storage                                |
 | Argon2id password hashing     | Modern password security                                                   |
 | CIDR range IP bans/trusts     | Network-level access control                                               |
-| SHA-256 file verification     | Integrity checking for transfers                                           |
+| BLAKE3 file verification      | Integrity checking for transfers                                           |
 | 13 language localization      | Full i18n for server and client                                            |
 | Markdown news                 | Rich text without custom format                                            |
 | Inline news images            | First-class image support in posts                                         |

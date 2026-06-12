@@ -22,8 +22,8 @@ nexus-trackerd [OPTIONS]
 | `--max-entries <N>`            |       | `10000`            | Maximum number of registered servers (0 = unlimited; max 1,000,000)                 |
 | `--max-entries-per-ip <N>`     |       | `1`                | Maximum entries from a single source IP (0 = unlimited; max 1,000)                  |
 | `--refresh-interval <SECONDS>` |       | `300`              | Refresh interval to instruct servers (range 120–600)                                |
-| `--rate-connections <N>`       |       | `20`               | Connections per minute per source IP (0 = unlimited; max 10,000)                    |
-| `--rate-auth-failures <N>`     |       | `5`                | Failed authentication attempts per minute per source IP (0 = unlimited; max 10,000) |
+| `--rate-connections <N>`       |       | `20`               | Connections per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000)   |
+| `--rate-auth-failures <N>`     |       | `5`                | Failed auth attempts per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000) |
 | `--help`                       | `-h`  |                    | Show help message                                                                   |
 | `--version`                    | `-V`  |                    | Show version                                                                        |
 
@@ -165,10 +165,10 @@ Valid range: **120 to 600 seconds**. The 120-second floor defends against compro
 Two token-bucket rate limiters protect the tracker from abusive sources:
 
 ```bash
-# Default: 20 new connections per minute per source IP
+# Default: 20 new connections per minute per IPv4 address or IPv6 /64
 nexus-trackerd --rate-connections 20
 
-# Default: 5 failed auth attempts per minute per source IP
+# Default: 5 failed auth attempts per minute per IPv4 address or IPv6 /64
 nexus-trackerd --rate-auth-failures 5
 
 # Disable connection rate limiting
@@ -177,8 +177,8 @@ nexus-trackerd --rate-connections 0
 
 | Limiter                | What it counts                                                                                 | What happens when empty                                                   |
 | ---------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `--rate-connections`   | New TCP connections per minute per source IP                                                   | Excess connections are dropped at the framing layer with no response sent |
-| `--rate-auth-failures` | Failed authentication attempts per minute per source IP (only failures debit; successes don't) | Further attempts are rejected with `error_kind: rate_limited`             |
+| `--rate-connections`   | New TCP connections per minute per IPv4 address or IPv6 `/64`                                                   | Excess connections are dropped at the framing layer with no response sent |
+| `--rate-auth-failures` | Failed authentication attempts per minute per IPv4 address or IPv6 `/64` (only failures debit; successes don't) | Further attempts are rejected with `error_kind: rate_limited`             |
 
 Setting either to `0` disables that specific limiter.
 

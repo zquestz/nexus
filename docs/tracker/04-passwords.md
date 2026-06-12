@@ -134,7 +134,7 @@ Once SIGHUP fires, only the new hash is honored. Existing registered servers wil
 
 ## Authentication Failure Rate Limiting
 
-The tracker rate-limits failed authentication attempts per source IP. With the default `--rate-auth-failures 5`, a single IP gets 5 failed attempts per minute before the tracker rejects further attempts with `error_kind: rate_limited`.
+The tracker rate-limits failed authentication attempts per IPv4 address or IPv6 `/64`. With the default `--rate-auth-failures 5`, one bucket gets 5 failed attempts per minute before the tracker rejects further attempts with `error_kind: rate_limited`.
 
 Successful auths do **not** debit the bucket. Only failures (wrong password, missing password on a gated flow) count.
 

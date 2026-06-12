@@ -54,8 +54,9 @@ pub struct TrackerState {
 
 impl TrackerState {
     /// Build a new state. `connection_rate` / `auth_failure_rate` are
-    /// per-IP events/minute (0 = unlimited); `refresh_floor` is the
-    /// per-entry minimum between refreshes (`Duration::ZERO` disables).
+    /// events/minute per IPv4 address or IPv6 /64 (0 = unlimited);
+    /// `refresh_floor` is the per-entry minimum between refreshes
+    /// (`Duration::ZERO` disables).
     #[must_use]
     pub fn new(
         registry: Registry,
@@ -71,8 +72,9 @@ impl TrackerState {
             registration_password_hash: RwLock::new(registration_password_hash),
             listing_password_hash: RwLock::new(listing_password_hash),
             refresh_interval,
-            connection_rate_limiter: RateLimiter::per_minute(connection_rate),
-            auth_failure_rate_limiter: RateLimiter::per_minute(auth_failure_rate),
+            connection_rate_limiter: RateLimiter::per_minute(connection_rate).key_ipv6_by_prefix(),
+            auth_failure_rate_limiter: RateLimiter::per_minute(auth_failure_rate)
+                .key_ipv6_by_prefix(),
             refresh_floor,
             resolver: Box::new(TokioResolver),
         }
@@ -150,7 +152,9 @@ impl TrackerState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nexus_common::rate_limiter::RateCheck;
     use std::fs;
+    use std::net::IpAddr;
 
     fn fresh_state() -> TrackerState {
         TrackerState::new(Registry::new(0, 0), None, None, 300, 0, 0, Duration::ZERO)
@@ -165,6 +169,41 @@ mod tests {
             .hash_password(b"secret", &salt)
             .expect("hash")
             .to_string()
+    }
+
+    #[test]
+    fn tracker_rate_limiters_share_ipv6_slash_64() {
+        let state = TrackerState::new(Registry::new(0, 0), None, None, 300, 1, 1, Duration::ZERO);
+        let first: IpAddr = "2001:db8:1234:5678::1".parse().expect("ip");
+        let same_prefix: IpAddr = "2001:db8:1234:5678::2".parse().expect("ip");
+        let other_prefix: IpAddr = "2001:db8:1234:5679::1".parse().expect("ip");
+
+        assert_eq!(
+            state.connection_rate_limiter.try_consume(first),
+            RateCheck::Allowed
+        );
+        assert_eq!(
+            state.connection_rate_limiter.try_consume(same_prefix),
+            RateCheck::Limited
+        );
+        assert_eq!(
+            state.connection_rate_limiter.try_consume(other_prefix),
+            RateCheck::Allowed
+        );
+
+        assert_eq!(
+            state.auth_failure_rate_limiter.check_only(first),
+            RateCheck::Allowed
+        );
+        state.auth_failure_rate_limiter.record_failure(first);
+        assert_eq!(
+            state.auth_failure_rate_limiter.check_only(same_prefix),
+            RateCheck::Limited
+        );
+        assert_eq!(
+            state.auth_failure_rate_limiter.check_only(other_prefix),
+            RateCheck::Allowed
+        );
     }
 
     #[test]

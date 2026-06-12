@@ -34,7 +34,10 @@ pub fn execute(
             MessageError::Empty => t("err-message-empty"),
             MessageError::TooLong => t_args(
                 "err-message-too-long",
-                &[("max", &validators::MAX_MESSAGE_LENGTH.to_string())],
+                &[
+                    ("length", &message.chars().count().to_string()),
+                    ("max", &validators::MAX_MESSAGE_LENGTH.to_string()),
+                ],
             ),
             MessageError::ContainsNewlines => t("err-message-contains-newlines"),
             MessageError::InvalidCharacters => t("err-message-invalid-characters"),
