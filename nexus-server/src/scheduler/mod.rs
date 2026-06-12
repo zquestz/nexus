@@ -5,11 +5,20 @@
 //! connection skipping; the egress task wraps this core with rate-budget and
 //! writer-channel integration.
 
-use std::collections::{HashMap, VecDeque};
+use std::cmp::{Ordering, Reverse};
+use std::collections::{BinaryHeap, HashMap, VecDeque};
 
 use nexus_common::validators::{DEFAULT_ADMIN_BANDWIDTH_WEIGHT, MIN_BANDWIDTH_WEIGHT};
 
 const VIRTUAL_TIME_SCALE: u128 = 1_000_000;
+
+/// A start-ordered heap is compacted (superseded entries dropped) once its
+/// length exceeds `dispatchable_count * HEAP_COMPACT_FACTOR + HEAP_COMPACT_SLACK`.
+/// Because that only triggers after the heap has grown several times past its
+/// live size, compaction is amortized O(1) per push and keeps the heaps bounded
+/// even under refresh churn that never dispatches (e.g. repeated weight changes).
+const HEAP_COMPACT_FACTOR: usize = 4;
+const HEAP_COMPACT_SLACK: usize = 16;
 
 /// Pre-login traffic shares one global anonymous flow.
 pub const ANON_FLOW_WEIGHT: u16 = DEFAULT_ADMIN_BANDWIDTH_WEIGHT;
@@ -103,7 +112,101 @@ pub struct Wf2qScheduler<T> {
     connections: HashMap<ConnectionId, ConnectionState<T>>,
     virtual_time: u128,
     total_flow_weight_sum: u128,
-    pending_scratch: Vec<PendingCandidate>,
+    /// Number of flows with a currently dispatchable connection. Maintained
+    /// incrementally via `refresh_flow_candidate` at every mutation site so
+    /// `has_dispatchable_packet` is O(1) instead of an O(flows) scan. A debug
+    /// invariant recomputes it by scan after every mutation to prove the wiring.
+    dispatchable_count: usize,
+    /// Min-heap (by start) of every flow's current dispatch candidate, so
+    /// `min_dispatchable_start` is O(log flows) instead of an O(flows) scan.
+    /// Never drained except by lazy stale-skip — it must keep eligible entries
+    /// too, since the min-start floor is taken over all candidates.
+    start_heap: BinaryHeap<Reverse<ByStart>>,
+    /// Min-heap (by start) of candidates not yet known to be eligible. Drained
+    /// into `eligible_heap` as virtual time crosses each entry's start. Distinct
+    /// from `start_heap` precisely because this one *is* drained.
+    pending_heap: BinaryHeap<Reverse<ByStart>>,
+    /// Min-heap (by finish) of candidates whose start ≤ virtual_time. The WF2Q
+    /// pick among eligible candidates is this heap's current top.
+    eligible_heap: BinaryHeap<Reverse<ByFinish>>,
+}
+
+/// A per-flow dispatch candidate carried in the scheduler's heaps. Holds
+/// everything `select_candidate` needs to build a `Candidate`, plus the flow
+/// `generation` at push time — an entry is current only while it matches
+/// `FlowState::generation`, so superseded entries are discarded lazily.
+#[derive(Clone, Copy)]
+struct CandidateEntry {
+    start: u128,
+    finish: u128,
+    flow_id: FlowId,
+    connection_id: ConnectionId,
+    class: ConnectionClass,
+    member_index: usize,
+    generation: u64,
+}
+
+/// `CandidateEntry` ordered by virtual start (then finish / flow / connection
+/// for determinism). `Reverse<ByStart>` in a `BinaryHeap` yields a min-heap on
+/// start. `ConnectionClass` isn't `Ord`, so ordering is by explicit key.
+#[derive(Clone, Copy)]
+struct ByStart(CandidateEntry);
+
+impl ByStart {
+    fn key(&self) -> (u128, u128, FlowId, ConnectionId) {
+        (
+            self.0.start,
+            self.0.finish,
+            self.0.flow_id,
+            self.0.connection_id,
+        )
+    }
+}
+
+impl PartialEq for ByStart {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+impl Eq for ByStart {}
+impl PartialOrd for ByStart {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for ByStart {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.key().cmp(&other.key())
+    }
+}
+
+/// `CandidateEntry` ordered by virtual finish (then flow / connection) — the
+/// WF2Q tie-break for picking among eligible candidates. Mirrors
+/// `keep_best_candidate`'s `(finish, flow_id, connection_id)` ordering.
+#[derive(Clone, Copy)]
+struct ByFinish(CandidateEntry);
+
+impl ByFinish {
+    fn key(&self) -> (u128, FlowId, ConnectionId) {
+        (self.0.finish, self.0.flow_id, self.0.connection_id)
+    }
+}
+
+impl PartialEq for ByFinish {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+impl Eq for ByFinish {}
+impl PartialOrd for ByFinish {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for ByFinish {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.key().cmp(&other.key())
+    }
 }
 
 impl<T> Default for Wf2qScheduler<T> {
@@ -119,9 +222,148 @@ impl<T> Wf2qScheduler<T> {
             connections: HashMap::new(),
             virtual_time: 0,
             total_flow_weight_sum: 0,
-            pending_scratch: Vec::new(),
+            dispatchable_count: 0,
+            start_heap: BinaryHeap::new(),
+            pending_heap: BinaryHeap::new(),
+            eligible_heap: BinaryHeap::new(),
         }
     }
+
+    /// Recompute `flow_id`'s current dispatch candidate after any mutation that
+    /// can change it (enqueue, dequeue, ack, block/unblock, membership,
+    /// transition): adjust the maintained `dispatchable_count` and push a fresh
+    /// `start_heap` entry (bumping the flow's generation so prior entries go
+    /// stale). No-op for an absent flow.
+    ///
+    /// The candidate's start is read from the connection's cached `head_tags`
+    /// when present (set by `tag_initial`/`tag_next`), else computed as
+    /// `max(last_finish, virtual_time)` — exactly what `ensure_candidate_tags`
+    /// would lazily compute at select time. `virtual_time` never advances
+    /// between a flow becoming dispatchable and its next `min_dispatchable_start`
+    /// query (every advance goes through that query), so the snapshot matches
+    /// the lazy value; the debug cross-check enforces this.
+    fn refresh_flow_candidate(&mut self, flow_id: FlowId) {
+        let candidate = self.flows.get(&flow_id).and_then(|flow| {
+            Self::dispatchable_connection_for_flow(&self.connections, flow)
+                .map(|selection| (selection, flow.last_finish, flow.weight))
+        });
+        let now_dispatchable = candidate.is_some();
+
+        let virtual_time = self.virtual_time;
+        let entry = candidate.and_then(|(selection, last_finish, weight)| {
+            let connection = self.connections.get_mut(&selection.connection_id)?;
+            // Eager-cache the candidate's tags so its start is fixed once the
+            // connection reaches the head of line (textbook WF2Q+), rather than
+            // drifting with virtual_time on later refreshes. This replaces the
+            // caching the old linear select used to perform.
+            let tags = if let Some(tags) = connection.head_tags {
+                tags
+            } else {
+                let bytes = connection.front_packet()?.bytes;
+                let start = last_finish.max(virtual_time);
+                let tags = PacketTags {
+                    start,
+                    finish: start + scaled_work(bytes, u128::from(weight)),
+                };
+                connection.head_tags = Some(tags);
+                tags
+            };
+            Some((selection, tags.start, tags.finish))
+        });
+
+        let Some(flow) = self.flows.get_mut(&flow_id) else {
+            return;
+        };
+        if flow.dispatchable != now_dispatchable {
+            flow.dispatchable = now_dispatchable;
+            if now_dispatchable {
+                self.dispatchable_count += 1;
+            } else {
+                self.dispatchable_count -= 1;
+            }
+        }
+        flow.generation += 1;
+        let generation = flow.generation;
+
+        if let Some((selection, start, finish)) = entry {
+            let candidate = CandidateEntry {
+                start,
+                finish,
+                flow_id,
+                connection_id: selection.connection_id,
+                class: selection.class,
+                member_index: selection.member_index,
+                generation,
+            };
+            // start_heap keeps every candidate (for the min-start floor);
+            // pending_heap is drained into eligible_heap as virtual time rises.
+            self.start_heap.push(Reverse(ByStart(candidate)));
+            self.pending_heap.push(Reverse(ByStart(candidate)));
+        }
+
+        // Bound the start-ordered heaps against refresh churn: each refresh
+        // orphans the flow's prior entries, and lazy stale-skip only evicts at
+        // the top, so without this they grow without dispatch ever draining them.
+        let live = self.dispatchable_count;
+        if self.start_heap.len() > live * HEAP_COMPACT_FACTOR + HEAP_COMPACT_SLACK {
+            Self::compact_start_heap(&mut self.start_heap, &self.flows);
+        }
+        if self.pending_heap.len() > live * HEAP_COMPACT_FACTOR + HEAP_COMPACT_SLACK {
+            Self::compact_start_heap(&mut self.pending_heap, &self.flows);
+        }
+    }
+
+    /// Rebuild a start-ordered heap, dropping superseded entries (generation no
+    /// longer matching the flow). Removing stale entries is purely an
+    /// optimization — they are never returned — so this is behavior-preserving.
+    fn compact_start_heap(
+        heap: &mut BinaryHeap<Reverse<ByStart>>,
+        flows: &HashMap<FlowId, FlowState>,
+    ) {
+        *heap = std::mem::take(heap)
+            .into_iter()
+            .filter(|Reverse(entry)| {
+                flows
+                    .get(&entry.0.flow_id)
+                    .is_some_and(|flow| flow.generation == entry.0.generation)
+            })
+            .collect();
+    }
+
+    /// Drop a removed flow's contribution to `dispatchable_count`. Call before
+    /// removing a flow from the map (while its `dispatchable` flag is still
+    /// readable).
+    fn release_flow_dispatchable(&mut self, flow_id: FlowId) {
+        if self
+            .flows
+            .get(&flow_id)
+            .is_some_and(|flow| flow.dispatchable)
+        {
+            self.dispatchable_count -= 1;
+        }
+    }
+
+    /// Debug-only: recompute `dispatchable_count` by full scan and assert it
+    /// matches the incrementally-maintained value. The cross-check that proves
+    /// no mutation site was missed.
+    #[cfg(debug_assertions)]
+    fn debug_assert_dispatchable_count(&self) {
+        let scanned = self
+            .flows
+            .values()
+            .filter(|flow| {
+                Self::dispatchable_connection_for_flow(&self.connections, flow).is_some()
+            })
+            .count();
+        debug_assert_eq!(
+            self.dispatchable_count, scanned,
+            "dispatchable_count drifted from scan — a mutation site is missing refresh_flow_candidate"
+        );
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[inline]
+    fn debug_assert_dispatchable_count(&self) {}
 
     pub fn register_connection(
         &mut self,
@@ -174,6 +416,8 @@ impl<T> Wf2qScheduler<T> {
             self.clear_flow_tags(flow_id);
         }
 
+        self.refresh_flow_candidate(flow_id);
+        self.debug_assert_dispatchable_count();
         true
     }
 
@@ -233,6 +477,8 @@ impl<T> Wf2qScheduler<T> {
             if weight_changed {
                 self.clear_flow_tags(new_flow_id);
             }
+            self.refresh_flow_candidate(new_flow_id);
+            self.debug_assert_dispatchable_count();
             return true;
         }
 
@@ -267,6 +513,9 @@ impl<T> Wf2qScheduler<T> {
             self.clear_flow_tags(new_flow_id);
         }
 
+        // The old flow was refreshed inside remove_flow_member; refresh the new.
+        self.refresh_flow_candidate(new_flow_id);
+        self.debug_assert_dispatchable_count();
         true
     }
 
@@ -280,6 +529,10 @@ impl<T> Wf2qScheduler<T> {
         if weight_changed {
             self.clear_flow_tags(flow_id);
         }
+        // A weight change bumps last_finish and clears tags, so the candidate's
+        // start changes even though dispatchability doesn't — refresh the heap.
+        self.refresh_flow_candidate(flow_id);
+        self.debug_assert_dispatchable_count();
         true
     }
 
@@ -288,10 +541,13 @@ impl<T> Wf2qScheduler<T> {
             return false;
         };
 
+        let flow_id = connection.flow_id;
         if connection.blocked != blocked {
             connection.blocked = blocked;
             connection.clear_tags();
         }
+        self.refresh_flow_candidate(flow_id);
+        self.debug_assert_dispatchable_count();
         true
     }
 
@@ -305,6 +561,9 @@ impl<T> Wf2qScheduler<T> {
         };
 
         connection.in_flight = in_flight;
+        let flow_id = connection.flow_id;
+        self.refresh_flow_candidate(flow_id);
+        self.debug_assert_dispatchable_count();
         true
     }
 
@@ -356,6 +615,14 @@ impl<T> Wf2qScheduler<T> {
 
         if !was_dispatchable {
             self.tag_initial_dispatchable_for_flow(flow_id);
+        }
+
+        // Push the refreshed candidate before the floor query, so the heap and
+        // the linear scan see the same set.
+        self.refresh_flow_candidate(flow_id);
+        self.debug_assert_dispatchable_count();
+
+        if !was_dispatchable {
             self.update_virtual_time_floor();
         }
 
@@ -379,81 +646,161 @@ impl<T> Wf2qScheduler<T> {
     }
 
     pub fn has_dispatchable_packet(&self) -> bool {
-        self.flows
-            .values()
-            .any(|flow| Self::dispatchable_connection_for_flow(&self.connections, flow).is_some())
+        self.debug_assert_dispatchable_count();
+        self.dispatchable_count > 0
     }
 
     pub fn virtual_time(&self) -> u128 {
         self.virtual_time
     }
 
+    /// WF2Q pick: the min-finish eligible candidate, or — if none is eligible —
+    /// advance virtual time to the earliest start and pick that one. Heap-backed
+    /// and O(log flows); the linear scan rides alongside in debug as the oracle.
     fn select_candidate(&mut self) -> Option<SelectedCandidate> {
-        self.collect_pending_candidates();
+        #[cfg(debug_assertions)]
+        let expected = self.select_candidate_linear_key();
 
-        let mut min_start = None;
-        let mut best_eligible = None;
-        let mut best_after_idle = None;
-        for idx in 0..self.pending_scratch.len() {
-            let pending = self.pending_scratch[idx];
-            if let Some(tags) = self.ensure_candidate_tags(
-                pending.connection_id,
-                pending.weight,
-                pending.last_finish,
-            ) {
-                let candidate = Candidate {
-                    flow_id: pending.flow_id,
-                    connection_id: pending.connection_id,
-                    class: pending.class,
-                    member_index: pending.member_index,
-                    tags,
-                };
+        let selected = self.select_candidate_heap();
 
-                if tags.start <= self.virtual_time {
-                    keep_best_candidate(&mut best_eligible, candidate);
-                }
+        #[cfg(debug_assertions)]
+        debug_assert_eq!(
+            selected.map(|s| s.candidate.connection_id),
+            expected,
+            "select_candidate heap pick diverged from the linear scan"
+        );
 
-                match min_start {
-                    Some(current_min) if tags.start > current_min => {}
-                    Some(current_min) if tags.start == current_min => {
-                        keep_best_candidate(&mut best_after_idle, candidate);
-                    }
-                    _ => {
-                        min_start = Some(tags.start);
-                        best_after_idle = Some(candidate);
-                    }
-                }
-            }
-        }
-
-        let candidate = if let Some(candidate) = best_eligible {
-            candidate
-        } else {
-            self.virtual_time = min_start?;
-            best_after_idle?
-        };
-
-        Some(SelectedCandidate { candidate })
+        selected
     }
 
-    fn collect_pending_candidates(&mut self) {
-        let flows = &self.flows;
-        let connections = &self.connections;
-        let pending_scratch = &mut self.pending_scratch;
+    /// Heap-backed selection. Migrates newly-eligible candidates, then takes the
+    /// min-finish eligible one; on an idle gap (nothing eligible) advances
+    /// virtual time to the earliest start, migrates, and takes that one. Caches
+    /// the winner's tags on its connection so `dequeue_candidate` can read them.
+    fn select_candidate_heap(&mut self) -> Option<SelectedCandidate> {
+        self.migrate_eligible(self.virtual_time);
 
-        pending_scratch.clear();
-        for (flow_id, flow) in flows {
-            if let Some(selection) = Self::dispatchable_connection_for_flow(connections, flow) {
-                pending_scratch.push(PendingCandidate {
-                    flow_id: *flow_id,
-                    connection_id: selection.connection_id,
-                    class: selection.class,
-                    member_index: selection.member_index,
-                    weight: flow.weight,
-                    last_finish: flow.last_finish,
-                });
+        if let Some(entry) = self.peek_current_eligible() {
+            return Some(self.finalize_selection(entry));
+        }
+
+        // Idle gap: jump virtual time to the earliest pending start, which makes
+        // those candidates eligible, then pick among them.
+        let min_start = self.peek_current_pending_start()?;
+        self.virtual_time = min_start;
+        self.migrate_eligible(min_start);
+        let entry = self.peek_current_eligible()?;
+        Some(self.finalize_selection(entry))
+    }
+
+    /// Move every current pending candidate with `start <= threshold` into the
+    /// eligible heap. Stale entries are dropped; entries still above the
+    /// threshold stay put (the heap is ordered by start, so we can stop early).
+    fn migrate_eligible(&mut self, threshold: u128) {
+        while let Some(Reverse(top)) = self.pending_heap.peek() {
+            if top.0.start > threshold {
+                break;
+            }
+            let Reverse(entry) = self.pending_heap.pop().expect("peeked entry exists");
+            if self.entry_is_current(&entry.0) {
+                self.eligible_heap.push(Reverse(ByFinish(entry.0)));
             }
         }
+    }
+
+    /// The min-finish eligible candidate, dropping stale entries off the top.
+    /// Peeks (does not pop): the winner is invalidated by the post-dequeue
+    /// refresh (new generation), so it self-evicts on the next migration.
+    fn peek_current_eligible(&mut self) -> Option<CandidateEntry> {
+        while let Some(Reverse(top)) = self.eligible_heap.peek() {
+            if self.entry_is_current(&top.0) {
+                return Some(top.0);
+            }
+            self.eligible_heap.pop();
+        }
+        None
+    }
+
+    /// The earliest current pending start, dropping stale entries off the top.
+    fn peek_current_pending_start(&mut self) -> Option<u128> {
+        while let Some(Reverse(top)) = self.pending_heap.peek() {
+            if self.entry_is_current(&top.0) {
+                return Some(top.0.start);
+            }
+            self.pending_heap.pop();
+        }
+        None
+    }
+
+    /// Cache the selected candidate's tags on its connection (so the immediate
+    /// `dequeue_candidate` reads them) and build the `SelectedCandidate`.
+    fn finalize_selection(&mut self, entry: CandidateEntry) -> SelectedCandidate {
+        if let Some(connection) = self.connections.get_mut(&entry.connection_id) {
+            connection.head_tags = Some(PacketTags {
+                start: entry.start,
+                finish: entry.finish,
+            });
+        }
+        SelectedCandidate {
+            candidate: Candidate {
+                connection_id: entry.connection_id,
+                class: entry.class,
+                member_index: entry.member_index,
+            },
+        }
+    }
+
+    /// Read-only linear WF2Q pick used solely as the debug cross-check oracle.
+    /// Computes candidate tags locally without caching them or advancing virtual
+    /// time, so it can run beside the heap path without perturbing its state.
+    /// Returns the winning connection id — which alone determines the dispatch,
+    /// so it's sufficient to validate the heap pick (including its tie-break).
+    #[cfg(debug_assertions)]
+    fn select_candidate_linear_key(&self) -> Option<ConnectionId> {
+        // WF2Q tie-break key: (finish, flow_id, connection_id), smaller wins.
+        let mut min_start: Option<u128> = None;
+        let mut best_eligible: Option<(u128, FlowId, ConnectionId)> = None;
+        let mut best_after_idle: Option<(u128, FlowId, ConnectionId)> = None;
+
+        for (flow_id, flow) in &self.flows {
+            let Some(selection) = Self::dispatchable_connection_for_flow(&self.connections, flow)
+            else {
+                continue;
+            };
+            let Some(connection) = self.connections.get(&selection.connection_id) else {
+                continue;
+            };
+            let (start, finish) = if let Some(tags) = connection.head_tags {
+                (tags.start, tags.finish)
+            } else {
+                let Some(bytes) = connection.front_packet().map(|packet| packet.bytes) else {
+                    continue;
+                };
+                let start = flow.last_finish.max(self.virtual_time);
+                (start, start + scaled_work(bytes, u128::from(flow.weight)))
+            };
+            let key = (finish, *flow_id, selection.connection_id);
+
+            if start <= self.virtual_time && best_eligible.is_none_or(|best| key < best) {
+                best_eligible = Some(key);
+            }
+            match min_start {
+                Some(current_min) if start > current_min => {}
+                Some(current_min) if start == current_min => {
+                    if best_after_idle.is_none_or(|best| key < best) {
+                        best_after_idle = Some(key);
+                    }
+                }
+                _ => {
+                    min_start = Some(start);
+                    best_after_idle = Some(key);
+                }
+            }
+        }
+
+        best_eligible
+            .or(best_after_idle)
+            .map(|(_, _, connection_id)| connection_id)
     }
 
     fn dispatchable_connection_for_flow(
@@ -502,25 +849,6 @@ impl<T> Wf2qScheduler<T> {
         })
     }
 
-    fn ensure_candidate_tags(
-        &mut self,
-        connection_id: ConnectionId,
-        weight: u16,
-        last_finish: u128,
-    ) -> Option<PacketTags> {
-        let virtual_time = self.virtual_time;
-
-        let connection = self.connections.get_mut(&connection_id)?;
-        let bytes = connection.front_packet()?.bytes;
-        if connection.head_tags.is_none() {
-            let start = last_finish.max(virtual_time);
-            let finish = start + scaled_work(bytes, u128::from(weight));
-            connection.head_tags = Some(PacketTags { start, finish });
-        }
-
-        connection.head_tags
-    }
-
     fn dequeue_candidate(&mut self, selected: SelectedCandidate) -> Option<DequeuedPacket<T>> {
         let candidate = selected.candidate;
         let total_weight_sum = self.total_flow_weight_sum();
@@ -544,6 +872,11 @@ impl<T> Wf2qScheduler<T> {
         if let Some(connection) = self.connections.get_mut(&candidate.connection_id) {
             connection.in_flight = true;
         }
+
+        // Push the flow's refreshed candidate before querying min start, so the
+        // heap and the linear scan see the same set.
+        self.refresh_flow_candidate(flow_id);
+        self.debug_assert_dispatchable_count();
 
         let advanced = self.virtual_time.max(tags.start) + scaled_work(bytes, total_weight_sum);
         self.virtual_time = self
@@ -606,21 +939,62 @@ impl<T> Wf2qScheduler<T> {
     }
 
     fn min_dispatchable_start(&mut self) -> Option<u128> {
-        self.collect_pending_candidates();
+        let result = self.min_dispatchable_start_heap();
+        #[cfg(debug_assertions)]
+        {
+            let linear = self.min_dispatchable_start_linear();
+            debug_assert_eq!(
+                result, linear,
+                "start_heap diverged from the linear min_dispatchable_start scan"
+            );
+        }
+        result
+    }
 
-        let mut min_start = None;
-        for idx in 0..self.pending_scratch.len() {
-            let pending = self.pending_scratch[idx];
-            let Some(tags) = self.ensure_candidate_tags(
-                pending.connection_id,
-                pending.weight,
-                pending.last_finish,
-            ) else {
+    /// Whether a heap entry still reflects its flow's current candidate (the
+    /// flow exists and its generation matches the entry's snapshot).
+    fn entry_is_current(&self, entry: &CandidateEntry) -> bool {
+        self.flows
+            .get(&entry.flow_id)
+            .is_some_and(|flow| flow.generation == entry.generation)
+    }
+
+    /// Heap-backed `min_dispatchable_start`: pop superseded entries off the top
+    /// (generation no longer matching the flow), then the top is the smallest
+    /// current candidate start. O(log flows) amortized.
+    fn min_dispatchable_start_heap(&mut self) -> Option<u128> {
+        while let Some(Reverse(entry)) = self.start_heap.peek() {
+            if self.entry_is_current(&entry.0) {
+                return Some(entry.0.start);
+            }
+            self.start_heap.pop();
+        }
+        None
+    }
+
+    /// Read-only linear `min_dispatchable_start`, the debug-build cross-check
+    /// oracle for `start_heap`. Computes candidate starts inline without caching
+    /// or mutating, so it can run beside the heap path without perturbing it.
+    #[cfg(debug_assertions)]
+    fn min_dispatchable_start_linear(&self) -> Option<u128> {
+        let mut min_start: Option<u128> = None;
+        for flow in self.flows.values() {
+            let Some(selection) = Self::dispatchable_connection_for_flow(&self.connections, flow)
+            else {
                 continue;
             };
-            min_start = Some(min_start.map_or(tags.start, |current: u128| current.min(tags.start)));
+            let Some(connection) = self.connections.get(&selection.connection_id) else {
+                continue;
+            };
+            let start = if let Some(tags) = connection.head_tags {
+                tags.start
+            } else if connection.front_packet().is_some() {
+                flow.last_finish.max(self.virtual_time)
+            } else {
+                continue;
+            };
+            min_start = Some(min_start.map_or(start, |current| current.min(start)));
         }
-
         min_start
     }
 
@@ -671,13 +1045,19 @@ impl<T> Wf2qScheduler<T> {
         };
 
         if should_remove {
+            // Drop this flow's dispatchable-count contribution while its flag is
+            // still readable, then remove it.
+            self.release_flow_dispatchable(flow_id);
             if let Some(flow) = self.flows.remove(&flow_id) {
                 self.total_flow_weight_sum = self
                     .total_flow_weight_sum
                     .saturating_sub(u128::from(flow.weight));
             }
-        } else if clear_remaining_tags {
-            self.clear_flow_tags(flow_id);
+        } else {
+            if clear_remaining_tags {
+                self.clear_flow_tags(flow_id);
+            }
+            self.refresh_flow_candidate(flow_id);
         }
     }
 
@@ -707,6 +1087,12 @@ struct FlowState {
     bulk_connections: Vec<ConnectionId>,
     protocol_cursor: usize,
     bulk_cursor: usize,
+    /// Whether this flow currently has a dispatchable connection. Mirrors its
+    /// contribution to the scheduler's `dispatchable_count`.
+    dispatchable: bool,
+    /// Bumped on every `refresh_flow_candidate`. A `start_heap` entry is current
+    /// only while it carries this exact value; older entries are stale.
+    generation: u64,
 }
 
 impl FlowState {
@@ -718,6 +1104,8 @@ impl FlowState {
             bulk_connections: Vec::new(),
             protocol_cursor: 0,
             bulk_cursor: 0,
+            dispatchable: false,
+            generation: 0,
         }
     }
 
@@ -842,22 +1230,10 @@ struct FlowSelection {
 }
 
 #[derive(Clone, Copy)]
-struct PendingCandidate {
-    flow_id: FlowId,
-    connection_id: ConnectionId,
-    class: ConnectionClass,
-    member_index: usize,
-    weight: u16,
-    last_finish: u128,
-}
-
-#[derive(Clone, Copy)]
 struct Candidate {
-    flow_id: FlowId,
     connection_id: ConnectionId,
     class: ConnectionClass,
     member_index: usize,
-    tags: PacketTags,
 }
 
 #[derive(Clone, Copy)]
@@ -872,27 +1248,6 @@ fn normalize_weight(weight: u16) -> u16 {
 fn scaled_work(bytes: usize, weight: u128) -> u128 {
     let work = bytes as u128 * VIRTUAL_TIME_SCALE;
     work.div_ceil(weight.max(1))
-}
-
-fn keep_best_candidate(best: &mut Option<Candidate>, candidate: Candidate) {
-    let Some(current_best) = best else {
-        *best = Some(candidate);
-        return;
-    };
-
-    let current_key = (
-        current_best.tags.finish,
-        current_best.flow_id,
-        current_best.connection_id,
-    );
-    let candidate_key = (
-        candidate.tags.finish,
-        candidate.flow_id,
-        candidate.connection_id,
-    );
-    if candidate_key < current_key {
-        *best = Some(candidate);
-    }
 }
 
 #[cfg(test)]
@@ -957,6 +1312,192 @@ mod tests {
             .connections
             .get(&connection_id)
             .and_then(|connection| connection.head_tags)
+    }
+
+    fn head_finish(scheduler: &Wf2qScheduler<u64>, connection_id: ConnectionId) -> Option<u128> {
+        head_tags(scheduler, connection_id).map(|tags| tags.finish)
+    }
+
+    // Broadcast-scaling benchmark. Times staging (N enqueues) and dispatch (N
+    // dequeues) separately to isolate the two O(N²) sources. Ignored by default;
+    // run with: cargo test -p nexus-server scheduler::tests::bench_broadcast -- --ignored --nocapture
+    #[test]
+    #[ignore = "benchmark"]
+    fn bench_broadcast_scaling() {
+        for n in [100u64, 250, 500, 1000, 2000] {
+            let mut scheduler = Wf2qScheduler::new();
+            for i in 0..n {
+                scheduler.register_user_connection(
+                    conn(i),
+                    i as i64,
+                    ConnectionClass::Protocol,
+                    100,
+                );
+            }
+
+            // Stage one frame per flow (a broadcast to N users).
+            let t_stage = std::time::Instant::now();
+            for i in 0..n {
+                scheduler.enqueue(conn(i), packet(i)).unwrap();
+            }
+            let stage = t_stage.elapsed();
+
+            // Drain all N, acking each like the writer integration does.
+            let t_dispatch = std::time::Instant::now();
+            let mut dispatched = 0u64;
+            while let Some(pkt) = scheduler.dequeue() {
+                scheduler.set_connection_in_flight(pkt.connection_id, false);
+                dispatched += 1;
+            }
+            let dispatch = t_dispatch.elapsed();
+            assert_eq!(dispatched, n);
+
+            println!(
+                "N={n:>5}  stage={stage:>12.2?}  dispatch={dispatch:>12.2?}  total={:>12.2?}",
+                stage + dispatch
+            );
+        }
+    }
+
+    /// Tiny deterministic PRNG so the randomized harness replays identically.
+    struct Lcg(u64);
+    impl Lcg {
+        fn new(seed: u64) -> Self {
+            Self(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1)
+        }
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.0
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            self.next_u64() % n
+        }
+    }
+
+    /// Drive a random op-sequence through the scheduler and return the ordered
+    /// list of dispatched payloads. Deterministic for a given seed.
+    fn run_randomized_workload(seed: u64) -> Vec<u64> {
+        const CONNS: u64 = 8;
+        const FLOWS: i64 = 4;
+
+        let mut rng = Lcg::new(seed);
+        let mut scheduler = Wf2qScheduler::new();
+        for i in 0..CONNS {
+            let class = if i % 2 == 0 {
+                ConnectionClass::Protocol
+            } else {
+                ConnectionClass::Bulk
+            };
+            scheduler.register_user_connection(
+                conn(i),
+                (i as i64) % FLOWS,
+                class,
+                ((i % 3) + 1) as u16,
+            );
+        }
+
+        let mut dispatched = Vec::new();
+        let mut next_payload = 0u64;
+
+        for _ in 0..3000 {
+            match rng.below(10) {
+                0..=4 => {
+                    let c = conn(rng.below(CONNS));
+                    if scheduler.enqueue(c, packet(next_payload)).is_ok() {
+                        next_payload += 1;
+                    }
+                }
+                5..=7 => {
+                    if let Some(pkt) = scheduler.dequeue() {
+                        dispatched.push(pkt.payload);
+                        // Ack immediately, as the writer integration does.
+                        scheduler.set_connection_in_flight(pkt.connection_id, false);
+                    }
+                }
+                8 => {
+                    let c = conn(rng.below(CONNS));
+                    scheduler.set_connection_blocked(c, rng.below(2) == 0);
+                }
+                _ => {
+                    scheduler.update_user_weight(
+                        rng.below(FLOWS as u64) as i64,
+                        (rng.below(3) + 1) as u16,
+                    );
+                }
+            }
+        }
+
+        // Unblock everything and drain so conservation can be checked.
+        for i in 0..CONNS {
+            scheduler.set_connection_blocked(conn(i), false);
+        }
+        while let Some(pkt) = scheduler.dequeue() {
+            dispatched.push(pkt.payload);
+            scheduler.set_connection_in_flight(pkt.connection_id, false);
+        }
+
+        assert_eq!(
+            next_payload as usize,
+            dispatched.len(),
+            "seed {seed}: every enqueued packet must dispatch exactly once"
+        );
+        let mut sorted = dispatched.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(
+            sorted.len(),
+            dispatched.len(),
+            "seed {seed}: no payload may be dispatched twice"
+        );
+
+        dispatched
+    }
+
+    #[test]
+    fn randomized_workload_conserves_packets_and_is_deterministic() {
+        for seed in 0..64u64 {
+            let first = run_randomized_workload(seed);
+            let second = run_randomized_workload(seed);
+            assert_eq!(
+                first, second,
+                "seed {seed}: dispatch order must be deterministic"
+            );
+        }
+    }
+
+    #[test]
+    fn refresh_churn_without_dispatch_keeps_heaps_bounded() {
+        let mut scheduler = Wf2qScheduler::new();
+        let c = conn(1);
+        scheduler.register_user_connection(c, 1, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, c, 1);
+
+        // Mutate repeatedly without ever dispatching or querying. Each refresh
+        // pushes fresh heap entries and orphans the prior generation; lazy
+        // stale-skip never runs, so only compaction can keep these bounded.
+        for w in 0..10_000u16 {
+            scheduler.update_user_weight(1, (w % 100) + 1);
+        }
+
+        // One dispatchable flow → at most one live entry per heap; compaction
+        // caps length near the threshold rather than the 10_000-iteration churn.
+        let bound = HEAP_COMPACT_FACTOR + HEAP_COMPACT_SLACK + 1;
+        assert!(
+            scheduler.start_heap.len() <= bound,
+            "start_heap unbounded: {}",
+            scheduler.start_heap.len()
+        );
+        assert!(
+            scheduler.pending_heap.len() <= bound,
+            "pending_heap unbounded: {}",
+            scheduler.pending_heap.len()
+        );
+
+        // Still dispatches correctly after all the churn.
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, c);
     }
 
     #[test]
@@ -1293,10 +1834,12 @@ mod tests {
         enqueue_many(&mut scheduler, boosted, 200);
 
         assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, baseline);
-        assert!(head_has_tags(&scheduler, boosted));
+        let before = head_finish(&scheduler, boosted).expect("boosted head tags");
 
         assert!(scheduler.update_user_weight(2, 10));
-        assert!(!head_has_tags(&scheduler, boosted));
+        // The weight change recomputes the head tags (eager) with the new
+        // weight, so the finish reflects the boost rather than the stale value.
+        assert_ne!(head_finish(&scheduler, boosted), Some(before));
 
         let mut baseline_count = 0;
         let mut boosted_count = 0;
@@ -1324,9 +1867,12 @@ mod tests {
 
         assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, reduced);
         assert!(head_has_tags(&scheduler, baseline));
+        let before = head_finish(&scheduler, reduced).expect("reduced head tags");
 
         assert!(scheduler.update_user_weight(2, 1));
-        assert!(!head_has_tags(&scheduler, reduced));
+        // The weight change recomputes the head tags (eager) with the new
+        // weight, so the finish reflects the reduction rather than the stale value.
+        assert_ne!(head_finish(&scheduler, reduced), Some(before));
 
         let mut baseline_count: usize = 0;
         let mut reduced_count: usize = 0;
@@ -1350,12 +1896,14 @@ mod tests {
         enqueue_many(&mut scheduler, first, 1);
 
         assert!(scheduler.select_candidate().is_some());
-        assert!(head_has_tags(&scheduler, first));
+        let before = head_finish(&scheduler, first).expect("first head tags");
 
         assert!(scheduler.register_user_connection(second, 1, ConnectionClass::Protocol, 10));
         assert_eq!(scheduler.total_flow_weight_sum, 10);
         assert_eq!(scheduler.flows.get(&FlowId::User(1)).unwrap().weight, 10);
-        assert!(!head_has_tags(&scheduler, first));
+        // Registering a heavier sibling changes the flow weight, recomputing the
+        // head tags (eager) to reflect it.
+        assert_ne!(head_finish(&scheduler, first), Some(before));
     }
 
     #[test]
@@ -1591,10 +2139,12 @@ mod tests {
         enqueue_many_sized(&mut scheduler, active, PACKET_BYTES, 20);
 
         assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, active);
-        assert!(head_has_tags(&scheduler, transitioning));
+        let before = head_finish(&scheduler, transitioning).expect("transitioning head tags");
 
         assert!(scheduler.transition_to_user(transitioning, 2, ANON_FLOW_WEIGHT));
-        assert!(!head_has_tags(&scheduler, transitioning));
+        // The transition moves the connection to a new flow and recomputes its
+        // head tags there (eager), so the finish reflects the new timeline.
+        assert_ne!(head_finish(&scheduler, transitioning), Some(before));
         assert_eq!(scheduler.queued_packets(transitioning), Some(20));
     }
 
@@ -1609,10 +2159,12 @@ mod tests {
         enqueue_many(&mut scheduler, transitioning, 1);
 
         assert!(scheduler.select_candidate().is_some());
-        assert!(head_has_tags(&scheduler, sibling));
+        let before = head_finish(&scheduler, sibling).expect("sibling head tags");
 
         assert!(scheduler.transition_to_user(transitioning, 1, 10));
-        assert!(!head_has_tags(&scheduler, sibling));
+        // A same-flow transition that changes the weight recomputes the flow
+        // head's tags (eager) to reflect the new weight.
+        assert_ne!(head_finish(&scheduler, sibling), Some(before));
     }
 
     #[test]
