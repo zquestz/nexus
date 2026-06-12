@@ -936,6 +936,7 @@ transfer-error-certificate-mismatch = Certificate fingerprint mismatch
 transfer-error-auth-failed = Authentication failed
 transfer-error-exists = File already exists with different content
 transfer-error-conflict = Another upload is in progress
+transfer-error-capacity = Not enough free space for upload
 transfer-error-cancelled = Cancelled
 transfer-error-unknown = Unknown error
 transfer-cancelled = Cancelled by user

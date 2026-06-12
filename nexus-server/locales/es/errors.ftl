@@ -237,6 +237,7 @@ err-transfer-file-failed = Error al transferir { $path }: { $error }
 # Upload Errors
 err-upload-destination-not-allowed = La carpeta de destino no permite subidas
 err-upload-write-failed = Error al escribir el archivo
+err-upload-insufficient-space = No hay suficiente espacio libre para la subida
 err-upload-hash-mismatch = Verificación del archivo fallida - hash no coincide
 err-upload-path-invalid = Ruta de archivo inválida en la subida
 err-upload-conflict = Otra subida a este nombre de archivo está en progreso o fue interrumpida. Por favor, intente con un nombre de archivo diferente.

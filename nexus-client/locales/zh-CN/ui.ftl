@@ -879,6 +879,7 @@ transfer-error-certificate-mismatch = 证书指纹不匹配
 transfer-error-auth-failed = 认证失败
 transfer-error-exists = 文件已存在且内容不同
 transfer-error-conflict = 另一个上传正在进行中
+transfer-error-capacity = 上传可用空间不足
 transfer-error-cancelled = 已取消
 transfer-error-unknown = 未知错误
 transfer-cancelled = 已被用户取消

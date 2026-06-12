@@ -28,8 +28,9 @@ use crate::files::activity_key;
 use crate::files::path::{allows_upload, validate_and_build_candidate_path};
 use crate::handlers::{
     err_upload_conflict, err_upload_connection_lost, err_upload_destination_not_allowed,
-    err_upload_empty, err_upload_file_exists, err_upload_hash_mismatch, err_upload_path_invalid,
-    err_upload_protocol_error, err_upload_write_failed,
+    err_upload_empty, err_upload_file_exists, err_upload_hash_mismatch,
+    err_upload_insufficient_space, err_upload_path_invalid, err_upload_protocol_error,
+    err_upload_write_failed,
 };
 
 use nexus_common::PART_SUFFIX;
@@ -294,6 +295,8 @@ where
             locale,
         )
         .await?;
+
+    ensure_upload_has_available_space(destination, file_size, existing_size, locale).await?;
 
     send_file_start_response(transfer.writer(), existing_size, existing_hash, locale).await?;
 
@@ -574,6 +577,48 @@ fn validate_and_build_upload_paths(
     }
 
     Ok((target_path, part_path))
+}
+
+fn bytes_needed_for_upload(file_size: u64, existing_size: u64) -> u64 {
+    file_size.saturating_sub(existing_size)
+}
+
+async fn ensure_upload_has_available_space(
+    filesystem_path: &Path,
+    file_size: u64,
+    existing_size: u64,
+    locale: &str,
+) -> Result<(), TransferError> {
+    let bytes_needed = bytes_needed_for_upload(file_size, existing_size);
+    if bytes_needed == 0 {
+        return Ok(());
+    }
+
+    let path_for_task = filesystem_path.to_path_buf();
+    let available = tokio::task::spawn_blocking(move || fs4::available_space(path_for_task))
+        .await
+        .map_err(|e| {
+            error!(err = %e, path = %filesystem_path.display(), "{}", LOG_UPLOAD_SPACE_CHECK_FAILED);
+            TransferError::io_error(err_upload_write_failed(locale))
+        })?
+        .map_err(|e| {
+            error!(err = %e, path = %filesystem_path.display(), "{}", LOG_UPLOAD_SPACE_CHECK_FAILED);
+            TransferError::io_error(err_upload_write_failed(locale))
+        })?;
+
+    if available < bytes_needed {
+        warn!(
+            path = %filesystem_path.display(),
+            available,
+            needed = bytes_needed,
+            "{}", LOG_UPLOAD_INSUFFICIENT_SPACE
+        );
+        return Err(TransferError::capacity(err_upload_insufficient_space(
+            locale,
+        )));
+    }
+
+    Ok(())
 }
 
 /// Sends FileHashing keepalives while hashing large existing files to prevent
@@ -897,7 +942,7 @@ mod tests {
     use nexus_common::io::{
         read_transfer_server_message as read_server_message, send_client_message,
     };
-    use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_INVALID};
+    use nexus_common::{ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_INVALID};
     use tempfile::TempDir;
     use tokio::fs;
     use tokio::io::{AsyncWriteExt, BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
@@ -1087,6 +1132,189 @@ mod tests {
             fs::read(destination.join("file.txt")).await.unwrap(),
             file_data
         );
+    }
+
+    #[tokio::test]
+    async fn test_upload_rejects_file_start_that_exceeds_available_space() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+
+        let server = async {
+            handle_upload(
+                &mut transfer,
+                UploadParams {
+                    destination: "uploads [NEXUS-UL]".to_string(),
+                    file_count: 1,
+                    total_size: u64::MAX,
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let initial = read_server_message(&mut client_reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match initial {
+                ServerMessage::FileUploadResponse { success, .. } => assert!(success),
+                other => panic!("Expected FileUploadResponse, got {other:?}"),
+            }
+
+            send_client_message(
+                &mut client_writer,
+                &ClientMessage::FileStart {
+                    path: "huge.bin".to_string(),
+                    size: u64::MAX,
+                },
+            )
+            .await
+            .unwrap();
+
+            let complete = read_server_message(&mut client_reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match complete {
+                ServerMessage::TransferComplete {
+                    success,
+                    error,
+                    error_kind,
+                } => {
+                    assert!(!success);
+                    assert_eq!(error.as_deref(), Some("Not enough free space for upload"));
+                    assert_eq!(error_kind.as_deref(), Some(ERROR_KIND_CAPACITY));
+                }
+                other => panic!("Expected TransferComplete, got {other:?}"),
+            }
+        };
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(server, client)
+        })
+        .await
+        .expect("capacity rejection should complete");
+
+        assert!(!destination.join("huge.bin").exists());
+        assert!(!destination.join("huge.bin.part").exists());
+    }
+
+    #[tokio::test]
+    async fn test_upload_resume_rejects_remaining_bytes_that_exceed_available_space() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+        let part_path = destination.join("huge.bin.part");
+        fs::write(&part_path, b"partial data").await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+
+        let server = async {
+            handle_upload(
+                &mut transfer,
+                UploadParams {
+                    destination: "uploads [NEXUS-UL]".to_string(),
+                    file_count: 1,
+                    total_size: u64::MAX,
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let initial = read_server_message(&mut client_reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match initial {
+                ServerMessage::FileUploadResponse { success, .. } => assert!(success),
+                other => panic!("Expected FileUploadResponse, got {other:?}"),
+            }
+
+            send_client_message(
+                &mut client_writer,
+                &ClientMessage::FileStart {
+                    path: "huge.bin".to_string(),
+                    size: u64::MAX,
+                },
+            )
+            .await
+            .unwrap();
+
+            let complete = read_server_message(&mut client_reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match complete {
+                ServerMessage::TransferComplete {
+                    success,
+                    error_kind,
+                    ..
+                } => {
+                    assert!(!success);
+                    assert_eq!(error_kind.as_deref(), Some(ERROR_KIND_CAPACITY));
+                }
+                other => panic!("Expected TransferComplete, got {other:?}"),
+            }
+        };
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(server, client)
+        })
+        .await
+        .expect("capacity rejection should complete");
+
+        assert_eq!(fs::read(&part_path).await.unwrap(), b"partial data");
+        assert!(!destination.join("huge.bin").exists());
     }
 
     #[tokio::test]
@@ -1686,6 +1914,14 @@ mod tests {
     fn test_resume_conflict_offset_matches() {
         let result = check_resume_conflict(500, 500, TEST_LOCALE);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_bytes_needed_for_upload() {
+        assert_eq!(bytes_needed_for_upload(100, 0), 100);
+        assert_eq!(bytes_needed_for_upload(100, 40), 60);
+        assert_eq!(bytes_needed_for_upload(100, 100), 0);
+        assert_eq!(bytes_needed_for_upload(100, 150), 0);
     }
 
     #[tokio::test]

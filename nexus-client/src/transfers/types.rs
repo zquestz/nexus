@@ -104,6 +104,8 @@ pub enum TransferError {
     Exists,
     /// Concurrent upload in progress (upload)
     Conflict,
+    /// Destination has insufficient free space
+    Capacity,
     /// Transfer was cancelled by user (e.g., during hash computation)
     Cancelled,
     /// Unknown error
@@ -122,6 +124,7 @@ impl TransferError {
             "hash_mismatch" => TransferError::HashMismatch,
             "exists" => TransferError::Exists,
             "conflict" => TransferError::Conflict,
+            "capacity" => TransferError::Capacity,
             _ => TransferError::Unknown,
         }
     }
@@ -141,6 +144,7 @@ impl TransferError {
             TransferError::AuthenticationFailed => "transfer-error-auth-failed",
             TransferError::Exists => "transfer-error-exists",
             TransferError::Conflict => "transfer-error-conflict",
+            TransferError::Capacity => "transfer-error-capacity",
             TransferError::Cancelled => "transfer-error-cancelled",
             TransferError::Unknown => "transfer-error-unknown",
         }
@@ -682,10 +686,22 @@ mod tests {
             TransferError::from_server_error_kind("protocol_error"),
             TransferError::ProtocolError
         );
+        assert_eq!(
+            TransferError::from_server_error_kind("capacity"),
+            TransferError::Capacity
+        );
         // Unknown values fall back to Unknown
         assert_eq!(
             TransferError::from_server_error_kind("unknown_thing"),
             TransferError::Unknown
+        );
+    }
+
+    #[test]
+    fn test_transfer_error_i18n_key() {
+        assert_eq!(
+            TransferError::Capacity.to_i18n_key(),
+            "transfer-error-capacity"
         );
     }
 

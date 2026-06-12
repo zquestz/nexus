@@ -236,6 +236,7 @@ err-transfer-file-failed = 傳輸 { $path } 失敗: { $error }
 # Upload Errors
 err-upload-destination-not-allowed = 目標資料夾不允許上傳
 err-upload-write-failed = 無法寫入檔案
+err-upload-insufficient-space = 上傳可用空間不足
 err-upload-hash-mismatch = 檔案驗證失敗 - 雜湊值不符
 err-upload-path-invalid = 上傳中的檔案路徑無效
 err-upload-conflict = 另一個上傳到此檔案名稱的操作正在進行中或已中斷。請嘗試使用其他檔案名稱。

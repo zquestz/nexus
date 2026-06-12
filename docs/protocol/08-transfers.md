@@ -263,6 +263,7 @@ Announces a file to transfer. Sent by server for downloads, by client for upload
 - Path is relative (no leading slash)
 - Path uses forward slashes regardless of OS
 - 0-byte files are valid (`size: 0`)
+- Uploads may be rejected after `FileStart` with `TransferComplete { success: false, error_kind: "capacity" }` if the declared remaining bytes do not fit in the destination filesystem's available space
 
 ### FileStartResponse (Bidirectional)
 
@@ -421,8 +422,8 @@ Both sides use a `StreamingHasher` whose `partial_hash()` returns the current di
 ### Upload Resume
 
 1. Client sends `FileStart { path, size }` (no hash)
-2. Server checks local `.part` file (or completed file)
-3. Server hashes its local data into a `StreamingHasher`, sends `FileHashing` keepalives during hashing
+2. Server checks local `.part` file (or completed file), hashing existing data into a `StreamingHasher` and sending `FileHashing` keepalives during hashing
+3. Server verifies the declared remaining bytes fit in the destination filesystem's available space. If not, it rejects the upload with `TransferComplete { success: false, error_kind: "capacity" }`
 4. Server responds with `FileStartResponse { size: N, blake3: partial_hash }`
 5. Client hashes first N bytes of its file into a `StreamingHasher`, sends `FileHashing` keepalives
 6. Client compares via `partial_hash()`:
@@ -449,6 +450,7 @@ Both sides use a `StreamingHasher` whose `partial_hash()` returns the current di
 | `invalid`             | Invalid input (malformed path)    |
 | `unsupported_version` | Protocol version not supported    |
 | `disk_full`           | Disk full                         |
+| `capacity`            | Destination lacks free space       |
 | `hash_mismatch`       | BLAKE3 verification failed        |
 | `io_error`            | File I/O error                    |
 | `protocol_error`      | Invalid/unexpected data           |

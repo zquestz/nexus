@@ -236,6 +236,7 @@ err-transfer-file-failed = { $path } の転送に失敗しました: { $error }
 # Upload Errors
 err-upload-destination-not-allowed = 宛先フォルダはアップロードを許可していません
 err-upload-write-failed = ファイルの書き込みに失敗しました
+err-upload-insufficient-space = アップロードに十分な空き容量がありません
 err-upload-hash-mismatch = ファイル検証に失敗しました - ハッシュが一致しません
 err-upload-path-invalid = アップロードのファイルパスが無効です
 err-upload-conflict = このファイル名への別のアップロードが進行中または中断されています。別のファイル名をお試しください。

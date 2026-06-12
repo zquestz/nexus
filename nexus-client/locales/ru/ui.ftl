@@ -950,6 +950,7 @@ transfer-error-certificate-mismatch = Отпечаток сертификата 
 transfer-error-auth-failed = Ошибка аутентификации
 transfer-error-exists = Файл уже существует с другим содержимым
 transfer-error-conflict = Выполняется другая загрузка
+transfer-error-capacity = Недостаточно свободного места для загрузки
 transfer-error-cancelled = Отменено
 transfer-error-unknown = Неизвестная ошибка
 transfer-cancelled = Отменено пользователем

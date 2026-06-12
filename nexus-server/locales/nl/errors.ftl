@@ -236,6 +236,7 @@ err-transfer-file-failed = Overdracht van { $path } mislukt: { $error }
 # Upload Errors
 err-upload-destination-not-allowed = Bestemmingsmap staat geen uploads toe
 err-upload-write-failed = Kan bestand niet schrijven
+err-upload-insufficient-space = Onvoldoende vrije ruimte voor upload
 err-upload-hash-mismatch = Bestandsverificatie mislukt - hash komt niet overeen
 err-upload-path-invalid = Ongeldig bestandspad in upload
 err-upload-conflict = Een andere upload naar deze bestandsnaam is bezig of werd onderbroken. Probeer een andere bestandsnaam.

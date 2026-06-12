@@ -236,6 +236,7 @@ err-transfer-file-failed = Échec du transfert de { $path } : { $error }
 # Upload Errors
 err-upload-destination-not-allowed = Le dossier de destination n'autorise pas les téléversements
 err-upload-write-failed = Échec de l'écriture du fichier
+err-upload-insufficient-space = Espace libre insuffisant pour le téléversement
 err-upload-hash-mismatch = Vérification du fichier échouée - hachage non concordant
 err-upload-path-invalid = Chemin de fichier invalide dans le téléversement
 err-upload-conflict = Un autre téléversement vers ce nom de fichier est en cours ou a été interrompu. Veuillez essayer un autre nom de fichier.

@@ -11,8 +11,9 @@ use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, FilePathError};
 use nexus_common::{
-    ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH, ERROR_KIND_INVALID,
-    ERROR_KIND_IO_ERROR, ERROR_KIND_NOT_FOUND, ERROR_KIND_PERMISSION, ERROR_KIND_PROTOCOL_ERROR,
+    ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH,
+    ERROR_KIND_INVALID, ERROR_KIND_IO_ERROR, ERROR_KIND_NOT_FOUND, ERROR_KIND_PERMISSION,
+    ERROR_KIND_PROTOCOL_ERROR,
 };
 
 use crate::db::Permission;
@@ -71,6 +72,10 @@ impl TransferError {
 
     pub fn hash_mismatch(message: impl Into<String>) -> Self {
         Self::new(message, ERROR_KIND_HASH_MISMATCH)
+    }
+
+    pub fn capacity(message: impl Into<String>) -> Self {
+        Self::new(message, ERROR_KIND_CAPACITY)
     }
 }
 
@@ -310,6 +315,7 @@ mod tests {
             TransferError::hash_mismatch("x").kind,
             ERROR_KIND_HASH_MISMATCH
         );
+        assert_eq!(TransferError::capacity("x").kind, ERROR_KIND_CAPACITY);
     }
 
     #[test]

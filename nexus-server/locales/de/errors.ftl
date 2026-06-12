@@ -236,6 +236,7 @@ err-transfer-file-failed = Übertragung von { $path } fehlgeschlagen: { $error }
 # Upload Errors
 err-upload-destination-not-allowed = Zielordner erlaubt keine Uploads
 err-upload-write-failed = Datei konnte nicht geschrieben werden
+err-upload-insufficient-space = Nicht genügend freier Speicherplatz für den Upload
 err-upload-hash-mismatch = Dateiprüfung fehlgeschlagen - Hash stimmt nicht überein
 err-upload-path-invalid = Ungültiger Dateipfad beim Upload
 err-upload-conflict = Ein anderer Upload zu diesem Dateinamen läuft oder wurde unterbrochen. Bitte versuchen Sie einen anderen Dateinamen.

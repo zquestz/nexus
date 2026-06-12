@@ -948,6 +948,10 @@ pub fn err_upload_write_failed(locale: &str) -> String {
     t(locale, "err-upload-write-failed")
 }
 
+pub fn err_upload_insufficient_space(locale: &str) -> String {
+    t(locale, "err-upload-insufficient-space")
+}
+
 pub fn err_upload_hash_mismatch(locale: &str) -> String {
     t(locale, "err-upload-hash-mismatch")
 }

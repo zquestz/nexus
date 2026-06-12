@@ -929,6 +929,7 @@ transfer-error-certificate-mismatch = Certificaatvingerafdruk komt niet overeen
 transfer-error-auth-failed = Authenticatie mislukt
 transfer-error-exists = Bestand bestaat al met andere inhoud
 transfer-error-conflict = Een andere upload is bezig
+transfer-error-capacity = Onvoldoende vrije ruimte voor upload
 transfer-error-cancelled = Geannuleerd
 transfer-error-unknown = Onbekende fout
 transfer-cancelled = Geannuleerd door gebruiker

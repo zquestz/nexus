@@ -930,6 +930,7 @@ transfer-error-certificate-mismatch = Huella digital del certificado no coincide
 transfer-error-auth-failed = Autenticación fallida
 transfer-error-exists = El archivo ya existe con contenido diferente
 transfer-error-conflict = Otra subida está en progreso
+transfer-error-capacity = No hay suficiente espacio libre para la subida
 transfer-error-cancelled = Cancelado
 transfer-error-unknown = Error desconocido
 transfer-cancelled = Cancelado por el usuario

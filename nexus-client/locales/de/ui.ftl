@@ -932,6 +932,7 @@ transfer-error-certificate-mismatch = Zertifikats-Fingerabdruck stimmt nicht üb
 transfer-error-auth-failed = Authentifizierung fehlgeschlagen
 transfer-error-exists = Datei existiert bereits mit anderem Inhalt
 transfer-error-conflict = Ein anderer Upload läuft bereits
+transfer-error-capacity = Nicht genügend freier Speicherplatz für den Upload
 transfer-error-cancelled = Abgebrochen
 transfer-error-unknown = Unbekannter Fehler
 transfer-cancelled = Vom Benutzer abgebrochen

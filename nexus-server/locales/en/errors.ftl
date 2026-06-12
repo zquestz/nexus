@@ -234,6 +234,7 @@ err-transfer-file-failed = Failed to transfer { $path }: { $error }
 # Upload Errors
 err-upload-destination-not-allowed = Destination folder does not allow uploads
 err-upload-write-failed = Failed to write file
+err-upload-insufficient-space = Not enough free space for upload
 err-upload-hash-mismatch = File verification failed - hash mismatch
 err-upload-path-invalid = Invalid file path in upload
 err-upload-conflict = Another upload to this filename is in progress or was interrupted. Please try a different filename.

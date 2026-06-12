@@ -236,6 +236,7 @@ err-transfer-file-failed = Не удалось передать { $path }: { $er
 # Upload Errors
 err-upload-destination-not-allowed = Папка назначения не разрешает загрузки
 err-upload-write-failed = Не удалось записать файл
+err-upload-insufficient-space = Недостаточно свободного места для загрузки
 err-upload-hash-mismatch = Проверка файла не удалась - хеш не совпадает
 err-upload-path-invalid = Недопустимый путь к файлу при загрузке
 err-upload-conflict = Другая загрузка с этим именем файла выполняется или была прервана. Пожалуйста, попробуйте другое имя файла.

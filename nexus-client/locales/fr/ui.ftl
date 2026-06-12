@@ -928,6 +928,7 @@ transfer-error-certificate-mismatch = Empreinte du certificat non concordante
 transfer-error-auth-failed = Échec de l'authentification
 transfer-error-exists = Le fichier existe déjà avec un contenu différent
 transfer-error-conflict = Un autre téléversement est en cours
+transfer-error-capacity = Espace libre insuffisant pour le téléversement
 transfer-error-cancelled = Annulé
 transfer-error-unknown = Erreur inconnue
 transfer-cancelled = Annulé par l'utilisateur

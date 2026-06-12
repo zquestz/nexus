@@ -933,6 +933,7 @@ transfer-error-certificate-mismatch = Impressão digital do certificado não cor
 transfer-error-auth-failed = Falha na autenticação
 transfer-error-exists = Ficheiro já existe com conteúdo diferente
 transfer-error-conflict = Outro carregamento está em curso
+transfer-error-capacity = Espaço livre insuficiente para o carregamento
 transfer-error-cancelled = Cancelado
 transfer-error-unknown = Erro desconhecido
 transfer-cancelled = Cancelado pelo utilizador

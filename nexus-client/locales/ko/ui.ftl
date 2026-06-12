@@ -878,6 +878,7 @@ transfer-error-certificate-mismatch = 인증서 지문이 일치하지 않습니
 transfer-error-auth-failed = 인증 실패
 transfer-error-exists = 다른 내용의 파일이 이미 존재합니다
 transfer-error-conflict = 다른 업로드가 진행 중입니다
+transfer-error-capacity = 업로드를 위한 여유 공간이 부족합니다
 transfer-error-cancelled = 취소됨
 transfer-error-unknown = 알 수 없는 오류
 transfer-cancelled = 사용자가 취소함
