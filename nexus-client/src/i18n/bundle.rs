@@ -1,20 +1,43 @@
 //! Fluent bundle management
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use fluent_bundle::{FluentBundle, FluentResource};
 use unic_langid::LanguageIdentifier;
 
 use super::constants::*;
 use crate::constants::ERR_DEFAULT_LOCALE_INVALID;
 
+thread_local! {
+    static BUNDLE_CACHE: RefCell<HashMap<String, Rc<FluentBundle<FluentResource>>>> =
+        RefCell::new(HashMap::new());
+}
+
 /// Get a Fluent bundle for the specified locale
 ///
 /// Loads the appropriate .ftl file and creates a bundle.
 /// Falls back to English for unsupported locales.
 ///
-/// Note: Currently creates a new bundle on each call. FluentBundle contains
-/// non-Send types (RefCell, TypeMap) which prevent safe caching across threads.
-/// For a GUI client, this performance trade-off is acceptable.
-pub(super) fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
+/// Bundles are cached per thread because `FluentBundle` contains non-`Send`
+/// internals. The GUI hot path stays on one thread, so this avoids reparsing
+/// the locale file on every `t()` call without sharing bundles across threads.
+pub(super) fn get_bundle(locale: &str) -> Rc<FluentBundle<FluentResource>> {
+    BUNDLE_CACHE.with(|cache| {
+        if let Some(bundle) = cache.borrow().get(locale).cloned() {
+            return bundle;
+        }
+
+        let bundle = Rc::new(build_bundle(locale));
+        cache
+            .borrow_mut()
+            .insert(locale.to_string(), Rc::clone(&bundle));
+        bundle
+    })
+}
+
+fn build_bundle(locale: &str) -> FluentBundle<FluentResource> {
     let lang: LanguageIdentifier = locale
         .parse()
         .unwrap_or_else(|_| DEFAULT_LOCALE.parse().expect(ERR_DEFAULT_LOCALE_INVALID));
@@ -51,4 +74,27 @@ pub(super) fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
     bundle.add_resource(resource).expect(ERR_ADD_RESOURCE);
 
     bundle
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use super::*;
+
+    #[test]
+    fn test_get_bundle_caches_same_locale() {
+        let first = get_bundle("en");
+        let second = get_bundle("en");
+
+        assert!(Rc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn test_get_bundle_caches_locales_separately() {
+        let english = get_bundle("en");
+        let french = get_bundle("fr");
+
+        assert!(!Rc::ptr_eq(&english, &french));
+    }
 }
