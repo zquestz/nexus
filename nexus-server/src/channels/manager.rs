@@ -217,21 +217,19 @@ impl ChannelManager {
 
         for (name, topic, secret, member_session_ids) in channels_to_list {
             // Member counts are nicknames (deduped), not sessions.
-            // We don't store nicknames in ChannelManager, so count unique nicknames by
-            // deriving them from the joined sessions when we build the listing.
-            let mut seen = HashSet::new();
-            for sid in member_session_ids {
-                // We can only count sessions we can map to an active user.
-                // If a session disappeared, skipping it is fine for display.
-                if let Some(user) = self.user_manager.get_user_by_session_id(sid).await {
-                    seen.insert(fold_name(&user.nickname));
-                }
-            }
+            // We don't store nicknames in ChannelManager, so count unique
+            // nicknames by deriving them from the joined sessions when we build
+            // the listing. Missing sessions are skipped by UserManager.
+            let member_count = self
+                .user_manager
+                .get_unique_nicknames_for_sessions(&member_session_ids)
+                .await
+                .len() as u32;
 
             results.push(ChannelListInfo {
                 name,
                 topic,
-                member_count: seen.len() as u32,
+                member_count,
                 secret,
             });
         }
@@ -379,6 +377,7 @@ impl ChannelManager {
 mod tests {
     use super::*;
     use crate::db::testing::create_test_db;
+    use crate::users::user::{ConnectionWriter, NewSessionParams};
     use nexus_common::validators::DEFAULT_CHANNEL;
 
     async fn create_test_manager() -> ChannelManager {
@@ -386,6 +385,32 @@ mod tests {
         let db = ChannelDb::new(pool);
         let user_manager = UserManager::new();
         ChannelManager::new(db, user_manager)
+    }
+
+    fn test_session_params(session_id: u32, nickname: &str) -> NewSessionParams {
+        let (tx, _rx) = ConnectionWriter::channel();
+        NewSessionParams {
+            session_id,
+            user_id: i64::from(session_id),
+            username: nickname.to_string(),
+            is_admin: false,
+            is_shared: false,
+            permissions: HashSet::new(),
+            address: "127.0.0.1:12345".parse().unwrap(),
+            created_at: 0,
+            tx,
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: Some("data:image/png;base64,large-test-avatar".to_string()),
+            nickname: nickname.to_string(),
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            bandwidth_weight: 1,
+            bandwidth_weight_override: None,
+            last_activity: std::time::Instant::now(),
+        }
     }
 
     #[tokio::test]
@@ -671,6 +696,41 @@ mod tests {
         let names: Vec<&str> = list.iter().map(|c| c.name.as_str()).collect();
         assert!(names.contains(&"#general"));
         assert!(names.contains(&"#support"));
+    }
+
+    #[tokio::test]
+    async fn test_list_member_count_uses_unique_active_nicknames() {
+        let manager = create_test_manager().await;
+
+        manager
+            .user_manager
+            .add_user(test_session_params(1, "Alice"))
+            .await
+            .unwrap();
+        manager
+            .user_manager
+            .add_user(test_session_params(2, "alice"))
+            .await
+            .unwrap();
+
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#general", 2, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#general", 999, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+
+        let list = manager.list(1, false).await;
+
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "#general");
+        assert_eq!(list[0].member_count, 1);
     }
 
     #[tokio::test]
