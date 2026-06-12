@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use dtls::config::Config as DtlsConfig;
 use dtls::conn::DTLSConn;
@@ -168,7 +168,9 @@ impl VoiceUdpServer {
             match self.listener.accept().await {
                 Ok(pending) => self.handle_pending_connection(pending).await,
                 Err(e) => {
-                    warn!(err = %e, "{}", LOG_VOICE_ACCEPT_ERROR);
+                    // debug, not warn: accept failures are spoofable (forged
+                    // ClientHellos) and unreliable, so per-occurrence they're noise.
+                    debug!(err = %e, "{}", LOG_VOICE_ACCEPT_ERROR);
                 }
             }
         }
@@ -322,7 +324,10 @@ impl VoiceUdpServer {
     fn parse_packet<'a>(remote_addr: SocketAddr, data: &'a [u8]) -> Option<VoicePacketRef<'a>> {
         let packet = VoicePacketRef::from_bytes(data);
         if packet.is_none() {
-            warn!(ip = %remote_addr, "{}", LOG_VOICE_INVALID_PACKET);
+            // debug, not warn: this is logged before the token check, so any
+            // unauthenticated DTLS peer (e.g. a scanner) can flood it per packet,
+            // and there's no remedy worth a per-occurrence warning.
+            debug!(ip = %remote_addr, "{}", LOG_VOICE_INVALID_PACKET);
         }
         packet
     }
@@ -382,7 +387,9 @@ impl VoiceUdpServer {
                             .await;
                     }
                     Some(false) => {
-                        warn!(user = %sender_nickname, "{}", LOG_VOICE_NO_PERMISSION);
+                        // debug, not warn: a session without voice_talk can send
+                        // this per packet, so per-occurrence it's noise.
+                        debug!(user = %sender_nickname, "{}", LOG_VOICE_NO_PERMISSION);
                     }
                     None => {
                         // User disconnected; drop packet
@@ -432,7 +439,11 @@ impl VoiceUdpServer {
             let conn = client.conn.clone();
 
             if let Err(e) = conn.send(&relayed_bytes).await {
-                error!(user = %nickname, ip = %udp_addr, err = %e, "{}", LOG_VOICE_RELAY_FAILED);
+                // debug, not error: per relayed packet, and largely self-limiting
+                // (UDP send to a vanished peer succeeds; a genuinely errored conn
+                // is being torn down, and an idle recipient is reaped within
+                // VOICE_SESSION_TIMEOUT_SECS).
+                debug!(user = %nickname, ip = %udp_addr, err = %e, "{}", LOG_VOICE_RELAY_FAILED);
             }
         }
     }
