@@ -2,9 +2,14 @@
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU16;
 
 use nexus_common::framing::MessageId;
+#[cfg(test)]
+use nexus_common::framing::{DELIMITER, MAGIC, MSG_ID_LENGTH, TERMINATOR};
+#[cfg(test)]
+use nexus_common::io::server_message_type;
 use nexus_common::protocol::ServerMessage;
 use tokio::sync::mpsc;
 
@@ -18,6 +23,7 @@ use crate::db::Permission;
 #[derive(Debug)]
 pub enum SessionEvent {
     Message(Box<ServerMessage>, Option<MessageId>),
+    Frame(Arc<[u8]>),
     Disconnect,
     SlowClientDisconnect,
 }
@@ -26,6 +32,10 @@ impl SessionEvent {
     pub fn message(message: ServerMessage, message_id: Option<MessageId>) -> Self {
         Self::Message(Box::new(message), message_id)
     }
+
+    pub fn frame(frame: Arc<[u8]>) -> Self {
+        Self::Frame(frame)
+    }
 }
 
 #[cfg(test)]
@@ -33,12 +43,96 @@ impl SessionEvent {
     pub fn expect_message(self) -> (ServerMessage, Option<MessageId>) {
         match self {
             Self::Message(message, message_id) => (*message, message_id),
+            Self::Frame(frame) => expect_message_from_frame(&frame),
             Self::Disconnect => panic!("expected session message, got disconnect event"),
             Self::SlowClientDisconnect => {
                 panic!("expected session message, got slow-client disconnect event")
             }
         }
     }
+}
+
+#[cfg(test)]
+fn expect_message_from_frame(frame: &[u8]) -> (ServerMessage, Option<MessageId>) {
+    assert!(
+        frame.starts_with(MAGIC),
+        "test frame is missing magic bytes"
+    );
+    assert_eq!(
+        frame.last(),
+        Some(&TERMINATOR),
+        "test frame is missing terminator"
+    );
+
+    let mut offset = MAGIC.len();
+    let type_len_end = find_frame_delimiter(frame, offset);
+    let type_len = parse_ascii_usize(&frame[offset..type_len_end], "type length");
+    offset = type_len_end + 1;
+
+    let type_end = offset
+        .checked_add(type_len)
+        .expect("test frame type length overflow");
+    let message_type =
+        std::str::from_utf8(&frame[offset..type_end]).expect("test frame type must be UTF-8");
+    offset = type_end;
+    assert_eq!(
+        frame.get(offset),
+        Some(&DELIMITER),
+        "test frame type delimiter missing"
+    );
+    offset += 1;
+
+    let message_id_end = offset
+        .checked_add(MSG_ID_LENGTH)
+        .expect("test frame message id length overflow");
+    MessageId::from_bytes(&frame[offset..message_id_end]).expect("test frame message id");
+    offset = message_id_end;
+    assert_eq!(
+        frame.get(offset),
+        Some(&DELIMITER),
+        "test frame message id delimiter missing"
+    );
+    offset += 1;
+
+    let payload_len_end = find_frame_delimiter(frame, offset);
+    let payload_len = parse_ascii_usize(&frame[offset..payload_len_end], "payload length");
+    offset = payload_len_end + 1;
+
+    let payload_end = offset
+        .checked_add(payload_len)
+        .expect("test frame payload length overflow");
+    assert_eq!(
+        payload_end + 1,
+        frame.len(),
+        "test frame payload length does not reach terminator"
+    );
+
+    let message: ServerMessage =
+        serde_json::from_slice(&frame[offset..payload_end]).expect("test frame payload JSON");
+    assert_eq!(
+        message_type,
+        server_message_type(&message),
+        "test frame type does not match payload"
+    );
+
+    (message, None)
+}
+
+#[cfg(test)]
+fn find_frame_delimiter(frame: &[u8], offset: usize) -> usize {
+    frame[offset..]
+        .iter()
+        .position(|byte| *byte == DELIMITER)
+        .map(|index| offset + index)
+        .expect("test frame delimiter missing")
+}
+
+#[cfg(test)]
+fn parse_ascii_usize(bytes: &[u8], field: &str) -> usize {
+    std::str::from_utf8(bytes)
+        .unwrap_or_else(|_| panic!("test frame {field} must be ASCII"))
+        .parse()
+        .unwrap_or_else(|_| panic!("test frame {field} must be numeric"))
 }
 
 /// Writer handle for events destined to a connection task.
@@ -61,6 +155,17 @@ impl ConnectionWriter {
         message_id: Option<MessageId>,
     ) -> Result<(), mpsc::error::SendError<SessionEvent>> {
         match self.tx.try_send(SessionEvent::message(message, message_id)) {
+            Ok(()) => Ok(()),
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.arm_slow_client_disconnect();
+                Ok(())
+            }
+            Err(mpsc::error::TrySendError::Closed(event)) => Err(mpsc::error::SendError(event)),
+        }
+    }
+
+    pub fn send_frame(&self, frame: Arc<[u8]>) -> Result<(), mpsc::error::SendError<SessionEvent>> {
+        match self.tx.try_send(SessionEvent::frame(frame)) {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.arm_slow_client_disconnect();
@@ -163,6 +268,22 @@ mod connection_writer_tests {
             Some(SessionEvent::SlowClientDisconnect)
         ));
         assert!(matches!(rx.recv().await, Some(SessionEvent::Message(_, _))));
+    }
+
+    #[tokio::test]
+    async fn full_message_queue_arms_priority_slow_client_disconnect_for_frame() {
+        let (tx, mut rx) = ConnectionWriter::channel();
+
+        for _ in 0..SESSION_MESSAGE_QUEUE_CAPACITY {
+            tx.send_frame(Arc::from(&b"frame"[..])).unwrap();
+        }
+
+        tx.send_frame(Arc::from(&b"overflow"[..])).unwrap();
+
+        assert!(matches!(
+            rx.recv().await,
+            Some(SessionEvent::SlowClientDisconnect)
+        ));
     }
 
     #[tokio::test]

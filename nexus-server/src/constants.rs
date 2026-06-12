@@ -566,6 +566,7 @@ pub const LOG_USER_MESSAGE_NOT_LOGGED_IN: &str = "UserMessage: not logged in";
 pub const LOG_USER_MESSAGE_PERMISSION_DENIED: &str = "UserMessage: permission denied";
 pub const LOG_USER_BROADCAST_NOT_LOGGED_IN: &str = "UserBroadcast: not logged in";
 pub const LOG_USER_BROADCAST_PERMISSION_DENIED: &str = "UserBroadcast: permission denied";
+pub const LOG_BROADCAST_FRAME_SERIALIZE_FAILED: &str = "Broadcast: failed to serialize frame";
 
 // --- Handler: Group ---
 pub const LOG_GROUP_CREATE_NOT_LOGGED_IN: &str = "GroupCreate: not logged in";

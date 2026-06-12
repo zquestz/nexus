@@ -1,14 +1,35 @@
 //! Broadcast methods for UserManager
 
+use std::sync::Arc;
+
+use nexus_common::framing::MessageId;
+use nexus_common::io::server_message_to_frame_bytes;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
+use tracing::error;
 
 use crate::handlers::{ServerInfoOptions, ServerInfoValues, build_server_info};
 
 use super::UserManager;
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{FEATURE_CHAT, LOG_BROADCAST_FRAME_SERIALIZE_FAILED};
 use crate::db::Permission;
 use crate::users::user::UserSession;
+
+fn shared_broadcast_frame(message: &ServerMessage) -> Option<Arc<[u8]>> {
+    match server_message_to_frame_bytes(message, MessageId::new()) {
+        Ok(frame) => Some(frame),
+        Err(e) => {
+            error!(err = ?e, "{}", LOG_BROADCAST_FRAME_SERIALIZE_FAILED);
+            None
+        }
+    }
+}
+
+fn send_shared_frame(user: &UserSession, frame: &Arc<[u8]>, disconnected: &mut Vec<u32>) {
+    if user.tx.send_frame(Arc::clone(frame)).is_err() {
+        disconnected.push(user.session_id);
+    }
+}
 
 impl UserManager {
     /// Send a message to a specific session. Returns false if the session
@@ -25,14 +46,15 @@ impl UserManager {
     /// Broadcast to all connected users. Removes users whose channels have
     /// closed and notifies user_list clients of the disconnect.
     pub async fn broadcast(&self, message: ServerMessage) {
+        let Some(frame) = shared_broadcast_frame(&message) else {
+            return;
+        };
         let mut disconnected = Vec::new();
 
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.tx.send_message(message.clone(), None).is_err() {
-                    disconnected.push(user.session_id);
-                }
+                send_shared_frame(user, &frame, &mut disconnected);
             }
         }
 
@@ -49,6 +71,9 @@ impl UserManager {
         required_permission: Permission,
         exclude_session_id: Option<u32>,
     ) {
+        let Some(frame) = shared_broadcast_frame(&message) else {
+            return;
+        };
         let mut disconnected = Vec::new();
 
         {
@@ -69,9 +94,7 @@ impl UserManager {
                     continue;
                 }
 
-                if user.tx.send_message(message.clone(), None).is_err() {
-                    disconnected.push(user.session_id);
-                }
+                send_shared_frame(user, &frame, &mut disconnected);
             }
         }
 
@@ -109,6 +132,9 @@ impl UserManager {
         feature: &str,
         message: &ServerMessage,
     ) {
+        let Some(frame) = shared_broadcast_frame(message) else {
+            return;
+        };
         let mut disconnected = Vec::new();
 
         let nickname_lower = fold_name(nickname);
@@ -116,11 +142,8 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if fold_name(&user.nickname) == nickname_lower
-                    && user.has_feature(feature)
-                    && user.tx.send_message(message.clone(), None).is_err()
-                {
-                    disconnected.push(user.session_id);
+                if fold_name(&user.nickname) == nickname_lower && user.has_feature(feature) {
+                    send_shared_frame(user, &frame, &mut disconnected);
                 }
             }
         }
@@ -137,6 +160,9 @@ impl UserManager {
         required_permission: Permission,
         message: &ServerMessage,
     ) {
+        let Some(frame) = shared_broadcast_frame(message) else {
+            return;
+        };
         let mut disconnected = Vec::new();
 
         let nickname_lower = fold_name(nickname);
@@ -147,9 +173,8 @@ impl UserManager {
                 if fold_name(&user.nickname) == nickname_lower
                     && user.has_feature(feature)
                     && user.has_permission(required_permission)
-                    && user.tx.send_message(message.clone(), None).is_err()
                 {
-                    disconnected.push(user.session_id);
+                    send_shared_frame(user, &frame, &mut disconnected);
                 }
             }
         }
@@ -164,6 +189,9 @@ impl UserManager {
         message: ServerMessage,
         required_permission: Permission,
     ) {
+        let Some(frame) = shared_broadcast_frame(&message) else {
+            return;
+        };
         let mut disconnected = Vec::new();
 
         {
@@ -174,9 +202,7 @@ impl UserManager {
                     continue;
                 }
 
-                if user.tx.send_message(message.clone(), None).is_err() {
-                    disconnected.push(user.session_id);
-                }
+                send_shared_frame(user, &frame, &mut disconnected);
             }
         }
 
@@ -190,6 +216,9 @@ impl UserManager {
         message: ServerMessage,
         exclude_session_id: Option<u32>,
     ) {
+        let Some(frame) = shared_broadcast_frame(&message) else {
+            return;
+        };
         let mut disconnected = Vec::new();
 
         {
@@ -206,9 +235,7 @@ impl UserManager {
                     continue;
                 }
 
-                if user.tx.send_message(message.clone(), None).is_err() {
-                    disconnected.push(user.session_id);
-                }
+                send_shared_frame(user, &frame, &mut disconnected);
             }
         }
 
@@ -250,7 +277,7 @@ mod tests {
     use std::net::SocketAddr;
 
     use super::*;
-    use crate::users::user::{ConnectionWriter, NewSessionParams};
+    use crate::users::user::{ConnectionWriter, NewSessionParams, SessionEvent};
 
     fn session_params(user_id: i64, username: &str, tx: ConnectionWriter) -> NewSessionParams {
         NewSessionParams {
@@ -297,6 +324,40 @@ mod tests {
             max_outbound_rate: 0,
             scheduler_chunk_size: 65_536,
         }
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_sends_shared_preframed_event_to_each_session() {
+        let manager = UserManager::new();
+
+        let (tx_a, mut rx_a) = ConnectionWriter::channel();
+        let (tx_b, mut rx_b) = ConnectionWriter::channel();
+        manager
+            .add_user(session_params(1, "alice", tx_a))
+            .await
+            .unwrap();
+        manager
+            .add_user(session_params(2, "bob", tx_b))
+            .await
+            .unwrap();
+
+        manager.broadcast(ServerMessage::Pong).await;
+
+        let frame_a = match rx_a.try_recv().expect("alice should receive broadcast") {
+            SessionEvent::Frame(frame) => frame,
+            other => panic!("expected preframed broadcast event, got {other:?}"),
+        };
+        let frame_b = match rx_b.try_recv().expect("bob should receive broadcast") {
+            SessionEvent::Frame(frame) => frame,
+            other => panic!("expected preframed broadcast event, got {other:?}"),
+        };
+
+        assert!(
+            Arc::ptr_eq(&frame_a, &frame_b),
+            "fixed-payload broadcasts should share one serialized frame"
+        );
+        assert!(rx_a.try_recv().is_err());
+        assert!(rx_b.try_recv().is_err());
     }
 
     /// Pins the PK-keyed dispatch contract the rename-race fix depends on:

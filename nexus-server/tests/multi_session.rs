@@ -5,7 +5,8 @@ mod common;
 use std::collections::HashSet;
 
 use common::{add_test_user, create_test_db};
-use nexus_common::framing::MessageId;
+use nexus_common::framing::{DELIMITER, MAGIC, MSG_ID_LENGTH, MessageId, TERMINATOR};
+use nexus_common::io::server_message_type;
 use nexus_common::protocol::{ChatAction, NewsAction, ServerMessage, UserInfo};
 use nexus_common::validators::DEFAULT_CHANNEL;
 use nexus_server::constants::FEATURE_NEWS;
@@ -21,12 +22,93 @@ impl SessionEventExt for SessionEvent {
     fn expect_message(self) -> (ServerMessage, Option<MessageId>) {
         match self {
             SessionEvent::Message(message, message_id) => (*message, message_id),
+            SessionEvent::Frame(frame) => expect_message_from_frame(&frame),
             SessionEvent::Disconnect => panic!("expected session message, got disconnect event"),
             SessionEvent::SlowClientDisconnect => {
                 panic!("expected session message, got slow-client disconnect event")
             }
         }
     }
+}
+
+fn expect_message_from_frame(frame: &[u8]) -> (ServerMessage, Option<MessageId>) {
+    assert!(
+        frame.starts_with(MAGIC),
+        "test frame is missing magic bytes"
+    );
+    assert_eq!(
+        frame.last(),
+        Some(&TERMINATOR),
+        "test frame is missing terminator"
+    );
+
+    let mut offset = MAGIC.len();
+    let type_len_end = find_frame_delimiter(frame, offset);
+    let type_len = parse_ascii_usize(&frame[offset..type_len_end], "type length");
+    offset = type_len_end + 1;
+
+    let type_end = offset
+        .checked_add(type_len)
+        .expect("test frame type length overflow");
+    let message_type =
+        std::str::from_utf8(&frame[offset..type_end]).expect("test frame type must be UTF-8");
+    offset = type_end;
+    assert_eq!(
+        frame.get(offset),
+        Some(&DELIMITER),
+        "test frame type delimiter missing"
+    );
+    offset += 1;
+
+    let message_id_end = offset
+        .checked_add(MSG_ID_LENGTH)
+        .expect("test frame message id length overflow");
+    MessageId::from_bytes(&frame[offset..message_id_end]).expect("test frame message id");
+    offset = message_id_end;
+    assert_eq!(
+        frame.get(offset),
+        Some(&DELIMITER),
+        "test frame message id delimiter missing"
+    );
+    offset += 1;
+
+    let payload_len_end = find_frame_delimiter(frame, offset);
+    let payload_len = parse_ascii_usize(&frame[offset..payload_len_end], "payload length");
+    offset = payload_len_end + 1;
+
+    let payload_end = offset
+        .checked_add(payload_len)
+        .expect("test frame payload length overflow");
+    assert_eq!(
+        payload_end + 1,
+        frame.len(),
+        "test frame payload length does not reach terminator"
+    );
+
+    let message: ServerMessage =
+        serde_json::from_slice(&frame[offset..payload_end]).expect("test frame payload JSON");
+    assert_eq!(
+        message_type,
+        server_message_type(&message),
+        "test frame type does not match payload"
+    );
+
+    (message, None)
+}
+
+fn find_frame_delimiter(frame: &[u8], offset: usize) -> usize {
+    frame[offset..]
+        .iter()
+        .position(|byte| *byte == DELIMITER)
+        .map(|index| offset + index)
+        .expect("test frame delimiter missing")
+}
+
+fn parse_ascii_usize(bytes: &[u8], field: &str) -> usize {
+    std::str::from_utf8(bytes)
+        .unwrap_or_else(|_| panic!("test frame {field} must be ASCII"))
+        .parse()
+        .unwrap_or_else(|_| panic!("test frame {field} must be numeric"))
 }
 
 #[tokio::test]

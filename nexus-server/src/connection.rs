@@ -28,7 +28,7 @@ use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
 use crate::egress::{
-    self,
+    self, EgressEnqueueError,
     task::{EgressHandle, StageMessageError},
 };
 use crate::files::{FileActivityMap, FileIndex};
@@ -250,7 +250,57 @@ async fn stage_egress_message(
     }
 }
 
-async fn write_egress_frame_chunk<W>(
+async fn stage_egress_frame(
+    egress: &EgressHandle,
+    connection_id: ConnectionId,
+    peer_addr: SocketAddr,
+    frame: Arc<[u8]>,
+    staged_frames: &mut usize,
+    pending_session_event: &mut Option<SessionEvent>,
+) -> bool {
+    match egress.stage_frame(connection_id, Arc::clone(&frame)).await {
+        Ok(Ok(_chunks)) => {
+            *staged_frames += 1;
+            true
+        }
+        Ok(Err(EgressEnqueueError::QueueFull)) => {
+            if *staged_frames == 0 {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = connection_id.get(),
+                    "{}",
+                    LOG_EGRESS_STAGE_FAILED
+                );
+                return false;
+            }
+
+            *pending_session_event = Some(SessionEvent::Frame(frame));
+            true
+        }
+        Ok(Err(e)) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_STAGE_FAILED
+            );
+            false
+        }
+        Err(e) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_STAGE_FAILED
+            );
+            false
+        }
+    }
+}
+
+async fn write_frame_bytes_with_timeout<W>(
     writer: &mut FrameWriter<W>,
     bytes: &[u8],
     flush: bool,
@@ -259,7 +309,7 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     match time::timeout(BBS_WRITE_TIMEOUT, async {
-        // Egress chunks are already complete frame bytes. They intentionally
+        // These bytes are already complete frame bytes. They intentionally
         // bypass FrameWriter framing and are only safe while the loop enforces
         // frame-boundary writes for every other path.
         let inner = writer.get_mut();
@@ -362,7 +412,7 @@ where
                 }
 
                 let is_final_frame_chunk = dispatch.chunk.is_final_frame_chunk();
-                if write_egress_frame_chunk(
+                if write_frame_bytes_with_timeout(
                     &mut frame_writer,
                     dispatch.chunk.as_bytes(),
                     is_final_frame_chunk,
@@ -389,19 +439,36 @@ where
 
                 if is_final_frame_chunk {
                     egress_staged_frames = egress_staged_frames.saturating_sub(1);
-                    if let Some(SessionEvent::Message(msg, msg_id)) = pending_session_event.take() {
-                        let id = msg_id.unwrap_or_else(MessageId::new);
-                        if !stage_egress_message(
-                            &egress,
-                            egress_connection_id,
-                            peer_addr,
-                            msg,
-                            id,
-                            &mut egress_staged_frames,
-                            &mut pending_session_event,
-                        )
-                        .await
-                        {
+                    if let Some(event) = pending_session_event.take() {
+                        let staged = match event {
+                            SessionEvent::Message(msg, msg_id) => {
+                                let id = msg_id.unwrap_or_else(MessageId::new);
+                                stage_egress_message(
+                                    &egress,
+                                    egress_connection_id,
+                                    peer_addr,
+                                    msg,
+                                    id,
+                                    &mut egress_staged_frames,
+                                    &mut pending_session_event,
+                                )
+                                .await
+                            }
+                            SessionEvent::Frame(frame) => {
+                                stage_egress_frame(
+                                    &egress,
+                                    egress_connection_id,
+                                    peer_addr,
+                                    frame,
+                                    &mut egress_staged_frames,
+                                    &mut pending_session_event,
+                                )
+                                .await
+                            }
+                            SessionEvent::Disconnect | SessionEvent::SlowClientDisconnect => false,
+                        };
+
+                        if !staged {
                             break;
                         }
                     }
@@ -568,6 +635,31 @@ where
                                 break;
                             }
                         } else if send_server_message_with_write_timeout(&mut frame_writer, &msg, id).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(SessionEvent::Frame(frame)) => {
+                        if egress_dispatch_rx.is_some() {
+                            if !stage_egress_frame(
+                                &egress,
+                                egress_connection_id,
+                                peer_addr,
+                                frame,
+                                &mut egress_staged_frames,
+                                &mut pending_session_event,
+                            )
+                            .await
+                            {
+                                break;
+                            }
+                        } else if write_frame_bytes_with_timeout(
+                            &mut frame_writer,
+                            frame.as_ref(),
+                            true,
+                        )
+                        .await
+                        .is_err()
+                        {
                             break;
                         }
                     }
@@ -1353,6 +1445,18 @@ mod tests {
             .expect("session queue should accept message");
     }
 
+    async fn queue_session_frame(connection: &TestConnection, session_id: u32, frame: Arc<[u8]>) {
+        let session = connection
+            .user_manager
+            .get_user_by_session_id(session_id)
+            .await
+            .expect("session should exist");
+        session
+            .tx
+            .send_frame(frame)
+            .expect("session queue should accept frame");
+    }
+
     fn chat_message(session_id: u32, body: impl Into<String>) -> ServerMessage {
         ServerMessage::ChatMessage {
             session_id,
@@ -1609,6 +1713,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn queued_egress_frame_writes_preframed_bytes() {
+        let mut connection = start_test_connection(64, 8192).await;
+        let session_id = login_test_connection(&mut connection).await;
+        let queued_id = message_id(b"000000000342");
+        let queued_message = chat_message(session_id, "preframed over egress");
+        let expected = server_message_to_frame_bytes(&queued_message, queued_id)
+            .expect("expected frame should serialize");
+
+        queue_session_frame(&connection, session_id, Arc::clone(&expected)).await;
+
+        let frame = read_next_raw_frame(&mut connection).await;
+        assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn pre_login_command_gets_unexpected_message_type_error() {
         let mut connection = start_test_connection(64, 8192).await;
 
@@ -1779,6 +1900,50 @@ mod tests {
             closed.is_none(),
             "priority QueueFull should drain staged egress and close without sending Pong"
         );
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn queued_egress_frame_queue_full_retries_after_existing_frame_drains() {
+        let mut connection = start_test_connection_with_manager(
+            EgressManager::with_frame_limit(nonzero(64), 1),
+            8192,
+            0,
+        )
+        .await;
+        let session_id = login_test_connection(&mut connection).await;
+        let first_id = message_id(b"000000000343");
+        let second_id = message_id(b"000000000344");
+        let first_message = chat_message(session_id, "first preframed");
+        let second_message = chat_message(session_id, "second preframed");
+        let first_frame = server_message_to_frame_bytes(&first_message, first_id)
+            .expect("first frame should serialize");
+        let second_frame = server_message_to_frame_bytes(&second_message, second_id)
+            .expect("second frame should serialize");
+
+        connection
+            .egress
+            .set_blocked(connection.egress_connection_id, true)
+            .await
+            .expect("block command should queue");
+        queue_session_frame(&connection, session_id, Arc::clone(&first_frame)).await;
+        queue_session_frame(&connection, session_id, Arc::clone(&second_frame)).await;
+
+        // Let the connection task stage the first frame and retain the second
+        // as pending while the one-frame egress queue is full.
+        time::sleep(Duration::from_millis(25)).await;
+        connection
+            .egress
+            .set_blocked(connection.egress_connection_id, false)
+            .await
+            .expect("unblock command should queue");
+
+        let first = read_next_raw_frame(&mut connection).await;
+        assert_eq!(first.to_bytes().as_slice(), first_frame.as_ref());
+
+        let second = read_next_raw_frame(&mut connection).await;
+        assert_eq!(second.to_bytes().as_slice(), second_frame.as_ref());
 
         connection.shutdown().await;
     }
