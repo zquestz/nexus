@@ -1,5 +1,7 @@
 //! In-memory IP rule cache for fast pre-TLS checking, using radix tries
 //! (`iprange`) for O(log n) containment over single IPs and CIDR ranges.
+//! Trust lookups and negative ban lookups are trie-only; ban hits scan the
+//! source entries afterward to recover expiry metadata for user-facing errors.
 //!
 //! IPv4-mapped IPv6 addresses (`::ffff:192.168.1.100`) normalize to IPv4 so
 //! rules match regardless of how the OS presents incoming connections.
@@ -113,8 +115,10 @@ impl IpRuleState {
     }
 }
 
-/// In-memory cache for IP access rules (trusts and bans). O(log n) lookups via
-/// radix tries; expiry handled by lazy rebuild when `next_expiry` is reached.
+/// In-memory cache for IP access rules (trusts and bans). Radix tries handle
+/// trust membership and the common unbanned case; ban-positive admission scans
+/// source entries to report permanent/latest-expiry metadata. Expiry is handled
+/// by lazy rebuild when `next_expiry` is reached.
 #[derive(Debug)]
 pub struct IpRuleCache {
     trust_ipv4: IpRange<Ipv4Net>,
@@ -196,6 +200,10 @@ impl IpRuleCache {
     }
 
     fn active_ban_expiry_read_only(&self, ip: IpAddr) -> Option<Option<i64>> {
+        if !self.is_banned_read_only(ip) {
+            return None;
+        }
+
         let ip = normalize_ip(ip);
         let now = current_timestamp();
         let mut latest_expiry: Option<i64> = None;
@@ -213,6 +221,17 @@ impl IpRuleCache {
         }
 
         latest_expiry.map(Some)
+    }
+
+    fn is_banned_read_only(&self, ip: IpAddr) -> bool {
+        self.ban_trie_contains(normalize_ip(ip))
+    }
+
+    fn ban_trie_contains(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => self.ban_ipv4.contains(&v4),
+            IpAddr::V6(v6) => self.ban_ipv6.contains(&v6),
+        }
     }
 
     /// Read-only check for expired entries; lets callers acquire a write lock
@@ -385,16 +404,6 @@ impl IpRuleCache {
     pub fn is_banned(&mut self, ip: IpAddr) -> bool {
         self.maybe_rebuild_on_expiry();
         self.is_banned_read_only(ip)
-    }
-
-    /// True if `ip` matches a non-expired ban. Does not rebuild on expiry.
-    pub fn is_banned_read_only(&self, ip: IpAddr) -> bool {
-        let ip = normalize_ip(ip);
-
-        match ip {
-            IpAddr::V4(v4) => self.ban_ipv4.contains(&v4),
-            IpAddr::V6(v6) => self.ban_ipv6.contains(&v6),
-        }
     }
 
     /// Remove all trusts contained by `cidr`. Returns removed IP/CIDR strings.
@@ -901,6 +910,64 @@ mod tests {
         let mut cache = IpRuleCache::new();
         cache.add_ban("192.168.1.100", None);
         assert!(!cache.should_allow("192.168.1.100".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_admission_allows_unbanned_ip() {
+        let mut cache = IpRuleCache::new();
+        cache.add_ban("192.168.1.0/24", None);
+
+        assert_eq!(
+            cache.admission_read_only("192.168.2.100".parse().unwrap()),
+            IpAdmission::Allowed
+        );
+    }
+
+    #[test]
+    fn test_admission_requires_ban_trie_match_before_scanning_entries() {
+        let mut cache = IpRuleCache::new();
+        cache.ban_entries.push(RuleEntry {
+            ip_address: "192.168.1.100".to_string(),
+            net: parse_ip_or_cidr("192.168.1.100").unwrap(),
+            expires_at: None,
+        });
+
+        assert_eq!(
+            cache.admission_read_only("192.168.1.100".parse().unwrap()),
+            IpAdmission::Allowed
+        );
+    }
+
+    #[test]
+    fn test_admission_preserves_latest_ban_expiry() {
+        let mut cache = IpRuleCache::new();
+        let now = current_timestamp();
+        let earlier = now + 60;
+        let later = now + 3600;
+
+        cache.add_ban("192.168.1.0/24", Some(earlier));
+        cache.add_ban("192.168.1.100", Some(later));
+
+        assert_eq!(
+            cache.admission_read_only("192.168.1.100".parse().unwrap()),
+            IpAdmission::Banned {
+                expires_at: Some(later)
+            }
+        );
+    }
+
+    #[test]
+    fn test_admission_preserves_permanent_ban_over_expiring_overlap() {
+        let mut cache = IpRuleCache::new();
+        let now = current_timestamp();
+
+        cache.add_ban("192.168.1.0/24", Some(now + 3600));
+        cache.add_ban("192.168.1.100", None);
+
+        assert_eq!(
+            cache.admission_read_only("192.168.1.100".parse().unwrap()),
+            IpAdmission::Banned { expires_at: None }
+        );
     }
 
     #[test]
