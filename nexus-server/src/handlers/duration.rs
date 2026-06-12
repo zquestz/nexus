@@ -18,13 +18,13 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
         return Ok(None);
     }
 
-    let len = duration_str.len();
-    if len < 2 {
+    // Split off the trailing unit character. Iterating chars (not byte
+    // slicing) avoids a panic when the input ends in a multi-byte char.
+    let mut chars = duration_str.chars();
+    let Some(unit) = chars.next_back() else {
         return Err(());
-    }
-
-    let unit = &duration_str[len - 1..];
-    let number_str = &duration_str[..len - 1];
+    };
+    let number_str = chars.as_str();
 
     let number: u64 = number_str.parse().map_err(|_| ())?;
     if number == 0 {
@@ -32,9 +32,9 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
     }
 
     let seconds = match unit {
-        "m" => number * SECONDS_PER_MINUTE,
-        "h" => number * SECONDS_PER_HOUR,
-        "d" => number * SECONDS_PER_DAY,
+        'm' => number * SECONDS_PER_MINUTE,
+        'h' => number * SECONDS_PER_HOUR,
+        'd' => number * SECONDS_PER_DAY,
         _ => return Err(()),
     };
 
@@ -168,6 +168,15 @@ mod tests {
         assert!(parse_duration(&Some("m".to_string())).is_err());
         assert!(parse_duration(&Some("h".to_string())).is_err());
         assert!(parse_duration(&Some("d".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_multibyte_unit_does_not_panic() {
+        // Trailing multi-byte chars must not panic the unit-splitting path.
+        assert!(parse_duration(&Some("10€".to_string())).is_err());
+        assert!(parse_duration(&Some("10§".to_string())).is_err());
+        assert!(parse_duration(&Some("€".to_string())).is_err());
+        assert!(parse_duration(&Some("5m€".to_string())).is_err());
     }
 
     #[test]
