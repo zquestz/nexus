@@ -3,6 +3,7 @@
 use iced::Task;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::validate_connection_address;
 
 use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
@@ -20,6 +21,11 @@ impl NexusApp {
     /// 2. If found with matching credentials, navigates to the path intent
     /// 3. If not found, initiates a new connection and stores the path for later
     pub fn handle_nexus_uri(&mut self, uri: NexusUri) -> Task<Message> {
+        if let Err(error) = validate_connection_address(&uri.host) {
+            let error = super::server_form_errors::translate_server_address_error(error);
+            return self.show_uri_connection_error(&uri.host, error);
+        }
+
         // Try to find an existing connection to this host
         let existing_conn = self.find_connection_for_uri(&uri);
 
@@ -185,6 +191,19 @@ impl NexusApp {
                 path,
             },
         )
+    }
+
+    fn show_uri_connection_error(&mut self, host: &str, error: String) -> Task<Message> {
+        if let Some(connection_id) = self.active_connection {
+            let error_msg = t_args(
+                "err-uri-connection-failed",
+                &[("host", host), ("error", &error)],
+            );
+            return self.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
+        }
+
+        self.connection_form.error = Some(error);
+        Task::none()
     }
 
     /// Navigate to a path intent within an existing connection
@@ -360,7 +379,7 @@ impl NexusApp {
     /// On success, creates the connection with proper display name.
     /// On fingerprint mismatch, queues an accept/reject dialog whose retry
     /// preserves the URI path-navigation intent.
-    /// On other failures, shows error in the current connection's console.
+    /// On other failures, shows an error in the active chat tab.
     pub fn handle_uri_connection_result(
         &mut self,
         result: Result<NetworkConnection, crate::network::types::ConnectError>,
@@ -437,21 +456,7 @@ impl NexusApp {
             }
             Err(other) => {
                 let error = other.to_localized_string();
-                // Show error in current connection's console if we have one
-                if let Some(conn_id) = self.active_connection {
-                    if let Some(conn) = self.connections.get_mut(&conn_id) {
-                        let error_msg = t_args(
-                            "err-uri-connection-failed",
-                            &[("host", &params.server_address), ("error", &error)],
-                        );
-                        conn.console_messages.push(ChatMessage::error(error_msg));
-                    }
-                } else {
-                    // No active connection - put error in connection form
-                    self.connection_form.error = Some(error);
-                }
-
-                Task::none()
+                self.show_uri_connection_error(&params.server_address, error)
             }
         }
     }
@@ -467,6 +472,7 @@ mod tests {
     use tokio::sync::{Mutex, mpsc};
 
     use super::*;
+    use crate::network::types::{ConnectError, ConnectionParams};
     use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
 
     fn test_connection_with_receiver(
@@ -526,6 +532,108 @@ mod tests {
             shutdown_handle: Arc::new(Mutex::new(None)),
         });
         (conn, rx)
+    }
+
+    fn test_connection_params(server_address: &str) -> ConnectionParams {
+        ConnectionParams {
+            server_address: server_address.to_string(),
+            port: 7500,
+            username: String::new(),
+            password: String::new(),
+            nickname: None,
+            locale: "en".to_string(),
+            avatar: None,
+            connection_id: 2,
+            proxy: None,
+            expected_fingerprint: None,
+        }
+    }
+
+    fn invalid_host_uri() -> NexusUri {
+        NexusUri {
+            user: None,
+            password: None,
+            host: "bad host".to_string(),
+            port: 7500,
+            path: None,
+        }
+    }
+
+    fn uri_error_message(host: &str, error: &str) -> String {
+        t_args(
+            "err-uri-connection-failed",
+            &[("host", host), ("error", error)],
+        )
+    }
+
+    #[test]
+    fn invalid_uri_host_with_active_connection_reports_to_active_chat_tab() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            next_connection_id: 2,
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        let key = conn.resolve_user_message_tab("alice");
+        conn.active_chat_tab = ChatTab::UserMessage(key);
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_nexus_uri(invalid_host_uri());
+
+        let conn = &app.connections[&1];
+        assert!(conn.console_messages.is_empty());
+        let messages = conn.user_messages_for("alice").unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0].message,
+            uri_error_message("bad host", &t("err-server-address-contains-whitespace"))
+        );
+        assert_eq!(app.next_connection_id, 2);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn invalid_uri_host_without_active_connection_reports_to_connection_form() {
+        let mut app = NexusApp {
+            next_connection_id: 2,
+            ..NexusApp::default()
+        };
+
+        let _ = app.handle_nexus_uri(invalid_host_uri());
+
+        assert_eq!(
+            app.connection_form.error,
+            Some(t("err-server-address-contains-whitespace"))
+        );
+        assert_eq!(app.next_connection_id, 2);
+    }
+
+    #[test]
+    fn uri_connection_failure_reports_to_active_chat_tab() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        let key = conn.resolve_user_message_tab("alice");
+        conn.active_chat_tab = ChatTab::UserMessage(key);
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_uri_connection_result(
+            Err(ConnectError::Other("boom".to_string())),
+            test_connection_params("example.com"),
+            String::new(),
+            None,
+        );
+
+        let conn = &app.connections[&1];
+        assert!(conn.console_messages.is_empty());
+        let messages = conn.user_messages_for("alice").unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0].message,
+            uri_error_message("example.com", "boom")
+        );
     }
 
     #[test]

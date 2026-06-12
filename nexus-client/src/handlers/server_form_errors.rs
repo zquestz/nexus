@@ -88,7 +88,7 @@ fn translate_server_name_error(e: ServerNameError) -> String {
     }
 }
 
-fn translate_server_address_error(e: ConnectionAddressError) -> String {
+pub(crate) fn translate_server_address_error(e: ConnectionAddressError) -> String {
     match e {
         ConnectionAddressError::Empty => t("err-server-address-empty"),
         ConnectionAddressError::TooLong => t_args(
