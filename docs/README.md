@@ -45,3 +45,4 @@ For operators running Nexus trackers (a discovery service for BBS servers).
 
 - [Main README](../README.md) — Project overview and quick start
 - [Protocol Documentation](protocol/README.md) — Technical protocol specification
+- [Feature Comparison](COMPARISON.md) — How Nexus compares to Hotline, KDX, and Wired
