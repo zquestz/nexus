@@ -624,8 +624,6 @@ err-failed-create-server-name = サーバー名の作成に失敗しました: {
 err-failed-create-config-dir = 設定ディレクトリの作成に失敗しました: { $error }
 err-failed-serialize-config = 設定のシリアライズに失敗しました: { $error }
 err-failed-write-config = 設定ファイルの書き込みに失敗しました: { $error }
-err-failed-read-config-metadata = 設定ファイルのメタデータの読み取りに失敗しました: { $error }
-err-failed-set-config-permissions = 設定ファイルの権限の設定に失敗しました: { $error }
 
 # =============================================================================
 # Fingerprint Warning
@@ -887,8 +885,6 @@ transfer-save-no-config-dir = 設定ディレクトリを特定できません�
 transfer-save-create-dir-failed = 設定ディレクトリの作成に失敗しました: { $error }
 transfer-save-serialize-failed = 転送のシリアライズに失敗しました: { $error }
 transfer-save-write-failed = 転送ファイルの書き込みに失敗しました: { $error }
-transfer-save-metadata-failed = ファイルのメタデータの読み取りに失敗しました: { $error }
-transfer-save-permissions-failed = ファイルの権限の設定に失敗しました: { $error }
 
 # =============================================================================
 # Events / Notifications

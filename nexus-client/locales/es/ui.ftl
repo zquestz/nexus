@@ -645,8 +645,6 @@ err-failed-create-server-name = Error al crear nombre del servidor: { $error }
 err-failed-create-config-dir = Error al crear directorio de configuración: { $error }
 err-failed-serialize-config = Error al serializar configuración: { $error }
 err-failed-write-config = Error al escribir archivo de configuración: { $error }
-err-failed-read-config-metadata = Error al leer metadatos del archivo de configuración: { $error }
-err-failed-set-config-permissions = Error al establecer permisos del archivo de configuración: { $error }
 
 # =============================================================================
 # Fingerprint Warning
@@ -939,8 +937,6 @@ transfer-save-no-config-dir = No se pudo determinar el directorio de configuraci
 transfer-save-create-dir-failed = Error al crear el directorio de configuración: { $error }
 transfer-save-serialize-failed = Error al serializar las transferencias: { $error }
 transfer-save-write-failed = Error al escribir el archivo de transferencias: { $error }
-transfer-save-metadata-failed = Error al leer los metadatos del archivo: { $error }
-transfer-save-permissions-failed = Error al establecer los permisos del archivo: { $error }
 
 # =============================================================================
 # Events / Notifications

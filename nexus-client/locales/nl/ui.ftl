@@ -644,8 +644,6 @@ err-failed-create-server-name = Kan servernaam niet maken: { $error }
 err-failed-create-config-dir = Kan configuratiemap niet maken: { $error }
 err-failed-serialize-config = Kan configuratie niet serialiseren: { $error }
 err-failed-write-config = Kan configuratiebestand niet schrijven: { $error }
-err-failed-read-config-metadata = Kan metadata van configuratiebestand niet lezen: { $error }
-err-failed-set-config-permissions = Kan machtigingen van configuratiebestand niet instellen: { $error }
 
 # =============================================================================
 # Fingerprint Warning
@@ -938,8 +936,6 @@ transfer-save-no-config-dir = Kon configuratiemap niet bepalen
 transfer-save-create-dir-failed = Kon configuratiemap niet aanmaken: { $error }
 transfer-save-serialize-failed = Kon overdrachten niet serialiseren: { $error }
 transfer-save-write-failed = Kan overdrachtsbestand niet schrijven: { $error }
-transfer-save-metadata-failed = Kan bestandsmetadata niet lezen: { $error }
-transfer-save-permissions-failed = Kan bestandsrechten niet instellen: { $error }
 
 # =============================================================================
 # Events / Notifications

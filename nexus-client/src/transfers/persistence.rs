@@ -5,8 +5,6 @@
 
 use std::collections::HashMap;
 use std::fs;
-#[cfg(unix)]
-use std::path::Path;
 use std::path::PathBuf;
 
 use nexus_common::names::fold_name;
@@ -16,10 +14,6 @@ use super::types::{Transfer, TransferError, TransferStatus};
 use crate::constants::{APP_DIR_NAME, TRANSFERS_FILE_NAME};
 use crate::i18n::{t, t_args};
 use crate::types::ConnectionInfo;
-
-/// File permissions for transfers file on Unix (owner read/write only)
-#[cfg(unix)]
-const TRANSFERS_FILE_MODE: u32 = 0o600;
 
 /// Persistent transfers file structure
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -112,9 +106,9 @@ impl TransferManager {
 
         let path = Self::transfers_path().ok_or_else(|| t("transfer-save-no-config-dir"))?;
 
-        // Create parent directory if it doesn't exist
+        // Create parent directory (owner-only) if it doesn't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
+            crate::secure_file::create_dir_owner_only(parent).map_err(|e| {
                 t_args(
                     "transfer-save-create-dir-failed",
                     &[("error", &e.to_string())],
@@ -135,47 +129,11 @@ impl TransferManager {
             )
         })?;
 
-        // On Unix, create empty file and set permissions before writing content
-        // This avoids a race condition where the file is briefly world-readable
-        #[cfg(unix)]
-        {
-            // Create empty file (or truncate existing)
-            fs::File::create(&path)
-                .map_err(|e| t_args("transfer-save-write-failed", &[("error", &e.to_string())]))?;
-
-            // Set restrictive permissions while file is empty
-            Self::set_transfers_permissions(&path)?;
-        }
-
-        // Write content (file already has correct permissions on Unix)
-        fs::write(&path, json)
+        // Owner-only from creation — transfers.json holds transfer credentials.
+        crate::secure_file::write_owner_only(&path, json.as_bytes())
             .map_err(|e| t_args("transfer-save-write-failed", &[("error", &e.to_string())]))?;
 
         self.dirty = false;
-        Ok(())
-    }
-
-    /// Set transfers file permissions to owner read/write only on Unix systems
-    #[cfg(unix)]
-    fn set_transfers_permissions(path: &Path) -> Result<(), String> {
-        use std::os::unix::fs::PermissionsExt;
-
-        let metadata = fs::metadata(path).map_err(|e| {
-            t_args(
-                "transfer-save-metadata-failed",
-                &[("error", &e.to_string())],
-            )
-        })?;
-        let mut perms = metadata.permissions();
-        perms.set_mode(TRANSFERS_FILE_MODE);
-
-        fs::set_permissions(path, perms).map_err(|e| {
-            t_args(
-                "transfer-save-permissions-failed",
-                &[("error", &e.to_string())],
-            )
-        })?;
-
         Ok(())
     }
 

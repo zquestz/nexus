@@ -14,6 +14,7 @@ mod i18n;
 mod icon;
 mod image;
 mod network;
+mod secure_file;
 mod sound;
 mod style;
 mod transfers;

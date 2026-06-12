@@ -643,8 +643,6 @@ err-failed-create-server-name = Échec de la création du nom du serveur : { $er
 err-failed-create-config-dir = Échec de la création du répertoire de configuration : { $error }
 err-failed-serialize-config = Échec de la sérialisation de la configuration : { $error }
 err-failed-write-config = Échec de l'écriture du fichier de configuration : { $error }
-err-failed-read-config-metadata = Échec de la lecture des métadonnées du fichier de configuration : { $error }
-err-failed-set-config-permissions = Échec de la définition des permissions du fichier de configuration : { $error }
 
 # =============================================================================
 # Fingerprint Warning
@@ -937,8 +935,6 @@ transfer-save-no-config-dir = Impossible de déterminer le répertoire de config
 transfer-save-create-dir-failed = Échec de la création du répertoire de configuration : { $error }
 transfer-save-serialize-failed = Échec de la sérialisation des transferts : { $error }
 transfer-save-write-failed = Échec de l'écriture du fichier de transferts : { $error }
-transfer-save-metadata-failed = Échec de la lecture des métadonnées du fichier : { $error }
-transfer-save-permissions-failed = Échec de la définition des permissions du fichier : { $error }
 
 # =============================================================================
 # Events / Notifications

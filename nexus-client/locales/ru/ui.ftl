@@ -655,8 +655,6 @@ err-failed-create-server-name = Не удалось создать имя сер
 err-failed-create-config-dir = Не удалось создать каталог конфигурации: { $error }
 err-failed-serialize-config = Не удалось сериализовать конфигурацию: { $error }
 err-failed-write-config = Не удалось записать файл конфигурации: { $error }
-err-failed-read-config-metadata = Не удалось прочитать метаданные файла конфигурации: { $error }
-err-failed-set-config-permissions = Не удалось установить права доступа к файлу конфигурации: { $error }
 
 # =============================================================================
 # Fingerprint Warning
@@ -959,8 +957,6 @@ transfer-save-no-config-dir = Не удалось определить ката�
 transfer-save-create-dir-failed = Не удалось создать каталог конфигурации: { $error }
 transfer-save-serialize-failed = Не удалось сериализовать передачи: { $error }
 transfer-save-write-failed = Не удалось записать файл передач: { $error }
-transfer-save-metadata-failed = Не удалось прочитать метаданные файла: { $error }
-transfer-save-permissions-failed = Не удалось установить права доступа к файлу: { $error }
 
 # =============================================================================
 # Events / Notifications

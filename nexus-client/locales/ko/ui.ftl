@@ -624,8 +624,6 @@ err-failed-create-server-name = 서버 이름 생성 실패: { $error }
 err-failed-create-config-dir = 설정 디렉토리 생성 실패: { $error }
 err-failed-serialize-config = 설정 직렬화 실패: { $error }
 err-failed-write-config = 설정 파일 쓰기 실패: { $error }
-err-failed-read-config-metadata = 설정 파일 메타데이터 읽기 실패: { $error }
-err-failed-set-config-permissions = 설정 파일 권한 설정 실패: { $error }
 
 # =============================================================================
 # Fingerprint Warning
@@ -887,8 +885,6 @@ transfer-save-no-config-dir = 설정 디렉토리를 확인할 수 없습니다
 transfer-save-create-dir-failed = 설정 디렉토리 생성 실패: { $error }
 transfer-save-serialize-failed = 전송 직렬화 실패: { $error }
 transfer-save-write-failed = 전송 파일 쓰기 실패: { $error }
-transfer-save-metadata-failed = 파일 메타데이터 읽기 실패: { $error }
-transfer-save-permissions-failed = 파일 권한 설정 실패: { $error }
 
 # =============================================================================
 # Events / Notifications

@@ -1,18 +1,12 @@
 //! Configuration persistence (load/save)
 
 use std::fs;
-#[cfg(unix)]
-use std::path::Path;
 use std::path::PathBuf;
 
 use crate::constants::{APP_DIR_NAME, CONFIG_FILE_NAME};
 use crate::i18n::{t, t_args};
 
 use super::Config;
-
-/// File permissions for config file on Unix (owner read/write only)
-#[cfg(unix)]
-const CONFIG_FILE_MODE: u32 = 0o600;
 
 impl Config {
     /// Get the platform-specific config file path
@@ -48,9 +42,9 @@ impl Config {
     pub fn save(&self) -> Result<(), String> {
         let path = Self::config_path().ok_or_else(|| t("err-could-not-determine-config-dir"))?;
 
-        // Create parent directory if it doesn't exist
+        // Create parent directory (owner-only) if it doesn't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
+            crate::secure_file::create_dir_owner_only(parent).map_err(|e| {
                 t_args("err-failed-create-config-dir", &[("error", &e.to_string())])
             })?;
         }
@@ -59,45 +53,9 @@ impl Config {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| t_args("err-failed-serialize-config", &[("error", &e.to_string())]))?;
 
-        // On Unix, create empty file and set permissions before writing content
-        // This avoids a race condition where the file is briefly world-readable
-        #[cfg(unix)]
-        {
-            // Create empty file (or truncate existing)
-            fs::File::create(&path)
-                .map_err(|e| t_args("err-failed-write-config", &[("error", &e.to_string())]))?;
-
-            // Set restrictive permissions while file is empty
-            Self::set_config_permissions(&path)?;
-        }
-
-        // Write content (file already has correct permissions on Unix)
-        fs::write(&path, json)
+        // Owner-only from creation — config holds saved passwords.
+        crate::secure_file::write_owner_only(&path, json.as_bytes())
             .map_err(|e| t_args("err-failed-write-config", &[("error", &e.to_string())]))?;
-
-        Ok(())
-    }
-
-    /// Set config file permissions to owner read/write only on Unix systems
-    #[cfg(unix)]
-    fn set_config_permissions(path: &Path) -> Result<(), String> {
-        use std::os::unix::fs::PermissionsExt;
-
-        let metadata = fs::metadata(path).map_err(|e| {
-            t_args(
-                "err-failed-read-config-metadata",
-                &[("error", &e.to_string())],
-            )
-        })?;
-        let mut perms = metadata.permissions();
-        perms.set_mode(CONFIG_FILE_MODE);
-
-        fs::set_permissions(path, perms).map_err(|e| {
-            t_args(
-                "err-failed-set-config-permissions",
-                &[("error", &e.to_string())],
-            )
-        })?;
 
         Ok(())
     }

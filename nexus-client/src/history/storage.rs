@@ -24,14 +24,6 @@ use crate::config::settings::ChatHistoryRetention;
 /// File extension for encrypted history files
 const HISTORY_FILE_EXT: &str = "enc";
 
-/// Unix file permissions for history files (owner read/write only)
-#[cfg(unix)]
-const FILE_PERMISSIONS: u32 = 0o600;
-
-/// Unix directory permissions for history directories
-#[cfg(unix)]
-const DIR_PERMISSIONS: u32 = 0o700;
-
 /// File format for storing conversations
 /// Wraps messages with metadata to avoid deriving other_nickname from message content
 #[derive(Serialize, Deserialize)]
@@ -287,15 +279,8 @@ impl HistoryManager {
         other_nickname: &str,
         messages: &[ServerMessage],
     ) -> Result<(), HistoryError> {
-        // Ensure directory exists
-        fs::create_dir_all(&self.base_dir).map_err(HistoryError::Io)?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ =
-                fs::set_permissions(&self.base_dir, fs::Permissions::from_mode(DIR_PERMISSIONS));
-        }
+        // Ensure the history directory exists, owner-only.
+        crate::secure_file::create_dir_owner_only(&self.base_dir).map_err(HistoryError::Io)?;
 
         // Filename from the folded nickname hash (case variants share one file);
         // the display nickname is preserved in the file content below.
@@ -319,19 +304,10 @@ impl HistoryManager {
             .encrypt(json.as_bytes())
             .map_err(HistoryError::Crypto)?;
 
-        // On Unix, create empty file and set permissions before writing content
-        // This avoids a race condition where the file is briefly world-readable
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            // Create empty file
-            fs::File::create(&new_path).map_err(HistoryError::Io)?;
-            // Set restrictive permissions while file is empty
-            let _ = fs::set_permissions(&new_path, fs::Permissions::from_mode(FILE_PERMISSIONS));
-        }
-
-        // Write content (file already has correct permissions on Unix)
-        fs::write(&new_path, &encrypted).map_err(HistoryError::Io)?;
+        // Owner-only from creation. The ciphertext is decryptable by anyone who
+        // knows the (public) cert fingerprint, so a failed lock-down is a real
+        // privacy gap — propagate it rather than swallowing it.
+        crate::secure_file::write_owner_only(&new_path, &encrypted).map_err(HistoryError::Io)?;
 
         Ok(())
     }
@@ -475,17 +451,11 @@ pub fn rotate_fingerprint(old_fingerprint: &str, new_fingerprint: &str) -> usize
             continue;
         };
 
-        // Create corresponding directory in new fingerprint location
+        // Create corresponding directory in new fingerprint location (owner-only;
+        // the recursive create covers the parent fingerprint dir too).
         let new_user_dir = new_dir.join(user_dir_hash);
-        if fs::create_dir_all(&new_user_dir).is_err() {
+        if crate::secure_file::create_dir_owner_only(&new_user_dir).is_err() {
             continue;
-        }
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&new_dir, fs::Permissions::from_mode(DIR_PERMISSIONS));
-            let _ = fs::set_permissions(&new_user_dir, fs::Permissions::from_mode(DIR_PERMISSIONS));
         }
 
         // Process all .enc files in this user directory
@@ -518,24 +488,8 @@ pub fn rotate_fingerprint(old_fingerprint: &str, new_fingerprint: &str) -> usize
                 };
                 let new_file_path = new_user_dir.join(filename);
 
-                // On Unix, create empty file and set permissions before writing content
-                // This avoids a race condition where the file is briefly world-readable
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    // Create empty file
-                    if fs::File::create(&new_file_path).is_err() {
-                        continue;
-                    }
-                    // Set restrictive permissions while file is empty
-                    let _ = fs::set_permissions(
-                        &new_file_path,
-                        fs::Permissions::from_mode(FILE_PERMISSIONS),
-                    );
-                }
-
-                // Write content (file already has correct permissions on Unix)
-                if fs::write(&new_file_path, &new_encrypted).is_ok() {
+                // Owner-only from creation.
+                if crate::secure_file::write_owner_only(&new_file_path, &new_encrypted).is_ok() {
                     // Delete old file
                     let _ = fs::remove_file(&file_path);
                     rotated_count += 1;

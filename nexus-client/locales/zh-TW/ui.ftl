@@ -624,8 +624,6 @@ err-failed-create-server-name = 建立伺服器名稱失敗：{ $error }
 err-failed-create-config-dir = 建立設定目錄失敗：{ $error }
 err-failed-serialize-config = 序列化設定失敗：{ $error }
 err-failed-write-config = 寫入設定檔失敗：{ $error }
-err-failed-read-config-metadata = 讀取設定檔中繼資料失敗：{ $error }
-err-failed-set-config-permissions = 設定設定檔權限失敗：{ $error }
 
 # =============================================================================
 # Fingerprint Warning
@@ -887,8 +885,6 @@ transfer-save-no-config-dir = 無法確定設定目錄
 transfer-save-create-dir-failed = 建立設定目錄失敗: { $error }
 transfer-save-serialize-failed = 序列化傳輸失敗: { $error }
 transfer-save-write-failed = 寫入傳輸檔案失敗: { $error }
-transfer-save-metadata-failed = 讀取檔案中繼資料失敗: { $error }
-transfer-save-permissions-failed = 設定檔案權限失敗: { $error }
 
 # =============================================================================
 # Events / Notifications
