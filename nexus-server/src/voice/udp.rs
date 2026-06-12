@@ -302,7 +302,14 @@ impl VoiceUdpServer {
             }
         }
 
-        self.remove_client_if_current(remote_addr, &client).await;
+        if self
+            .remove_client_if_current(remote_addr, &client)
+            .await
+            .is_some()
+        {
+            self.remove_voice_session_by_udp_addr(remote_addr, LOG_VOICE_DISCONNECTED_SESSION)
+                .await;
+        }
         let _ = conn.close().await;
         raw_conn.close().await;
     }
@@ -503,7 +510,8 @@ impl VoiceUdpServer {
                     continue;
                 };
 
-                self.remove_timed_out_voice_session(addr).await;
+                self.remove_voice_session_by_udp_addr(addr, LOG_VOICE_TIMED_OUT_SESSION)
+                    .await;
 
                 let (conn, raw_conn) = client.connection_handles();
 
@@ -548,7 +556,7 @@ impl VoiceUdpServer {
         }
     }
 
-    async fn remove_timed_out_voice_session(&self, addr: SocketAddr) {
+    async fn remove_voice_session_by_udp_addr(&self, addr: SocketAddr, log_message: &'static str) {
         // Hold the user-state read lock across removal + notifications so a
         // concurrent rename cannot make VoiceUserLeft carry a stale nickname.
         let _user_state = self.user_manager.read_user_state().await;
@@ -574,7 +582,7 @@ impl VoiceUdpServer {
             user = %info.session.nickname,
             ip = %addr,
             "{}",
-            LOG_VOICE_TIMED_OUT_SESSION
+            log_message
         );
     }
 }
@@ -651,6 +659,7 @@ mod tests {
     use std::time::Duration;
 
     use dtls::config::Config as DtlsConfig;
+    use nexus_common::protocol::ServerMessage;
     use nexus_common::voice::{RelayedVoicePacket, VoiceMessageType, VoicePacket};
     use tokio::net::UdpSocket;
     use tokio::sync::mpsc;
@@ -715,6 +724,75 @@ mod tests {
 
         fn as_any(&self) -> &(dyn Any + Send + Sync) {
             self
+        }
+    }
+
+    struct ClosingConn {
+        local_addr: SocketAddr,
+        remote_addr: SocketAddr,
+    }
+
+    #[async_trait::async_trait]
+    impl Conn for ClosingConn {
+        async fn connect(&self, _addr: SocketAddr) -> WebRtcResult<()> {
+            Ok(())
+        }
+
+        async fn recv(&self, _buf: &mut [u8]) -> WebRtcResult<usize> {
+            Ok(0)
+        }
+
+        async fn recv_from(&self, _buf: &mut [u8]) -> WebRtcResult<(usize, SocketAddr)> {
+            Ok((0, self.remote_addr))
+        }
+
+        async fn send(&self, buf: &[u8]) -> WebRtcResult<usize> {
+            Ok(buf.len())
+        }
+
+        async fn send_to(&self, buf: &[u8], _target: SocketAddr) -> WebRtcResult<usize> {
+            Ok(buf.len())
+        }
+
+        fn local_addr(&self) -> WebRtcResult<SocketAddr> {
+            Ok(self.local_addr)
+        }
+
+        fn remote_addr(&self) -> Option<SocketAddr> {
+            Some(self.remote_addr)
+        }
+
+        async fn close(&self) -> WebRtcResult<()> {
+            Ok(())
+        }
+
+        fn as_any(&self) -> &(dyn Any + Send + Sync) {
+            self
+        }
+    }
+
+    async fn expect_voice_user_left(
+        rx: &mut crate::users::user::SessionRx,
+        nickname: &str,
+        target: &str,
+    ) {
+        let event = timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("timed out waiting for voice leave notification")
+            .expect("voice leave notification")
+            .expect_message();
+        let (message, message_id) = event;
+
+        assert_eq!(message_id, None);
+        match message {
+            ServerMessage::VoiceUserLeft {
+                nickname: actual_nickname,
+                target: actual_target,
+            } => {
+                assert_eq!(actual_nickname, nickname);
+                assert_eq!(actual_target, target);
+            }
+            other => panic!("Expected VoiceUserLeft, got {:?}", other),
         }
     }
 
@@ -908,6 +986,78 @@ mod tests {
             test_ctx.voice_registry.has_session(alice_session_id).await,
             "revoked voice_talk must leave the listener-side voice session active"
         );
+    }
+
+    #[tokio::test]
+    async fn dtls_disconnect_removes_bound_voice_session_and_notifies() {
+        let mut test_ctx = create_test_context().await;
+        let alice_session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen, Permission::VoiceTalk],
+            false,
+        )
+        .await;
+        let bob_session_id = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+        let server = test_voice_server(&test_ctx).await;
+
+        for session_id in [alice_session_id, bob_session_id] {
+            test_ctx
+                .channel_manager
+                .join(
+                    "#general",
+                    session_id,
+                    crate::channels::JoinPolicy::CreateIfMissing,
+                )
+                .await
+                .expect("join channel");
+        }
+
+        let alice_addr: SocketAddr = "127.0.0.1:42010".parse().unwrap();
+        let alice_voice = VoiceSession::new(
+            "alice".to_string(),
+            vec!["#general".to_string()],
+            alice_session_id,
+        );
+        let alice_token = alice_voice.token;
+        test_ctx
+            .voice_registry
+            .add(alice_voice)
+            .await
+            .expect("alice voice session is unique");
+        assert!(
+            test_ctx
+                .voice_registry
+                .set_udp_addr(alice_token, alice_addr)
+                .await
+        );
+
+        let closing_conn: Arc<dyn Conn + Send + Sync> = Arc::new(ClosingConn {
+            local_addr: "127.0.0.1:0".parse().unwrap(),
+            remote_addr: alice_addr,
+        });
+        let client = Arc::new(DtlsClient::new(closing_conn, raw_voice_conn_handle().await));
+        server
+            .clients
+            .write()
+            .await
+            .insert(alice_addr, client.clone());
+
+        server.handle_connection(client, alice_addr).await;
+
+        assert!(
+            !test_ctx.voice_registry.has_session(alice_session_id).await,
+            "DTLS disconnect must remove the bound voice registry session"
+        );
+        expect_voice_user_left(&mut test_ctx.rx, "alice", "#general").await;
     }
 
     // Integration tests need a real DTLS listener (certificate files);

@@ -455,6 +455,7 @@ pub const LOG_VOICE_NO_PERMISSION: &str =
 pub const LOG_VOICE_RELAY_FAILED: &str = "Voice DTLS: failed to relay";
 pub const LOG_VOICE_CLEANUP_TIMEOUT: &str = "Voice DTLS: cleanup timed out client";
 pub const LOG_VOICE_TIMED_OUT_SESSION: &str = "Voice DTLS: removed timed out voice session";
+pub const LOG_VOICE_DISCONNECTED_SESSION: &str = "Voice DTLS: removed disconnected voice session";
 pub const LOG_VOICE_STALE_SESSION: &str =
     "Voice DTLS: removed stale voice session, no UDP connection";
 
