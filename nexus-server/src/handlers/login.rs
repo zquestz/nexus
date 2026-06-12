@@ -58,8 +58,6 @@ pub struct LoginRequest {
 
 struct LoginSuccess {
     response: Box<ServerMessage>,
-    user_connected: ServerMessage,
-    session_id: u32,
 }
 
 fn activate_supported_features(features: Vec<String>) -> Vec<String> {
@@ -788,23 +786,28 @@ where
             );
         }
 
+        // Announce UserConnected while still holding read_user_state so a
+        // concurrent rename can't serialize its UserUpdated out ahead of this and
+        // leave other clients with a ghost nickname. The broadcast is queued
+        // (non-blocking) and takes only the user-map lock, not user_state, so it
+        // is safe under the guard. The LoginResponse send stays outside — it is
+        // direct socket I/O and must not hold the lock.
+        ctx.user_manager
+            .broadcast_user_event(user_connected, Some(id))
+            .await;
+
         debug!(user = %session.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
         Ok(LoginSuccess {
             response: Box::new(response),
-            user_connected,
-            session_id: id,
         })
         // _user_state and _server_info drop here
     };
 
     match result {
         Ok(success) => {
-            // Broadcast UserConnected before sending LoginResponse so other
-            // clients already know about this user before they can interact.
-            ctx.user_manager
-                .broadcast_user_event(success.user_connected, Some(success.session_id))
-                .await;
-
+            // UserConnected was already broadcast under the read_user_state guard
+            // (above), before this LoginResponse, so other clients know about the
+            // user before they can interact with it.
             ctx.send_message(&success.response).await?;
         }
         Err(msg) => {
