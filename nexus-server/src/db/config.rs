@@ -22,7 +22,10 @@ use crate::constants::{
     DEFAULT_CHAT_RATE_LIMIT, DEFAULT_FILE_REINDEX_INTERVAL, DEFAULT_MAX_CONNECTIONS_PER_IP,
     DEFAULT_MAX_OUTBOUND_RATE, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_MIN_PASSWORD_STRENGTH,
     DEFAULT_PERSISTENT_CHANNELS, DEFAULT_PUBLIC_ADDRESS, DEFAULT_SERVER_DESCRIPTION,
-    DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS,
+    DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_AUTO_JOIN_CHANNELS_INVALID_CHARS,
+    ERR_AUTO_JOIN_CHANNELS_NEWLINES, ERR_AUTO_JOIN_CHANNELS_TOO_LONG,
+    ERR_PERSISTENT_CHANNELS_INVALID_CHARS, ERR_PERSISTENT_CHANNELS_NEWLINES,
+    ERR_PERSISTENT_CHANNELS_TOO_LONG, ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS,
     ERR_PUBLIC_ADDRESS_CONTAINS_PATH, ERR_PUBLIC_ADDRESS_CONTAINS_PORT,
     ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME, ERR_PUBLIC_ADDRESS_CONTAINS_USERINFO,
     ERR_PUBLIC_ADDRESS_CONTAINS_WHITESPACE, ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID,
@@ -404,11 +407,9 @@ impl ConfigDb {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_persistent_channels(value) {
             let msg = match e {
-                ChannelListError::TooLong => "Persistent channels list is too long",
-                ChannelListError::InvalidCharacters => {
-                    "Persistent channels list contains invalid characters"
-                }
-                ChannelListError::ContainsNewlines => "Persistent channels list contains newlines",
+                ChannelListError::TooLong => ERR_PERSISTENT_CHANNELS_TOO_LONG,
+                ChannelListError::InvalidCharacters => ERR_PERSISTENT_CHANNELS_INVALID_CHARS,
+                ChannelListError::ContainsNewlines => ERR_PERSISTENT_CHANNELS_NEWLINES,
             };
             return Err(io::Error::other(msg));
         }
@@ -430,11 +431,9 @@ impl ConfigDb {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_auto_join_channels(value) {
             let msg = match e {
-                ChannelListError::TooLong => "Auto-join channels list is too long",
-                ChannelListError::InvalidCharacters => {
-                    "Auto-join channels list contains invalid characters"
-                }
-                ChannelListError::ContainsNewlines => "Auto-join channels list contains newlines",
+                ChannelListError::TooLong => ERR_AUTO_JOIN_CHANNELS_TOO_LONG,
+                ChannelListError::InvalidCharacters => ERR_AUTO_JOIN_CHANNELS_INVALID_CHARS,
+                ChannelListError::ContainsNewlines => ERR_AUTO_JOIN_CHANNELS_NEWLINES,
             };
             return Err(io::Error::other(msg));
         }

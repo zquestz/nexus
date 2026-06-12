@@ -19,15 +19,6 @@ const SECONDS_PER_MINUTE: i64 = 60;
 /// Seconds per hour (for duration formatting)
 const SECONDS_PER_HOUR: i64 = 3600;
 
-/// Bytes per kilobyte
-const BYTES_PER_KB: u64 = 1024;
-
-/// Bytes per megabyte
-const BYTES_PER_MB: u64 = BYTES_PER_KB * 1024;
-
-/// Bytes per gigabyte
-const BYTES_PER_GB: u64 = BYTES_PER_MB * 1024;
-
 /// Minimum speed threshold for ETA calculation (bytes/second)
 const MIN_SPEED_FOR_ETA: f64 = 1.0;
 
@@ -41,6 +32,7 @@ use iced::widget::{
 };
 use iced::{Center, Element, Fill};
 
+use super::helpers::format_bytes;
 use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
@@ -70,19 +62,6 @@ fn status_text(status: TransferStatus) -> String {
         TransferStatus::Paused => t("transfer-status-paused"),
         TransferStatus::Completed => t("transfer-status-completed"),
         TransferStatus::Failed => t("transfer-status-failed"),
-    }
-}
-
-/// Format bytes as human-readable string (e.g., "1.5 MB")
-fn format_bytes(bytes: u64) -> String {
-    if bytes >= BYTES_PER_GB {
-        format!("{:.1} GB", bytes as f64 / BYTES_PER_GB as f64)
-    } else if bytes >= BYTES_PER_MB {
-        format!("{:.1} MB", bytes as f64 / BYTES_PER_MB as f64)
-    } else if bytes >= BYTES_PER_KB {
-        format!("{:.1} KB", bytes as f64 / BYTES_PER_KB as f64)
-    } else {
-        format!("{} B", bytes)
     }
 }
 
@@ -578,42 +557,6 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ==================== format_bytes tests ====================
-
-    #[test]
-    fn test_format_bytes_bytes() {
-        assert_eq!(format_bytes(0), "0 B");
-        assert_eq!(format_bytes(1), "1 B");
-        assert_eq!(format_bytes(512), "512 B");
-        assert_eq!(format_bytes(1023), "1023 B");
-    }
-
-    #[test]
-    fn test_format_bytes_kilobytes() {
-        assert_eq!(format_bytes(1024), "1.0 KB");
-        assert_eq!(format_bytes(1536), "1.5 KB");
-        assert_eq!(format_bytes(10 * 1024), "10.0 KB");
-        assert_eq!(format_bytes(1024 * 1024 - 1), "1024.0 KB");
-    }
-
-    #[test]
-    fn test_format_bytes_megabytes() {
-        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
-        assert_eq!(format_bytes(1024 * 1024 + 512 * 1024), "1.5 MB");
-        assert_eq!(format_bytes(100 * 1024 * 1024), "100.0 MB");
-        assert_eq!(format_bytes(1024 * 1024 * 1024 - 1), "1024.0 MB");
-    }
-
-    #[test]
-    fn test_format_bytes_gigabytes() {
-        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.0 GB");
-        assert_eq!(
-            format_bytes(1024 * 1024 * 1024 + 512 * 1024 * 1024),
-            "1.5 GB"
-        );
-        assert_eq!(format_bytes(10 * 1024 * 1024 * 1024), "10.0 GB");
-    }
 
     // ==================== format_duration tests ====================
 

@@ -75,7 +75,7 @@ pub fn execute(
     };
 
     // Check chat_secret permission (only needed for changing, not viewing)
-    if !conn.is_admin && !conn.permissions.iter().any(|p| p == PERMISSION_CHAT_SECRET) {
+    if !conn.has_permission(PERMISSION_CHAT_SECRET) {
         return app.add_active_tab_message(
             connection_id,
             ChatMessage::error(t("err-secret-permission-denied")),

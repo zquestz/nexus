@@ -6,14 +6,14 @@
 //!
 //! | Command | Aliases | Permission | Description |
 //! |---------|---------|------------|-------------|
-//! | `/away` | `/a` | *none* | Set yourself as away |
+//! | `/away` | `/a`, `/afk` | *none* | Set yourself as away |
 //! | `/back` | `/b` | *none* | Clear away status |
 //! | `/ban` | | `ban_create` | Ban a user by IP, CIDR range, or nickname |
 //! | `/bans` | `/banlist` | `ban_list` | List active bans |
 //! | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
 //! | `/channels` | `/ch` | `chat_list` | List available channels |
 //! | `/clear` | | *none* | Clear chat history for current tab |
-//! | `/focus` | `/f` | *none* | Focus chat tabs; requires `chat` feature |
+//! | `/focus` | `/f` | *none* | Focus chat or voice targets |
 //! | `/help` | `/h`, `/?` | *none* | Show available commands |
 //! | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
 //! | `/join` | `/j` | `chat_join` | Join or create a channel |
@@ -23,10 +23,15 @@
 //! | `/me` | | `chat_send` | Send an action message |
 //! | `/message` | `/m`, `/msg` | `user_message` | Send a message to a user |
 //! | `/ping` | | *none* | Measure latency to server |
+//! | `/reindex` | | `file_reindex` | Rebuild the file search index |
+//! | `/secret` | | `chat_secret` to change | View or set channel secret mode |
 //! | `/sinfo` | `/si`, `/serverinfo` | *none* | Show server information |
 //! | `/status` | `/s` | *none* | Set or clear your status message |
 //! | `/topic` | `/t`, `/chattopic` | `chat_topic` or `chat_topic_edit` | View or manage the chat topic |
+//! | `/trust` | | `trust_create` | Trust a user |
+//! | `/trusted` | `/trustlist` | `trust_list` | List trusted users |
 //! | `/unban` | | `ban_delete` | Remove an IP ban |
+//! | `/untrust` | | `trust_delete` | Remove a trusted user |
 //! | `/window` | `/w` | *none* | Manage chat tabs (list, close) |
 //!
 //! ## Special Syntax

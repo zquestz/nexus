@@ -291,8 +291,10 @@ fn build_lazy_search_context_menu(
         );
     }
 
-    // Upload (directories only, if permission)
-    if perms.file_upload && result.is_directory {
+    // Search results do not carry folder type, so generic `file_upload`
+    // cannot prove this directory accepts uploads. Only show the action
+    // when the user has the explicit anywhere bypass.
+    if perms.file_upload_anywhere && result.is_directory {
         menu_items.push(
             MenuButton::new(shaped_text(t("context-menu-upload")).size(TEXT_SIZE))
                 .padding(CONTEXT_MENU_ITEM_PADDING)

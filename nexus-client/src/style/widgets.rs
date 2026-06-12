@@ -409,18 +409,6 @@ pub fn speaking_indicator_style(theme: &Theme) -> container::Style {
     }
 }
 
-/// Build a centered panel title row
-///
-/// Creates a consistent title row for panel headers with proper sizing
-/// and alignment. Used by Bookmark, Broadcast, Connection, Files, Fingerprint,
-/// News, Server Info, Settings, User Info, and User Management panels.
-///
-/// # Example
-/// ```ignore
-/// use crate::style::panel_title;
-///
-/// let title_row = panel_title(t("files-panel-title"));
-/// ```
 /// Toast notification style — theme-aware with square corners
 ///
 /// Used by the `ToastContainer` to style all toast notifications.
@@ -445,6 +433,18 @@ pub fn toast_style(theme: &Theme) -> iced_toasts::Style<'_> {
     }
 }
 
+/// Build a centered panel title row
+///
+/// Creates a consistent title row for panel headers with proper sizing
+/// and alignment. Used by Bookmark, Broadcast, Connection, Files, Fingerprint,
+/// News, Server Info, Settings, User Info, and User Management panels.
+///
+/// # Example
+/// ```ignore
+/// use crate::style::panel_title;
+///
+/// let title_row = panel_title(t("files-panel-title"));
+/// ```
 pub fn panel_title(title: impl Into<String>) -> Container<'static, Message> {
     container(
         shaped_text(title)

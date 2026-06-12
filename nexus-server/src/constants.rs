@@ -70,6 +70,15 @@ pub const ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID: &str =
 pub const ERR_PUBLIC_ADDRESS_INVALID_FORMAT: &str =
     "Public address is not a valid hostname or IP address";
 
+pub const ERR_PERSISTENT_CHANNELS_TOO_LONG: &str = "Persistent channels list is too long";
+pub const ERR_PERSISTENT_CHANNELS_INVALID_CHARS: &str =
+    "Persistent channels list contains invalid characters";
+pub const ERR_PERSISTENT_CHANNELS_NEWLINES: &str = "Persistent channels list contains newlines";
+pub const ERR_AUTO_JOIN_CHANNELS_TOO_LONG: &str = "Auto-join channels list is too long";
+pub const ERR_AUTO_JOIN_CHANNELS_INVALID_CHARS: &str =
+    "Auto-join channels list contains invalid characters";
+pub const ERR_AUTO_JOIN_CHANNELS_NEWLINES: &str = "Auto-join channels list contains newlines";
+
 /// Matches migration default.
 pub const DEFAULT_SERVER_NAME: &str = "Nexus BBS";
 pub const DEFAULT_SERVER_DESCRIPTION: &str = "";
@@ -317,15 +326,23 @@ pub const ERR_TRANSFER_USER_NOT_FOUND: &str = "User not found";
 pub const ERR_TRANSFER_INVALID_CREDENTIALS: &str = "Invalid credentials";
 pub const ERR_TRANSFER_ACCOUNT_DISABLED: &str = "Account disabled";
 pub const ERR_TRANSFER_CONNECTION_CLOSED: &str = "Connection closed";
+pub const ERR_TRANSFER_READ_TIMEOUT: &str = "Read timeout";
 
 pub const ERR_TRANSFER_READ_HANDSHAKE: &str = "Failed to read handshake: ";
 pub const ERR_TRANSFER_READ_LOGIN: &str = "Failed to read login: ";
 pub const ERR_TRANSFER_READ_MESSAGE: &str = "Failed to read message: ";
+pub const ERR_TRANSFER_READ_FILE_START_RESPONSE: &str = "Failed to read FileStartResponse: ";
 pub const ERR_TRANSFER_DB_ERROR: &str = "Database error: ";
 pub const ERR_TRANSFER_PASSWORD_VERIFY_ERROR: &str = "Password verification error: ";
 pub const ERR_TRANSFER_VERSION_MINOR_MISMATCH: &str =
     "Minor version mismatch, pre-1.0, server minor: ";
 pub const ERR_TRANSFER_VERSION_CLIENT_TOO_NEW: &str = "Client version too new, server minor: ";
+pub const ERR_TRANSFER_FILE_START_RESPONSE_CLOSED: &str =
+    "Connection closed waiting for FileStartResponse";
+pub const ERR_TRANSFER_FILE_START_RESPONSE_EXPECTED: &str = "Expected FileStartResponse message";
+pub const ERR_TRANSFER_MISSING_FRAME_TERMINATOR: &str = "Missing frame terminator";
+pub const ERR_TRANSFER_EGRESS_ENQUEUE_FAILED: &str = "egress enqueue failed: ";
+pub const ERR_TRANSFER_EGRESS_TASK_FAILED: &str = "egress task failed: ";
 
 // `voice::udp` cert/key load + listener-bind prefixes. The listener prefix
 // has a trailing space so callers append `addr: err`.

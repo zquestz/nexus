@@ -95,6 +95,7 @@ const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(1);
 const MIN_REFRESH_INTERVAL_SECS: u32 = nexus_common::MIN_REFRESH_INTERVAL_SECS;
 #[cfg(test)]
 const MIN_REFRESH_INTERVAL_SECS: u32 = 1;
+const DEFAULT_REFRESH_INTERVAL_SECS: u32 = nexus_common::DEFAULT_REFRESH_INTERVAL_SECS;
 
 /// Padding so the refresh sleep wins the `select!` on the happy path.
 /// The idle timeout is a backstop: it fires the read arm promptly on
@@ -690,7 +691,7 @@ where
                 // or hostile `Some(0)` can't drive a tight refresh loop.
                 // Defense-in-depth: the tracker enforces the same on its CLI.
                 let interval = refresh_interval
-                    .unwrap_or(300)
+                    .unwrap_or(DEFAULT_REFRESH_INTERVAL_SECS)
                     .max(MIN_REFRESH_INTERVAL_SECS);
                 let was_connected = status
                     .read()

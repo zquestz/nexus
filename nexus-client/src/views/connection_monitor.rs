@@ -16,7 +16,7 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::{ConnectionInfo, TransferInfo};
 
 use super::constants::{PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK};
-use super::helpers::sort_icon_or_placeholder;
+use super::helpers::{format_bytes, sort_icon_or_placeholder};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -120,23 +120,6 @@ fn format_elapsed_time(timestamp: i64) -> String {
         format!("{}h", elapsed_secs / 3600)
     } else {
         format!("{}d", elapsed_secs / 86400)
-    }
-}
-
-/// Format bytes as human-readable size
-fn format_bytes(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
     }
 }
 

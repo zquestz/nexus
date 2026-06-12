@@ -5,7 +5,8 @@ use std::time::Duration;
 use clap::{Parser, Subcommand, ValueEnum};
 use nexus_common::logging::{LogLevel, parse_log_retention};
 use nexus_common::{
-    DEFAULT_TRACKER_PORT, DEFAULT_TRACKER_WEBSOCKET_PORT, MIN_REFRESH_INTERVAL_SECS,
+    DEFAULT_REFRESH_INTERVAL_SECS, DEFAULT_TRACKER_PORT, DEFAULT_TRACKER_WEBSOCKET_PORT,
+    MIN_REFRESH_INTERVAL_SECS,
 };
 
 use crate::constants::ERR_DATA_DIR_NOT_ABSOLUTE;
@@ -106,7 +107,7 @@ pub struct Cli {
     pub max_entries_per_ip: u32,
 
     /// Refresh interval to instruct servers (seconds)
-    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u32).range(i64::from(MIN_REFRESH_INTERVAL_SECS)..=600))]
+    #[arg(long, default_value_t = DEFAULT_REFRESH_INTERVAL_SECS, value_parser = clap::value_parser!(u32).range(i64::from(MIN_REFRESH_INTERVAL_SECS)..=600))]
     pub refresh_interval: u32,
 
     /// Connections per minute per IPv4 address or IPv6 /64 (0 = unlimited).

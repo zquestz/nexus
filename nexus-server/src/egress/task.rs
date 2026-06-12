@@ -127,10 +127,6 @@ impl EgressHandle {
         Self { tx, settings_tx }
     }
 
-    pub fn sender(&self) -> &EgressCommandTx {
-        &self.tx
-    }
-
     pub async fn register(
         &self,
         registration: EgressRegistration,

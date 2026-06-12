@@ -13,6 +13,10 @@ use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{send_server_message_with_id, server_message_to_frame_bytes};
 use nexus_common::protocol::ServerMessage;
 
+use crate::constants::{
+    ERR_TRANSFER_EGRESS_ENQUEUE_FAILED, ERR_TRANSFER_EGRESS_TASK_FAILED,
+    ERR_TRANSFER_MISSING_FRAME_TERMINATOR, ERR_TRANSFER_READ_TIMEOUT,
+};
 use crate::egress;
 use crate::egress::EgressEnqueueError;
 use crate::egress::task::{EgressHandle, EgressTaskError};
@@ -630,7 +634,11 @@ where
                 Ok(Ok(0)) => return Err(StreamError::ConnectionClosed),
                 Ok(Ok(n)) => n,
                 Ok(Err(e)) => return Err(StreamError::Io(e)),
-                Err(_) => return Err(StreamError::Io(std::io::Error::other("Read timeout"))),
+                Err(_) => {
+                    return Err(StreamError::Io(std::io::Error::other(
+                        ERR_TRANSFER_READ_TIMEOUT,
+                    )));
+                }
             };
 
             dest.write_all(&buffer[..bytes_read])
@@ -657,7 +665,11 @@ where
                 Ok(Ok(0)) => return Err(StreamError::ConnectionClosed),
                 Ok(Ok(n)) => n,
                 Ok(Err(e)) => return Err(StreamError::Io(e)),
-                Err(_) => return Err(StreamError::Io(std::io::Error::other("Read timeout"))),
+                Err(_) => {
+                    return Err(StreamError::Io(std::io::Error::other(
+                        ERR_TRANSFER_READ_TIMEOUT,
+                    )));
+                }
             };
             remaining -= bytes_read as u64;
         }
@@ -672,12 +684,16 @@ where
         {
             Ok(Ok(_)) => {}
             Ok(Err(e)) => return Err(StreamError::Io(e)),
-            Err(_) => return Err(StreamError::Io(std::io::Error::other("Read timeout"))),
+            Err(_) => {
+                return Err(StreamError::Io(std::io::Error::other(
+                    ERR_TRANSFER_READ_TIMEOUT,
+                )));
+            }
         }
 
         if terminator[0] != b'\n' {
             return Err(StreamError::Io(std::io::Error::other(
-                "Missing frame terminator",
+                ERR_TRANSFER_MISSING_FRAME_TERMINATOR,
             )));
         }
 
@@ -723,11 +739,11 @@ where
 }
 
 fn egress_enqueue_io_error(err: EgressEnqueueError) -> io::Error {
-    io::Error::other(format!("egress enqueue failed: {err:?}"))
+    io::Error::other(format!("{ERR_TRANSFER_EGRESS_ENQUEUE_FAILED}{err:?}"))
 }
 
 fn egress_task_io_error(err: EgressTaskError) -> io::Error {
-    io::Error::other(format!("egress task failed: {err:?}"))
+    io::Error::other(format!("{ERR_TRANSFER_EGRESS_TASK_FAILED}{err:?}"))
 }
 
 #[cfg(test)]

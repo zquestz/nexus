@@ -78,6 +78,11 @@ pub const DEFAULT_TRACKER_PORT: u16 = 7510;
 /// loop). Per `docs/protocol/18-trackers.md` § Refresh interval.
 pub const MIN_REFRESH_INTERVAL_SECS: u32 = 120;
 
+/// Default tracker refresh interval (seconds). Shared between the
+/// tracker daemon CLI default and the BBS-side registration fallback
+/// when a tracker omits `refresh_interval`.
+pub const DEFAULT_REFRESH_INTERVAL_SECS: u32 = 300;
+
 /// Default locale for daemons (English). Used as the fallback when a
 /// peer-supplied locale is unknown or a translation key is missing in
 /// the requested locale. Each daemon re-exports this from its own
@@ -437,6 +442,11 @@ mod tests {
         // a future bump in either side must update both, and this
         // assertion locks in the protocol-mandated value.
         assert_eq!(MIN_REFRESH_INTERVAL_SECS, 120);
+    }
+
+    #[test]
+    fn test_default_refresh_interval_matches_protocol_default() {
+        assert_eq!(DEFAULT_REFRESH_INTERVAL_SECS, 300);
     }
 
     #[test]

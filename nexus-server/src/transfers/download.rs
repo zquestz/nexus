@@ -385,7 +385,7 @@ impl From<StreamError> for StreamFileError {
             StreamError::Io(e) => StreamFileError::Io(e),
             StreamError::FrameStarted(e) => StreamFileError::FrameStarted(e),
             StreamError::ConnectionClosed => {
-                StreamFileError::Io(io::Error::other("Connection closed"))
+                StreamFileError::Io(io::Error::other(ERR_TRANSFER_CONNECTION_CLOSED))
             }
         }
     }
@@ -663,13 +663,11 @@ where
             match read_transfer_client_message_with_full_timeout(frame_reader, None, None).await {
                 Ok(Some(msg)) => msg,
                 Ok(None) => {
-                    return Err(io::Error::other(
-                        "Connection closed waiting for FileStartResponse",
-                    ));
+                    return Err(io::Error::other(ERR_TRANSFER_FILE_START_RESPONSE_CLOSED));
                 }
                 Err(e) => {
                     return Err(io::Error::other(format!(
-                        "Failed to read FileStartResponse: {e}"
+                        "{ERR_TRANSFER_READ_FILE_START_RESPONSE}{e}"
                     )));
                 }
             };
@@ -683,7 +681,7 @@ where
                 continue;
             }
             _ => {
-                return Err(io::Error::other("Expected FileStartResponse message"));
+                return Err(io::Error::other(ERR_TRANSFER_FILE_START_RESPONSE_EXPECTED));
             }
         }
     };

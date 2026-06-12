@@ -4,17 +4,17 @@
 //! - Voice bar: Shows above the input when in a voice session
 //! - Voice button: Join/leave toggle in the input row
 
-use iced::widget::{Row, Space, button, container, row, tooltip};
+use iced::widget::{Id, Row, Space, button, container, row, text_input, tooltip};
 use iced::{Background, Border, Element, Fill, Theme};
 
 use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
-    INPUT_PADDING, SMALL_SPACING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, shaped_text, speaking_indicator_style, tooltip_container_style,
-    voice_bar_style, voice_deafen_button_style,
+    INPUT_PADDING, MONOSPACE_FONT, SMALL_SPACING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, shaped_text, speaking_indicator_style,
+    tooltip_container_style, voice_bar_style, voice_deafen_button_style,
 };
-use crate::types::{Message, ServerConnection, VoiceState};
+use crate::types::{InputId, Message, ServerConnection, VoiceState};
 
 // =============================================================================
 // Constants
@@ -329,12 +329,6 @@ pub fn build_input_row_with_voice<'a>(
     has_voice_permission: bool,
     voice_target: Option<String>,
 ) -> Row<'a, Message> {
-    use iced::widget::Id;
-    use iced::widget::text_input;
-
-    use crate::style::MONOSPACE_FONT;
-    use crate::types::InputId;
-
     let text_field = text_input(&t("placeholder-message"), message_input)
         .on_input(Message::ChatInputChanged)
         .on_submit(Message::SendMessagePressed)

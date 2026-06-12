@@ -12,9 +12,31 @@ use crate::style::{
 };
 use crate::types::Message;
 
+/// Bytes per kilobyte.
+const BYTES_PER_KB: u64 = 1024;
+
+/// Bytes per megabyte.
+const BYTES_PER_MB: u64 = BYTES_PER_KB * 1024;
+
+/// Bytes per gigabyte.
+const BYTES_PER_GB: u64 = BYTES_PER_MB * 1024;
+
 /// Convenience wrapper for `crate::i18n::t_args` to avoid verbose imports in view modules
 pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
     crate::i18n::t_args(key, args)
+}
+
+/// Format bytes as a human-readable string with B/KB/MB/GB units.
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes >= BYTES_PER_GB {
+        format!("{:.1} GB", bytes as f64 / BYTES_PER_GB as f64)
+    } else if bytes >= BYTES_PER_MB {
+        format!("{:.1} MB", bytes as f64 / BYTES_PER_MB as f64)
+    } else if bytes >= BYTES_PER_KB {
+        format!("{:.1} KB", bytes as f64 / BYTES_PER_KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
 }
 
 /// Build a sidebar-sized icon button with a tooltip, with an enabled/disabled state.
@@ -78,5 +100,44 @@ pub fn sort_icon_or_placeholder(is_active: bool, is_ascending: bool) -> Element<
             .into()
     } else {
         Space::new().width(SORT_ICON_SIZE).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_bytes_bytes() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1), "1 B");
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+    }
+
+    #[test]
+    fn format_bytes_kilobytes() {
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(10 * 1024), "10.0 KB");
+        assert_eq!(format_bytes(1024 * 1024 - 1), "1024.0 KB");
+    }
+
+    #[test]
+    fn format_bytes_megabytes() {
+        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
+        assert_eq!(format_bytes(1024 * 1024 + 512 * 1024), "1.5 MB");
+        assert_eq!(format_bytes(100 * 1024 * 1024), "100.0 MB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024 - 1), "1024.0 MB");
+    }
+
+    #[test]
+    fn format_bytes_gigabytes() {
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.0 GB");
+        assert_eq!(
+            format_bytes(1024 * 1024 * 1024 + 512 * 1024 * 1024),
+            "1.5 GB"
+        );
+        assert_eq!(format_bytes(10 * 1024 * 1024 * 1024), "10.0 GB");
     }
 }

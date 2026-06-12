@@ -280,20 +280,11 @@ pub async fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<Path
     Ok(canonical_parent.join(filename))
 }
 
-/// Normalize a client-provided path for use in responses
-///
-/// This function cleans up a path for consistent display back to the client:
-/// - Replaces backslashes with forward slashes
-/// - Removes empty segments (from multiple slashes)
-/// - Removes "." (current directory) segments
-///
-/// This is purely cosmetic normalization for response paths, not security validation.
-/// Security validation should be done via `build_and_validate_candidate_path()` and `resolve_path()`.
-#[must_use]
 /// Strip folder type suffix from a name to get the display name
 ///
 /// This is the inverse of how folders are named with suffixes like `[NEXUS-UL]`.
 /// Used for matching client paths that use stripped names against filesystem names.
+#[must_use]
 fn strip_folder_suffix(name: &str) -> String {
     let name_upper = name.to_uppercase();
 
