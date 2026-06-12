@@ -8,16 +8,12 @@ pub fn err_nickname_empty(locale: &str) -> String {
     t(locale, "err-nickname-empty")
 }
 
-pub fn err_nickname_in_use(locale: &str) -> String {
-    t(locale, "err-nickname-in-use")
-}
-
 pub fn err_nickname_invalid(locale: &str) -> String {
     t(locale, "err-nickname-invalid")
 }
 
-pub fn err_nickname_is_username(locale: &str) -> String {
-    t(locale, "err-nickname-is-username")
+pub fn err_nickname_unavailable(locale: &str) -> String {
+    t(locale, "err-nickname-unavailable")
 }
 
 pub fn err_nickname_required(locale: &str) -> String {

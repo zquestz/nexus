@@ -3,9 +3,8 @@ err-not-logged-in = Não conectado
 
 # Erros de validação de apelido
 err-nickname-empty = O apelido não pode estar vazio
-err-nickname-in-use = O apelido já está em uso
 err-nickname-invalid = O apelido contém caracteres inválidos (letras, números e símbolos permitidos - sem espaços ou caracteres de controle)
-err-nickname-is-username = O apelido não pode ser um nome de usuário existente
+err-nickname-unavailable = O apelido não está disponível
 err-username-is-active-nickname = O nome de usuário não pode corresponder a um apelido em uso
 err-nickname-not-online = O usuário "{ $nickname }" não está online
 err-nickname-required = Apelido obrigatório para contas compartilhadas

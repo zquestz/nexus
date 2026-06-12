@@ -3,9 +3,8 @@ err-not-logged-in = Non connecté
 
 # Erreurs de validation de pseudonyme
 err-nickname-empty = Le pseudonyme ne peut pas être vide
-err-nickname-in-use = Le pseudonyme est déjà utilisé
 err-nickname-invalid = Le pseudonyme contient des caractères invalides (lettres, chiffres et symboles autorisés - pas d'espaces ni de caractères de contrôle)
-err-nickname-is-username = Le pseudonyme ne peut pas être un nom d'utilisateur existant
+err-nickname-unavailable = Le pseudonyme n'est pas disponible
 err-username-is-active-nickname = Le nom d'utilisateur ne peut pas correspondre à un pseudonyme déjà utilisé
 err-nickname-not-online = L'utilisateur « { $nickname } » n'est pas en ligne
 err-nickname-required = Pseudonyme requis pour les comptes partagés

@@ -3,9 +3,8 @@ err-not-logged-in = Not logged in
 
 # Nickname Validation Errors
 err-nickname-empty = Nickname cannot be empty
-err-nickname-in-use = Nickname is already in use
 err-nickname-invalid = Nickname contains invalid characters (letters, numbers, and symbols allowed - no whitespace or control characters)
-err-nickname-is-username = Nickname cannot be an existing username
+err-nickname-unavailable = Nickname is unavailable
 err-nickname-not-online = User '{ $nickname }' is not online
 err-nickname-required = Nickname required for shared accounts
 err-nickname-too-long = Nickname is too long (max { $max_length } characters)

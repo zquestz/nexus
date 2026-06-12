@@ -3,9 +3,8 @@ err-not-logged-in = No has iniciado sesión
 
 # Errores de validación de apodo
 err-nickname-empty = El apodo no puede estar vacío
-err-nickname-in-use = El apodo ya está en uso
 err-nickname-invalid = El apodo contiene caracteres inválidos (se permiten letras, números y símbolos - sin espacios ni caracteres de control)
-err-nickname-is-username = El apodo no puede ser un nombre de usuario existente
+err-nickname-unavailable = El apodo no está disponible
 err-username-is-active-nickname = El nombre de usuario no puede coincidir con un apodo en uso
 err-nickname-not-online = El usuario '{ $nickname }' no está en línea
 err-nickname-required = Se requiere apodo para cuentas compartidas

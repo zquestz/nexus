@@ -3,9 +3,8 @@ err-not-logged-in = Niet ingelogd
 
 # Bijnaam-validatiefouten
 err-nickname-empty = Bijnaam mag niet leeg zijn
-err-nickname-in-use = Bijnaam is al in gebruik
 err-nickname-invalid = Bijnaam bevat ongeldige tekens (letters, cijfers en symbolen toegestaan - geen spaties of stuurtekens)
-err-nickname-is-username = Bijnaam mag geen bestaande gebruikersnaam zijn
+err-nickname-unavailable = Bijnaam is niet beschikbaar
 err-username-is-active-nickname = Gebruikersnaam mag niet overeenkomen met een bijnaam die al in gebruik is
 err-nickname-not-online = Gebruiker "{ $nickname }" is niet online
 err-nickname-required = Bijnaam vereist voor gedeelde accounts

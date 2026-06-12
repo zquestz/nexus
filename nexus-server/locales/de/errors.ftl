@@ -3,9 +3,8 @@ err-not-logged-in = Nicht angemeldet
 
 # Spitzname-Validierungsfehler
 err-nickname-empty = Spitzname darf nicht leer sein
-err-nickname-in-use = Spitzname wird bereits verwendet
 err-nickname-invalid = Spitzname enthält ungültige Zeichen (Buchstaben, Zahlen und Symbole erlaubt - keine Leerzeichen oder Steuerzeichen)
-err-nickname-is-username = Spitzname darf kein existierender Benutzername sein
+err-nickname-unavailable = Spitzname ist nicht verfügbar
 err-username-is-active-nickname = Benutzername darf nicht mit einem aktuell verwendeten Spitznamen übereinstimmen
 err-nickname-not-online = Benutzer „{ $nickname }" ist nicht online
 err-nickname-required = Spitzname für gemeinsame Konten erforderlich

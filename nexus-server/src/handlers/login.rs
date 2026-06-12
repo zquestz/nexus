@@ -24,9 +24,9 @@ use super::{
     err_guest_disabled, err_handshake_required, err_internal_error, err_invalid_credentials,
     err_locale_invalid_characters, err_locale_too_long, err_login_bandwidth_failed,
     err_login_group_failed, err_login_permissions_failed, err_login_rate_limited,
-    err_nickname_empty, err_nickname_in_use, err_nickname_invalid, err_nickname_is_username,
-    err_nickname_required, err_nickname_too_long, err_password_too_long, err_username_empty,
-    err_username_invalid, err_username_too_long,
+    err_nickname_empty, err_nickname_invalid, err_nickname_required, err_nickname_too_long,
+    err_nickname_unavailable, err_password_too_long, err_username_empty, err_username_invalid,
+    err_username_too_long,
 };
 use crate::constants::{
     FEATURE_CHAT, FEATURE_VOICE, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
@@ -440,7 +440,7 @@ where
             Ok(true) => {
                 return ctx
                     .send_error_and_disconnect(
-                        &err_nickname_is_username(&locale),
+                        &err_nickname_unavailable(&locale),
                         Some(HANDLER_LOGIN),
                     )
                     .await;
@@ -457,7 +457,7 @@ where
         // …nor with an active session's nickname (case-insensitive).
         if ctx.user_manager.is_nickname_in_use(&nickname).await {
             return ctx
-                .send_error_and_disconnect(&err_nickname_in_use(&locale), Some(HANDLER_LOGIN))
+                .send_error_and_disconnect(&err_nickname_unavailable(&locale), Some(HANDLER_LOGIN))
                 .await;
         }
 
@@ -550,7 +550,7 @@ where
         if let Some(ref nickname) = validated_nickname {
             match ctx.db.users.username_exists(nickname).await {
                 Ok(true) => {
-                    break 'locked Err(err_nickname_is_username(&locale));
+                    break 'locked Err(err_nickname_unavailable(&locale));
                 }
                 Ok(false) => {}
                 Err(e) => {
@@ -603,7 +603,9 @@ where
             .await
         {
             Ok(id) => id,
-            Err(AddUserError::NicknameInUse) => break 'locked Err(err_nickname_in_use(&locale)),
+            Err(AddUserError::NicknameInUse) => {
+                break 'locked Err(err_nickname_unavailable(&locale));
+            }
         };
 
         *session_id = Some(id);
@@ -1392,6 +1394,37 @@ mod tests {
             avatar: None,
             nickname: None,
             handshake_complete: true,
+        }
+    }
+
+    async fn enable_guest_account(test_ctx: &mut TestContext) {
+        test_ctx
+            .db
+            .users
+            .update_user(db::UpdateUserParams {
+                username: "guest",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                group_id: None,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    async fn read_error_message(test_ctx: &mut TestContext) -> String {
+        match read_server_message(test_ctx).await {
+            ServerMessage::Error { message, .. } => message,
+            _ => panic!("Expected Error message"),
         }
     }
 
@@ -2997,6 +3030,10 @@ mod tests {
             "Login with nickname matching username should fail"
         );
         assert!(session_id.is_none(), "Session ID should not be set");
+        assert_eq!(
+            read_error_message(&mut test_ctx).await,
+            err_nickname_unavailable(DEFAULT_TEST_LOCALE)
+        );
     }
 
     #[tokio::test]
@@ -3049,6 +3086,10 @@ mod tests {
             "Login with nickname matching username (case-insensitive) should fail"
         );
         assert!(session_id.is_none(), "Session ID should not be set");
+        assert_eq!(
+            read_error_message(&mut test_ctx).await,
+            err_nickname_unavailable(DEFAULT_TEST_LOCALE)
+        );
     }
 
     #[tokio::test]
@@ -3104,6 +3145,10 @@ mod tests {
             "Login with nickname matching username (Unicode case) should fail"
         );
         assert!(session_id.is_none(), "Session ID should not be set");
+        assert_eq!(
+            read_error_message(&mut test_ctx).await,
+            err_nickname_unavailable(DEFAULT_TEST_LOCALE)
+        );
     }
 
     #[tokio::test]
@@ -3177,6 +3222,10 @@ mod tests {
         assert!(
             session_id2.is_none(),
             "Session ID should not be set for duplicate nickname"
+        );
+        assert_eq!(
+            read_error_message(&mut test_ctx).await,
+            err_nickname_unavailable(DEFAULT_TEST_LOCALE)
         );
     }
 
@@ -3499,6 +3548,10 @@ mod tests {
             "Login with nickname matching logged-in username should fail"
         );
         assert!(session_id.is_none(), "Session ID should not be set");
+        assert_eq!(
+            read_error_message(&mut test_ctx).await,
+            err_nickname_unavailable(DEFAULT_TEST_LOCALE)
+        );
     }
 
     #[tokio::test]
@@ -3714,6 +3767,98 @@ mod tests {
 
         assert!(result.is_err(), "Guest login without nickname should fail");
         assert!(session_id.is_none(), "Session ID should not be set");
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_nickname_username_collision_is_generic() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        let hashed = get_cached_password_hash("password123");
+        test_ctx
+            .db
+            .users
+            .create_first_user_if_none_exist("alice", &hashed)
+            .await
+            .expect("admin creation should succeed");
+        enable_guest_account(&mut test_ctx).await;
+
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: String::new(),
+            password: String::new(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("Alice".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(
+            result.is_err(),
+            "Guest login with username-colliding nickname should fail"
+        );
+        assert!(session_id.is_none(), "Session ID should not be set");
+        assert_eq!(
+            read_error_message(&mut test_ctx).await,
+            err_nickname_unavailable(DEFAULT_TEST_LOCALE)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_guest_login_active_nickname_collision_is_generic() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+        enable_guest_account(&mut test_ctx).await;
+
+        let mut first_session_id = None;
+        let first_request = LoginRequest {
+            username: String::new(),
+            password: String::new(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("GuestTaken".to_string()),
+            handshake_complete,
+        };
+        let first_result = handle_login(
+            first_request,
+            &mut first_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(first_result.is_ok(), "Initial guest login should succeed");
+        let _transition = expect_egress_transition(&mut test_ctx);
+        let _response = read_login_response(&mut test_ctx).await;
+
+        test_ctx.egress_connection_id = crate::scheduler::ConnectionId::new(2);
+        let mut second_session_id = None;
+        let second_request = LoginRequest {
+            username: String::new(),
+            password: String::new(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("GuestTaken".to_string()),
+            handshake_complete,
+        };
+        let second_result = handle_login(
+            second_request,
+            &mut second_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(
+            second_result.is_err(),
+            "Guest login with active nickname collision should fail"
+        );
+        assert!(second_session_id.is_none(), "Session ID should not be set");
+        assert_eq!(
+            read_error_message(&mut test_ctx).await,
+            err_nickname_unavailable(DEFAULT_TEST_LOCALE)
+        );
     }
 
     #[tokio::test]

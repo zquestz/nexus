@@ -3,9 +3,8 @@ err-not-logged-in = ログインしていません
 
 # ニックネーム検証エラー
 err-nickname-empty = ニックネームを空にすることはできません
-err-nickname-in-use = ニックネームは既に使用されています
 err-nickname-invalid = ニックネームに無効な文字が含まれています（文字、数字、記号は許可 - スペースや制御文字は不可）
-err-nickname-is-username = ニックネームは既存のユーザー名にすることはできません
+err-nickname-unavailable = ニックネームは使用できません
 err-username-is-active-nickname = ユーザー名は現在使用中のニックネームと一致することはできません
 err-nickname-not-online = ユーザー「{ $nickname }」はオンラインではありません
 err-nickname-required = 共有アカウントにはニックネームが必要です

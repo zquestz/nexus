@@ -287,6 +287,10 @@ For shared and guest accounts:
 | Characters | Unicode letters and ASCII graphic characters   |
 | Case       | Case-insensitive uniqueness check              |
 
+Shared and guest logins report username and active-nickname collisions as the
+same generic nickname-unavailable error so shared credentials cannot be used to
+probe registered usernames or online nicknames.
+
 ## Avatar Format
 
 Avatars are transmitted as [data URIs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs):
@@ -348,14 +352,13 @@ On a fresh server with no users:
 
 Common login errors:
 
-| Error                              | Cause                                   |
-| ---------------------------------- | --------------------------------------- |
-| Invalid username or password       | Credentials don't match                 |
-| Account is disabled                | Admin disabled the account              |
-| Guest access is not enabled        | Guest account is disabled               |
-| Nickname is required               | Shared/guest account without nickname   |
-| Nickname is already in use         | Another session has this nickname       |
-| Nickname matches existing username | Nickname conflicts with an account name |
+| Error                        | Cause                                                          |
+| ---------------------------- | -------------------------------------------------------------- |
+| Invalid username or password | Credentials don't match                                        |
+| Account is disabled          | Admin disabled the account                                     |
+| Guest access is not enabled  | Guest account is disabled                                      |
+| Nickname is required         | Shared/guest account without nickname                          |
+| Nickname is unavailable      | Shared/guest nickname conflicts with a reserved or active name |
 
 ## Timeout
 

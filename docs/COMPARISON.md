@@ -44,7 +44,7 @@ deliberately left out of scope.
 | `/me` action messages |   ❌    | ✅  |  ✅   |  ✅   |                          |
 | Interview mode        |   ❌    | ✅  |  ✅   |  ✅   | Hide join/leave messages |
 | Custom text colors    |   ❌    | ✅  |  ❌   |  🚫   | Hard to read             |
-| IRC gateway           |   ❌    | ✅  |  ❌   |  📋   |                          |
+| IRC gateway           |   ❌    | ✅  |  ❌   |  🚫   |                          |
 
 ## Files
 
@@ -58,7 +58,7 @@ deliberately left out of scope.
 | File aliases/shortcuts |   ✅    | ✅  |  ❌   |  🚫   | Admins can use symlinks         |
 | Drag-and-drop upload   |   ❌    | ✅  |  ✅   |  ✅   |                                 |
 | File tree view         |   ❌    | ✅  |  ✅   |  🚫   | Tabs work well, adds complexity |
-| Speed limiting         |   ❌    | ✅  |  ✅   |  📋   |                                 |
+| Speed limiting         |   ❌    | ✅  |  ✅   |  ✅   |                                 |
 | File previews          |   ❌    | ✅  |  ✅   |  📋   | Images, text                    |
 
 ## News & Boards
@@ -77,7 +77,7 @@ deliberately left out of scope.
 | ------------------- | :-----: | :-: | :---: | :---: | ------------------------------------------- |
 | Connection monitor  |   ❌    | ✅  |  ✅   |  ✅   |                                             |
 | Server logs/history |   ❌    | ✅  |  ✅   |  📋   |                                             |
-| Flood protection    |   ❌    | ✅  |  ❌   |  📋   |                                             |
+| Flood protection    |   ❌    | ✅  |  ❌   |  ✅   |                                             |
 | Remote shutdown     |   ❌    | ✅  |  ❌   |  🚫   | Docker/systemd auto-restart defeats purpose |
 | Process monitor     |   ❌    | ✅  |  ❌   |  🚫   | Out of scope                                |
 | Remote desktop      |   ❌    | ✅  |  ❌   |  🚫   | Most servers are headless; out of scope     |
