@@ -6,6 +6,7 @@
 
 use std::any::Any;
 use std::collections::HashMap;
+use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
@@ -13,12 +14,14 @@ use std::sync::{Arc, Mutex, Weak};
 use tokio::net::UdpSocket;
 use tokio::sync::{Notify, Semaphore, mpsc};
 use tokio::task::JoinHandle;
+use tracing::{debug, warn};
 use webrtc_util::conn::Conn;
 use webrtc_util::{Error as WebRtcError, Result as WebRtcResult};
 
 use crate::constants::{
     ERR_VOICE_DEMUX_ACCEPT_TX_LOCK, ERR_VOICE_DEMUX_CHILDREN_LOCK, ERR_VOICE_DEMUX_READ_TASK_LOCK,
-    ERR_VOICE_UDP_CHILD_TX_LOCK,
+    ERR_VOICE_UDP_CHILD_TX_LOCK, LOG_VOICE_DEMUX_FATAL_READ_ERROR,
+    LOG_VOICE_DEMUX_TRANSIENT_READ_ERROR,
 };
 
 const RECEIVE_MTU: usize = 8192;
@@ -206,7 +209,11 @@ impl VoiceUdpInner {
 
             match self.socket.recv_from(&mut buf).await {
                 Ok((len, remote_addr)) => self.route_datagram(remote_addr, &buf[..len]),
-                Err(_) => {
+                Err(e) if is_transient_recv_error(&e) => {
+                    debug!(err = %e, "{}", LOG_VOICE_DEMUX_TRANSIENT_READ_ERROR);
+                }
+                Err(e) => {
+                    warn!(err = %e, "{}", LOG_VOICE_DEMUX_FATAL_READ_ERROR);
                     self.close_sync();
                     break;
                 }
@@ -488,6 +495,17 @@ fn is_dtls_client_hello(packet: &[u8]) -> bool {
     packet[DTLS_HANDSHAKE_HEADER_TYPE_OFFSET] == DTLS_CLIENT_HELLO_TYPE
 }
 
+fn is_transient_recv_error(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionRefused
+            | io::ErrorKind::WouldBlock
+            | io::ErrorKind::Interrupted
+            | io::ErrorKind::TimedOut
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Weak;
@@ -508,6 +526,36 @@ mod tests {
 
     fn client_hello_probe() -> Vec<u8> {
         vec![22, 0xfe, 0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
+    }
+
+    #[test]
+    fn transient_recv_errors_are_classified() {
+        for kind in [
+            io::ErrorKind::ConnectionReset,
+            io::ErrorKind::ConnectionRefused,
+            io::ErrorKind::WouldBlock,
+            io::ErrorKind::Interrupted,
+            io::ErrorKind::TimedOut,
+        ] {
+            let err = io::Error::from(kind);
+            assert!(
+                is_transient_recv_error(&err),
+                "{kind:?} should be transient"
+            );
+        }
+    }
+
+    #[test]
+    fn fatal_recv_errors_are_classified() {
+        for kind in [
+            io::ErrorKind::PermissionDenied,
+            io::ErrorKind::AddrNotAvailable,
+            io::ErrorKind::InvalidData,
+            io::ErrorKind::UnexpectedEof,
+        ] {
+            let err = io::Error::from(kind);
+            assert!(!is_transient_recv_error(&err), "{kind:?} should be fatal");
+        }
     }
 
     async fn udp_client(listener: &VoiceUdpListener) -> UdpSocket {

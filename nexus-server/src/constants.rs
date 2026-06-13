@@ -464,6 +464,8 @@ pub const LOG_SCAN_DONE: &str = "Done scanning directory";
 
 pub const LOG_VOICE_REJECTED_BANNED: &str = "Voice DTLS: rejected banned IP";
 pub const LOG_VOICE_REJECTED_LIMIT: &str = "Voice DTLS: rejected, per-IP voice limit reached";
+pub const LOG_VOICE_DEMUX_TRANSIENT_READ_ERROR: &str = "Voice UDP demux: transient read error";
+pub const LOG_VOICE_DEMUX_FATAL_READ_ERROR: &str = "Voice UDP demux: fatal read error";
 pub const LOG_VOICE_NEW_CONNECTION: &str = "Voice DTLS: new connection";
 pub const LOG_VOICE_ACCEPT_ERROR: &str = "Voice DTLS: accept error";
 pub const LOG_VOICE_HANDSHAKE_FAILED: &str = "Voice DTLS: handshake failed";

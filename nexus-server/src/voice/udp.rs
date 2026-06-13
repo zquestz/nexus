@@ -168,9 +168,10 @@ impl VoiceUdpServer {
             match self.listener.accept().await {
                 Ok(pending) => self.handle_pending_connection(pending).await,
                 Err(e) => {
-                    // debug, not warn: accept failures are spoofable (forged
-                    // ClientHellos) and unreliable, so per-occurrence they're noise.
+                    // `accept()` errors only when the demux has torn down and
+                    // dropped `accept_tx`; there is no recovery path for this listener.
                     debug!(err = %e, "{}", LOG_VOICE_ACCEPT_ERROR);
+                    break;
                 }
             }
         }
