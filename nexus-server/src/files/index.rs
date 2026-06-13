@@ -223,13 +223,28 @@ impl FileIndex {
         Ok(count)
     }
 
-    /// Returns up to `MAX_SEARCH_RESULTS` entries, optionally restricted to
-    /// `area_prefix`. A corrupted index is deleted and marked dirty for
-    /// rebuild, returning empty results.
+    /// Un-gated search where every entry is considered readable. Test-only.
+    #[cfg(test)]
     pub fn search(
         &self,
         query: &str,
         area_prefix: Option<&str>,
+    ) -> Result<Vec<FileSearchResult>, String> {
+        self.search_readable(query, area_prefix, |_, _| true)
+    }
+
+    /// Returns up to `MAX_SEARCH_RESULTS` readable entries matching `query`,
+    /// optionally restricted to `area_prefix`. `is_readable(path, is_dir)` gates
+    /// each candidate: non-readable entries are skipped as they are encountered, so
+    /// the cap applies to the readable set and the scan stops at the first
+    /// `MAX_SEARCH_RESULTS` readable matches rather than scanning the whole
+    /// index. A corrupted index is deleted and marked dirty for rebuild,
+    /// returning empty results.
+    pub fn search_readable(
+        &self,
+        query: &str,
+        area_prefix: Option<&str>,
+        is_readable: impl Fn(&str, bool) -> bool,
     ) -> Result<Vec<FileSearchResult>, String> {
         if !self.index_path.exists() {
             return Ok(vec![]);
@@ -275,6 +290,12 @@ impl FileIndex {
                     let path_lower = entry.path.to_lowercase();
                     let all_match = remaining_terms.iter().all(|term| path_lower.contains(term));
                     if !all_match {
+                        return Ok(true);
+                    }
+
+                    // Read-gate: skip entries the caller can't read so they do
+                    // not consume a slot in the MAX_SEARCH_RESULTS cap.
+                    if !is_readable(&entry.path, entry.is_directory) {
                         return Ok(true);
                     }
 

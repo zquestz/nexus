@@ -21,7 +21,10 @@ pub use area::{
     UserAreaMigration, UserAreaMigrationError, migrate_user_area_on_username_change,
     resolve_user_area,
 };
-pub use folder_type::{FolderType, in_owned_dropbox, parse_folder_type};
+pub use folder_type::{
+    DropboxScope, FolderType, dropbox_entry_visible, in_owned_dropbox, innermost_dropbox,
+    is_unreadable_dropbox_dir, parse_folder_type,
+};
 pub use index::FileIndex;
 pub use operations::{copy_path_recursive_async, is_subpath, remove_path_async, rename_path_async};
 pub use path::{

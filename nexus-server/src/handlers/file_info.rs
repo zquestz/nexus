@@ -18,7 +18,10 @@ use crate::constants::{
     LOG_FILE_INFO_ROOT_DENIED,
 };
 use crate::db::Permission;
-use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
+use crate::files::{
+    build_and_validate_candidate_path, dropbox_entry_visible, is_unreadable_dropbox_dir,
+    resolve_path, resolve_user_area,
+};
 
 /// Count items in a directory (non-recursive), off the async runtime.
 async fn count_directory_items_async(path: &Path) -> Option<u64> {
@@ -193,9 +196,13 @@ where
         } else {
             resolve_user_area(file_root, &requesting_user.username).await
         };
-        Ok(area_root_path)
+        Ok((
+            area_root_path,
+            requesting_user.is_admin,
+            requesting_user.username,
+        ))
     };
-    let area_root_path = match user_area_result {
+    let (area_root_path, is_admin, username) = match user_area_result {
         Ok(user_area) => user_area,
         Err(response) => return ctx.send_message(&response).await,
     };
@@ -264,6 +271,23 @@ where
     };
 
     let is_directory = metadata.is_dir();
+
+    // Drop-box read-gate, now that we know whether the entry is a directory (so a
+    // regular file that merely *looks* like a drop box isn't treated as one, and
+    // the owner of a nested drop box still sees their own box). An item the
+    // requester can't see is indistinguishable from missing; the box folder
+    // itself stays viewable, with its child count masked below.
+    if !dropbox_entry_visible(&candidate, &area_root, &username, is_admin, is_directory) {
+        let response = ServerMessage::FileInfoResponse {
+            success: false,
+            error: Some(err_file_not_found(ctx.locale)),
+            info: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+    let contents_readable =
+        !is_unreadable_dropbox_dir(&candidate, &area_root, &username, is_admin, is_directory);
+
     let size = if is_directory { 0 } else { metadata.len() };
 
     let modified = metadata
@@ -293,10 +317,13 @@ where
         detect_mime_type_async(&resolved).await
     };
 
-    let item_count = if is_directory {
+    // Mask the child count of a drop box folder the requester may not read.
+    let item_count = if !is_directory {
+        None
+    } else if contents_readable {
         count_directory_items_async(&resolved).await
     } else {
-        None
+        Some(0)
     };
 
     let blake3 = if is_directory {
@@ -333,7 +360,8 @@ mod tests {
     use super::*;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        create_test_context, login_user, read_server_message, setup_file_area_basic,
+        DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
+        setup_file_area_basic,
     };
 
     #[tokio::test]
@@ -784,5 +812,249 @@ mod tests {
             }
             _ => panic!("Expected FileInfoResponse"),
         }
+    }
+
+    fn assert_info_not_found(response: ServerMessage) {
+        match response {
+            ServerMessage::FileInfoResponse {
+                success,
+                error,
+                info,
+            } => {
+                assert!(!success);
+                assert!(info.is_none());
+                assert_eq!(error, Some(err_file_not_found(DEFAULT_TEST_LOCALE)));
+            }
+            other => panic!("Expected FileInfoResponse, got: {:?}", other),
+        }
+    }
+
+    fn assert_info_ok(response: ServerMessage) -> nexus_common::protocol::FileInfoDetails {
+        match response {
+            ServerMessage::FileInfoResponse { success, info, .. } => {
+                assert!(success);
+                info.expect("info")
+            }
+            other => panic!("Expected FileInfoResponse, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_info_dropbox_gating() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        // alice's drop box in /shared (users without a personal dir share /shared).
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir_all(&dropbox).unwrap();
+        fs::write(dropbox.join("secret.txt"), "hi").unwrap();
+
+        let file = "For Alice [NEXUS-DB-alice]/secret.txt";
+        let folder = "For Alice [NEXUS-DB-alice]";
+
+        // bob (non-owner): the file inside is indistinguishable from missing; the
+        // folder itself is viewable, but its child count is masked to 0.
+        let bob = login_user(&mut test_ctx, "bob", "pass", &[Permission::FileInfo], false).await;
+        let r = handle_file_info(
+            file.to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert_info_not_found(read_server_message(&mut test_ctx).await);
+        let r = handle_file_info(
+            folder.to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        let info = assert_info_ok(read_server_message(&mut test_ctx).await);
+        assert!(info.is_directory);
+        assert_eq!(info.item_count, Some(0));
+
+        // alice (owner): real child count, and the file inside is readable.
+        let alice = login_user(
+            &mut test_ctx,
+            "alice",
+            "pass",
+            &[Permission::FileInfo],
+            false,
+        )
+        .await;
+        let r = handle_file_info(
+            folder.to_string(),
+            false,
+            Some(alice),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert_eq!(
+            assert_info_ok(read_server_message(&mut test_ctx).await).item_count,
+            Some(1)
+        );
+        let r = handle_file_info(
+            file.to_string(),
+            false,
+            Some(alice),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert_eq!(
+            assert_info_ok(read_server_message(&mut test_ctx).await).name,
+            "secret.txt"
+        );
+
+        // admin: real child count.
+        let admin = login_user(&mut test_ctx, "admin", "pass", &[], true).await;
+        let r = handle_file_info(
+            folder.to_string(),
+            false,
+            Some(admin),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert_eq!(
+            assert_info_ok(read_server_message(&mut test_ctx).await).item_count,
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_file_info_nested_owned_and_suffix_named_file() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        fs::create_dir_all(shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]")).unwrap();
+        fs::write(
+            shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]/data.txt"),
+            "x",
+        )
+        .unwrap();
+        // A regular FILE whose name merely carries a drop-box suffix.
+        fs::write(shared.join("Budget [NEXUS-DB-alice]"), "y").unwrap();
+
+        let inner = "Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]";
+
+        // M1: bob (owner of the inner box) sees the folder with its REAL child
+        // count, even though it sits inside alice's box.
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileInfo], false).await;
+        let r = handle_file_info(
+            inner.to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        let info = assert_info_ok(read_server_message(&mut test_ctx).await);
+        assert!(info.is_directory);
+        assert_eq!(info.item_count, Some(1));
+
+        // L1: a regular file that only looks like a box returns normal info.
+        let r = handle_file_info(
+            "Budget [NEXUS-DB-alice]".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert!(!assert_info_ok(read_server_message(&mut test_ctx).await).is_directory);
+
+        // An unrelated user can't see the nested box at all — it's not-found.
+        let carol = login_user(&mut test_ctx, "carol", "pw", &[Permission::FileInfo], false).await;
+        let r = handle_file_info(
+            inner.to_string(),
+            false,
+            Some(carol),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert_info_not_found(read_server_message(&mut test_ctx).await);
+    }
+
+    #[tokio::test]
+    async fn test_file_info_missing_permission_is_path_independent() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        fs::write(shared.join("public.txt"), "x").unwrap();
+        fs::create_dir_all(shared.join("For Alice [NEXUS-DB-alice]")).unwrap();
+        fs::write(shared.join("For Alice [NEXUS-DB-alice]/secret.txt"), "y").unwrap();
+
+        // bob has NO FileInfo permission. A normal file and a hidden drop-box path
+        // both return the same permission-denied — the base-permission check runs
+        // first, so the response leaks nothing about which paths exist.
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[], false).await;
+        for path in ["public.txt", "For Alice [NEXUS-DB-alice]/secret.txt"] {
+            let r = handle_file_info(
+                path.to_string(),
+                false,
+                Some(bob),
+                &mut test_ctx.handler_context(),
+            )
+            .await;
+            assert!(r.is_ok());
+            match read_server_message(&mut test_ctx).await {
+                ServerMessage::FileInfoResponse { success, error, .. } => {
+                    assert!(!success);
+                    assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+                }
+                other => panic!("Expected FileInfoResponse, got: {:?}", other),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_info_root_mode_non_admin_fileroot_still_gated() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        // A blind drop box somewhere in the tree (contents are admin-only).
+        let blind = area.path().join("shared/Inbox [NEXUS-DB]");
+        fs::create_dir_all(&blind).unwrap();
+        fs::write(blind.join("secret.txt"), "x").unwrap();
+
+        let path = "shared/Inbox [NEXUS-DB]/secret.txt";
+
+        // A non-admin FileRoot holder browsing root mode is still gated: FileRoot
+        // grants tree-wide *navigation*, not the admin override the drop-box gate
+        // keys on. The blind box contents stay indistinguishable from missing.
+        let mgr = login_user(
+            &mut test_ctx,
+            "mgr",
+            "pw",
+            &[Permission::FileInfo, Permission::FileRoot],
+            false,
+        )
+        .await;
+        let r = handle_file_info(
+            path.to_string(),
+            true,
+            Some(mgr),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert_info_not_found(read_server_message(&mut test_ctx).await);
+
+        // An admin (real override) reads it.
+        let admin = login_user(&mut test_ctx, "admin", "pw", &[], true).await;
+        let r = handle_file_info(
+            path.to_string(),
+            true,
+            Some(admin),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(r.is_ok());
+        assert!(!assert_info_ok(read_server_message(&mut test_ctx).await).is_directory);
     }
 }

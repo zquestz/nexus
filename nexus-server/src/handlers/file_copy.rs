@@ -25,8 +25,9 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::activity::FileActivityGuard;
 use crate::files::{
-    activity_key, build_and_validate_candidate_path, copy_path_recursive_async, is_subpath,
-    remove_path_async, resolve_path, resolve_user_area,
+    activity_key, build_and_validate_candidate_path, copy_path_recursive_async,
+    dropbox_entry_visible, is_subpath, is_unreadable_dropbox_dir, remove_path_async, resolve_path,
+    resolve_user_area,
 };
 
 pub async fn handle_file_copy<W>(
@@ -212,6 +213,45 @@ where
                 return ctx.send_message(&response).await;
             }
         };
+
+    // Drop-box read-gate on the SOURCE. `source_is_dir` follows symlinks so a
+    // symlinked drop box still counts as a directory; a regular file that merely
+    // *looks* like a drop box is copied normally. A source the requester can't
+    // see is indistinguishable from missing; the drop box folder itself is
+    // visible, but copying it would duplicate its contents into a readable
+    // location, so that is permission-denied. Owners and admins pass.
+    let source_is_dir = tokio::fs::metadata(&source_candidate)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+    if !dropbox_entry_visible(
+        &source_candidate,
+        &source_area_root,
+        &requesting_user.username,
+        requesting_user.is_admin,
+        source_is_dir,
+    ) {
+        let response = ServerMessage::FileCopyResponse {
+            success: false,
+            error: Some(err_file_not_found(ctx.locale)),
+            error_kind: Some(ErrorKind::NotFound.into()),
+        };
+        return ctx.send_message(&response).await;
+    }
+    if is_unreadable_dropbox_dir(
+        &source_candidate,
+        &source_area_root,
+        &requesting_user.username,
+        requesting_user.is_admin,
+        source_is_dir,
+    ) {
+        let response = ServerMessage::FileCopyResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+            error_kind: Some(ErrorKind::Permission.into()),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     let dest_candidate =
         match build_and_validate_candidate_path(&dest_area_root, &destination_dir).await {
@@ -532,7 +572,8 @@ mod tests {
     use super::*;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        create_test_context, login_user, read_server_message, setup_file_area_basic,
+        DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
+        setup_file_area_basic,
     };
     use std::fs;
 
@@ -1657,5 +1698,167 @@ mod tests {
             }
             _ => panic!("Expected FileCopyResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_file_copy_dropbox_gating() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        fs::create_dir_all(shared.join("For Alice [NEXUS-DB-alice]")).unwrap();
+        fs::write(shared.join("For Alice [NEXUS-DB-alice]/secret.txt"), "x").unwrap();
+        fs::create_dir(shared.join("dest")).unwrap();
+
+        let file = "For Alice [NEXUS-DB-alice]/secret.txt";
+        let folder = "For Alice [NEXUS-DB-alice]";
+
+        // bob (non-owner): the file inside is indistinguishable from missing; the
+        // folder itself is permission-denied (copying it would duplicate contents).
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileCopy], false).await;
+        handle_file_copy(
+            file.to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileCopyResponse {
+                success,
+                error,
+                error_kind,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_file_not_found(DEFAULT_TEST_LOCALE)));
+                assert_eq!(error_kind, Some(ErrorKind::NotFound.into()));
+            }
+            other => panic!("Expected FileCopyResponse, got: {:?}", other),
+        }
+        handle_file_copy(
+            folder.to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileCopyResponse {
+                success,
+                error,
+                error_kind,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+                assert_eq!(error_kind, Some(ErrorKind::Permission.into()));
+            }
+            other => panic!("Expected FileCopyResponse, got: {:?}", other),
+        }
+        assert!(!shared.join("dest/secret.txt").exists());
+
+        // alice (owner): can copy her own drop box file out.
+        let alice = login_user(&mut test_ctx, "alice", "pw", &[Permission::FileCopy], false).await;
+        handle_file_copy(
+            file.to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(alice),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileCopyResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileCopyResponse, got: {:?}", other),
+        }
+        assert!(shared.join("dest/secret.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_file_copy_nested_owned_and_suffix_named_file() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        // bob owns the inner box; alice owns the outer box that contains it.
+        fs::create_dir_all(shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]")).unwrap();
+        fs::write(
+            shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]/data.txt"),
+            "x",
+        )
+        .unwrap();
+        // A regular FILE whose name merely carries a drop-box suffix.
+        fs::write(shared.join("Budget [NEXUS-DB-alice]"), "y").unwrap();
+        fs::create_dir(shared.join("dest")).unwrap();
+
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileCopy], false).await;
+
+        // L1: a regular file that only looks like a box is copied normally.
+        handle_file_copy(
+            "Budget [NEXUS-DB-alice]".to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileCopyResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileCopyResponse, got: {:?}", other),
+        }
+        assert!(shared.join("dest/Budget [NEXUS-DB-alice]").exists());
+
+        // L1: a MISSING suffix-named path is not-found, not permission-denied.
+        handle_file_copy(
+            "Ghost [NEXUS-DB-alice]".to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileCopyResponse {
+                success,
+                error_kind,
+                ..
+            } => {
+                assert!(!success);
+                assert_eq!(error_kind, Some(ErrorKind::NotFound.into()));
+            }
+            other => panic!("Expected FileCopyResponse, got: {:?}", other),
+        }
+
+        // M1: bob copies his own nested box (owner) — allowed, contents come with.
+        handle_file_copy(
+            "Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]".to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileCopyResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileCopyResponse, got: {:?}", other),
+        }
+        assert!(shared.join("dest/Inner [NEXUS-DB-bob]/data.txt").exists());
     }
 }

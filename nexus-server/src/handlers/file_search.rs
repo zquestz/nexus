@@ -20,7 +20,7 @@ use super::{
     err_search_query_too_short,
 };
 use crate::db::Permission;
-use crate::files::resolve_user_area;
+use crate::files::{dropbox_entry_visible, resolve_user_area};
 
 pub async fn handle_file_search<W>(
     query: String,
@@ -93,8 +93,9 @@ where
             break 'user_area Err(response);
         }
 
+        let is_admin = requesting_user.is_admin;
         if root {
-            Ok((None, requesting_user.username))
+            Ok((None, requesting_user.username, is_admin))
         } else {
             let Some(file_root) = ctx.file_root else {
                 let response = ServerMessage::FileSearchResponse {
@@ -112,10 +113,10 @@ where
                 .map(|p| format!("/{}", p.to_string_lossy().replace('\\', "/")))
                 .unwrap_or_else(|_| "/".to_string());
 
-            Ok((Some(relative_area), requesting_user.username))
+            Ok((Some(relative_area), requesting_user.username, is_admin))
         }
     };
-    let (area_prefix, username) = match user_area_result {
+    let (area_prefix, username, is_admin) = match user_area_result {
         Ok(user_area) => user_area,
         Err(ServerMessage::Error {
             message, command, ..
@@ -131,8 +132,26 @@ where
     let file_index = Arc::clone(&ctx.file_index);
     let query_clone = query.clone();
     let area_prefix_clone = area_prefix.clone();
+    let username_clone = username.clone();
     let search_result = tokio::task::spawn_blocking(move || {
-        file_index.search(&query_clone, area_prefix_clone.as_deref())
+        // Read-gate each candidate through the same innermost-wins gate FileList
+        // uses, bounded by the area root ("/" for root search). Gating inside the
+        // search means the result cap counts only entries the requester may read,
+        // so search never surfaces — or hints at — drop-box contents it hides.
+        let area_root = std::path::Path::new(area_prefix_clone.as_deref().unwrap_or("/"));
+        file_index.search_readable(
+            &query_clone,
+            area_prefix_clone.as_deref(),
+            |path, is_dir| {
+                dropbox_entry_visible(
+                    std::path::Path::new(path),
+                    area_root,
+                    &username_clone,
+                    is_admin,
+                    is_dir,
+                )
+            },
+        )
     })
     .await;
 
@@ -432,6 +451,125 @@ mod tests {
         }
     }
 
+    fn search_result_paths(response: ServerMessage) -> Vec<String> {
+        match response {
+            ServerMessage::FileSearchResponse {
+                success,
+                error,
+                results,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let mut paths: Vec<String> = results
+                    .expect("search results")
+                    .into_iter()
+                    .map(|result| result.path)
+                    .collect();
+                paths.sort();
+                paths
+            }
+            other => panic!("Expected FileSearchResponse, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_search_hides_dropbox_contents_from_non_owners() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+        let index_data = tempfile::TempDir::new().expect("index data dir");
+        test_ctx.file_index = Arc::new(FileIndex::new(index_data.path(), file_root));
+
+        // Users without a personal dir share /shared. Plant a matching file in
+        // the open area, a generic (admin-only) drop box, and alice's drop box.
+        let shared = file_area.path().join("shared");
+        fs::create_dir_all(shared.join("Public")).unwrap();
+        fs::write(shared.join("Public/secret-public.txt"), "x").unwrap();
+        fs::create_dir_all(shared.join("Blind [NEXUS-DB]")).unwrap();
+        fs::write(shared.join("Blind [NEXUS-DB]/secret-blind.txt"), "x").unwrap();
+        fs::create_dir_all(shared.join("For Alice [NEXUS-DB-alice]")).unwrap();
+        fs::write(
+            shared.join("For Alice [NEXUS-DB-alice]/secret-alice.txt"),
+            "x",
+        )
+        .unwrap();
+
+        assert!(test_ctx.file_index.trigger_reindex());
+        for _ in 0..100 {
+            if !test_ctx.file_index.is_reindexing() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!test_ctx.file_index.is_reindexing());
+
+        // bob (non-owner) sees only the open-area hit.
+        let session = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::FileSearch],
+            false,
+        )
+        .await;
+        let result = handle_file_search(
+            "secret".to_string(),
+            false,
+            Some(session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(
+            search_result_paths(read_server_message(&mut test_ctx).await),
+            vec!["/Public/secret-public.txt"]
+        );
+
+        // alice additionally sees her own drop box, but not the blind one.
+        let session = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileSearch],
+            false,
+        )
+        .await;
+        let result = handle_file_search(
+            "secret".to_string(),
+            false,
+            Some(session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(
+            search_result_paths(read_server_message(&mut test_ctx).await),
+            vec![
+                "/For Alice [NEXUS-DB-alice]/secret-alice.txt",
+                "/Public/secret-public.txt",
+            ]
+        );
+
+        // admin sees everything, including the blind drop box.
+        let session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let result = handle_file_search(
+            "secret".to_string(),
+            false,
+            Some(session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(
+            search_result_paths(read_server_message(&mut test_ctx).await),
+            vec![
+                "/Blind [NEXUS-DB]/secret-blind.txt",
+                "/For Alice [NEXUS-DB-alice]/secret-alice.txt",
+                "/Public/secret-public.txt",
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn test_file_search_empty_query() {
         let mut test_ctx = create_test_context().await;
@@ -595,5 +733,150 @@ mod tests {
             }
             _ => panic!("Expected FileSearchResponse, got: {:?}", response),
         }
+    }
+
+    #[tokio::test]
+    async fn test_file_search_shows_dropbox_folder_but_not_contents() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+        let index_data = tempfile::TempDir::new().expect("index data dir");
+        test_ctx.file_index = Arc::new(FileIndex::new(index_data.path(), file_root));
+
+        let shared = file_area.path().join("shared");
+        fs::create_dir_all(shared.join("Reports [NEXUS-DB-alice]")).unwrap();
+        fs::write(shared.join("Reports [NEXUS-DB-alice]/report.txt"), "x").unwrap();
+
+        assert!(test_ctx.file_index.trigger_reindex());
+        for _ in 0..100 {
+            if !test_ctx.file_index.is_reindexing() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!test_ctx.file_index.is_reindexing());
+
+        // "report" matches both the drop box folder and the file inside it. A
+        // non-owner sees the folder (it is viewable) but not its contents.
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileSearch], false).await;
+        let result = handle_file_search(
+            "report".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(
+            search_result_paths(read_server_message(&mut test_ctx).await),
+            vec!["/Reports [NEXUS-DB-alice]"]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_file_search_shows_owned_nested_dropbox_folder() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+        let index_data = tempfile::TempDir::new().expect("index data dir");
+        test_ctx.file_index = Arc::new(FileIndex::new(index_data.path(), file_root));
+
+        let shared = file_area.path().join("shared");
+        fs::create_dir_all(shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]")).unwrap();
+        fs::write(
+            shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]/data.txt"),
+            "x",
+        )
+        .unwrap();
+
+        assert!(test_ctx.file_index.trigger_reindex());
+        for _ in 0..100 {
+            if !test_ctx.file_index.is_reindexing() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!test_ctx.file_index.is_reindexing());
+
+        // M1: bob owns the inner box. His search surfaces the inner folder itself
+        // (innermost-wins), even though it sits inside alice's box.
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileSearch], false).await;
+        let result = handle_file_search(
+            "Inner".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let paths = search_result_paths(read_server_message(&mut test_ctx).await);
+        assert!(paths.contains(&"/Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]".to_string()));
+
+        // An unrelated user sees nothing for the same query.
+        let carol = login_user(
+            &mut test_ctx,
+            "carol",
+            "pw",
+            &[Permission::FileSearch],
+            false,
+        )
+        .await;
+        let result = handle_file_search(
+            "Inner".to_string(),
+            false,
+            Some(carol),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        assert!(search_result_paths(read_server_message(&mut test_ctx).await).is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_file_search_cap_counts_only_readable_entries() {
+        use crate::files::index::MAX_SEARCH_RESULTS;
+
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+        let index_data = tempfile::TempDir::new().expect("index data dir");
+        test_ctx.file_index = Arc::new(FileIndex::new(index_data.path(), file_root));
+
+        let shared = file_area.path().join("shared");
+        // More than a capful of hidden matches inside a blind (admin-only) box…
+        let blind = shared.join("Inbox [NEXUS-DB]");
+        fs::create_dir_all(&blind).unwrap();
+        for i in 0..(MAX_SEARCH_RESULTS + 50) {
+            fs::write(blind.join(format!("report-hidden-{i}.txt")), "x").unwrap();
+        }
+        // …and exactly a capful of readable matches out in the open.
+        for i in 0..MAX_SEARCH_RESULTS {
+            fs::write(shared.join(format!("report-open-{i}.txt")), "x").unwrap();
+        }
+
+        assert!(test_ctx.file_index.trigger_reindex());
+        for _ in 0..200 {
+            if !test_ctx.file_index.is_reindexing() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(!test_ctx.file_index.is_reindexing());
+
+        // A non-admin's search skips the hidden matches *as they are scanned*, so
+        // they never consume a result slot. The cap is therefore filled entirely
+        // by readable matches — regardless of the order WalkDir produced them in.
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileSearch], false).await;
+        let result = handle_file_search(
+            "report".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let paths = search_result_paths(read_server_message(&mut test_ctx).await);
+        assert_eq!(paths.len(), MAX_SEARCH_RESULTS);
+        assert!(paths.iter().all(|p| !p.contains("[NEXUS-DB]")));
     }
 }

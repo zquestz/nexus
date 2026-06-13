@@ -24,8 +24,8 @@ use crate::constants::{
 };
 use crate::db::Permission;
 use crate::files::{
-    activity_key, build_and_validate_candidate_path, is_subpath, remove_path_async,
-    rename_path_async, resolve_path, resolve_user_area,
+    activity_key, build_and_validate_candidate_path, dropbox_entry_visible, is_subpath,
+    remove_path_async, rename_path_async, resolve_path, resolve_user_area,
 };
 
 pub async fn handle_file_move<W>(
@@ -211,6 +211,31 @@ where
                 return ctx.send_message(&response).await;
             }
         };
+
+    // Drop-box read-gate on the SOURCE. `source_is_dir` follows symlinks so a
+    // symlinked drop box still counts as a directory. A source the requester
+    // can't see is indistinguishable from missing. The drop box folder itself
+    // keeps normal move semantics: relocating it carries its `[NEXUS-DB-…]`
+    // suffix, so its contents stay gated wherever it lands — no exposure. Owners
+    // and admins read everything.
+    let source_is_dir = tokio::fs::metadata(&source_candidate)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+    if !dropbox_entry_visible(
+        &source_candidate,
+        &source_area_root,
+        &requesting_user.username,
+        requesting_user.is_admin,
+        source_is_dir,
+    ) {
+        let response = ServerMessage::FileMoveResponse {
+            success: false,
+            error: Some(err_file_not_found(ctx.locale)),
+            error_kind: Some(ErrorKind::NotFound.into()),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     let dest_candidate =
         match build_and_validate_candidate_path(&dest_area_root, &destination_dir).await {
@@ -468,7 +493,8 @@ mod tests {
     use super::*;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        create_test_context, login_user, read_server_message, setup_file_area_basic,
+        DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
+        setup_file_area_basic,
     };
     use std::fs;
 
@@ -1417,5 +1443,131 @@ mod tests {
             }
             _ => panic!("Expected FileMoveResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_file_move_dropbox_gating() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        fs::create_dir_all(shared.join("For Alice [NEXUS-DB-alice]")).unwrap();
+        fs::write(shared.join("For Alice [NEXUS-DB-alice]/secret.txt"), "x").unwrap();
+        fs::create_dir(shared.join("dest")).unwrap();
+
+        let file = "For Alice [NEXUS-DB-alice]/secret.txt";
+        let folder = "For Alice [NEXUS-DB-alice]";
+
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileMove], false).await;
+
+        // The file inside is indistinguishable from missing.
+        handle_file_move(
+            file.to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileMoveResponse {
+                success,
+                error,
+                error_kind,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_file_not_found(DEFAULT_TEST_LOCALE)));
+                assert_eq!(error_kind, Some(ErrorKind::NotFound.into()));
+            }
+            other => panic!("Expected FileMoveResponse, got: {:?}", other),
+        }
+
+        // The drop box FOLDER itself moves with normal semantics — relocating it
+        // carries its `[NEXUS-DB-…]` suffix, so its contents stay gated.
+        handle_file_move(
+            folder.to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileMoveResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileMoveResponse, got: {:?}", other),
+        }
+        assert!(
+            shared
+                .join("dest/For Alice [NEXUS-DB-alice]/secret.txt")
+                .exists()
+        );
+        assert!(!shared.join("For Alice [NEXUS-DB-alice]").exists());
+    }
+
+    #[tokio::test]
+    async fn test_file_move_owned_nested_dropbox_folder() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        fs::create_dir_all(shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]")).unwrap();
+        fs::write(
+            shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]/data.txt"),
+            "x",
+        )
+        .unwrap();
+        fs::create_dir(shared.join("dest")).unwrap();
+
+        let inner = "Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]";
+
+        // An unrelated user can't see the nested box even though it exists —
+        // indistinguishable from missing.
+        let carol = login_user(&mut test_ctx, "carol", "pw", &[Permission::FileMove], false).await;
+        handle_file_move(
+            inner.to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(carol),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileMoveResponse {
+                success,
+                error_kind,
+                ..
+            } => {
+                assert!(!success);
+                assert_eq!(error_kind, Some(ErrorKind::NotFound.into()));
+            }
+            other => panic!("Expected FileMoveResponse, got: {:?}", other),
+        }
+        assert!(shared.join(inner).exists()); // untouched
+
+        // M1: bob owns the inner box — he can move it (owner), contents come with.
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileMove], false).await;
+        handle_file_move(
+            inner.to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileMoveResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileMoveResponse, got: {:?}", other),
+        }
+        assert!(shared.join("dest/Inner [NEXUS-DB-bob]/data.txt").exists());
     }
 }

@@ -138,6 +138,98 @@ pub fn in_owned_dropbox(target: &Path, area_root: &Path, username: &str) -> bool
     false
 }
 
+/// The innermost drop-box folder between `dir` and `area_root` (innermost-wins:
+/// the first drop-box ancestor encountered decides the scope).
+#[derive(Debug, PartialEq, Eq)]
+pub enum DropboxScope {
+    /// Generic `[NEXUS-DB]` — contents readable by admins only.
+    Blind,
+    /// `[NEXUS-DB-<owner>]` — contents readable by the named owner or admins.
+    Owned(String),
+}
+
+/// Innermost-wins walk: classify the drop-box scope of `dir` within `area_root`
+/// (exclusive), or `None` when no drop-box ancestor exists. `dir` and
+/// `area_root` must share a path space (both real, or both virtual).
+#[must_use]
+pub fn innermost_dropbox(dir: &Path, area_root: &Path) -> Option<DropboxScope> {
+    let mut path = dir;
+
+    while path != area_root {
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            match parse_folder_type(name) {
+                FolderType::DropBox => return Some(DropboxScope::Blind),
+                FolderType::UserDropBox(owner) => return Some(DropboxScope::Owned(owner)),
+                _ => {}
+            }
+        }
+        match path.parent() {
+            Some(parent) => path = parent,
+            None => break,
+        }
+    }
+
+    None
+}
+
+/// Whether contents at `dir` are readable given drop-box gating (innermost-wins).
+/// Admins read everything; a user drop box is readable by its named owner; a
+/// generic drop box is admin-only.
+///
+/// The read-side companion of [`in_owned_dropbox`], shared by the listing,
+/// search, info, copy, and move handlers so the gate lives in one place.
+#[must_use]
+pub fn dropbox_contents_readable(
+    dir: &Path,
+    area_root: &Path,
+    username: &str,
+    is_admin: bool,
+) -> bool {
+    match innermost_dropbox(dir, area_root) {
+        None => true,
+        Some(DropboxScope::Blind) => is_admin,
+        Some(DropboxScope::Owned(owner)) => is_admin || fold_name(&owner) == fold_name(username),
+    }
+}
+
+/// Whether an entry at `path` is VISIBLE to the requester under drop-box gating.
+///
+/// An entry shows iff it would appear in a listing of its parent directory (the
+/// parent's contents are readable), OR the entry is itself a drop-box directory
+/// the requester may read — innermost-wins, so the owner of a *nested* drop box
+/// still sees their own box even when it sits inside someone else's.
+///
+/// `is_dir` must say whether `path` resolves to a directory; a regular file
+/// whose name merely carries a drop-box suffix is never treated as a box.
+#[must_use]
+pub fn dropbox_entry_visible(
+    path: &Path,
+    area_root: &Path,
+    username: &str,
+    is_admin: bool,
+    is_dir: bool,
+) -> bool {
+    let parent_readable = path
+        .parent()
+        .is_none_or(|p| dropbox_contents_readable(p, area_root, username, is_admin));
+    parent_readable || (is_dir && dropbox_contents_readable(path, area_root, username, is_admin))
+}
+
+/// Whether `path` is a drop-box DIRECTORY whose contents the requester may not
+/// read — the case where FileInfo masks the child count and Copy/Rename of the
+/// folder itself is denied. False for non-directories, so a file whose name
+/// happens to carry a drop-box suffix is unaffected.
+#[must_use]
+pub fn is_unreadable_dropbox_dir(
+    path: &Path,
+    area_root: &Path,
+    username: &str,
+    is_admin: bool,
+    is_dir: bool,
+) -> bool {
+    is_dir && !dropbox_contents_readable(path, area_root, username, is_admin)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,5 +459,130 @@ mod tests {
         let target = Path::new("/area/For Alice [NEXUS-DB-alice]/Submissions [NEXUS-DB]/file.txt");
         // Alice's outer dropbox is shadowed by the inner generic dropbox.
         assert!(!in_owned_dropbox(target, area_root, "alice"));
+    }
+
+    #[test]
+    fn test_dropbox_contents_readable() {
+        let area = Path::new("/shared");
+
+        // Open area: readable by everyone.
+        assert!(dropbox_contents_readable(
+            Path::new("/shared/Docs"),
+            area,
+            "bob",
+            false
+        ));
+
+        // Generic drop box: admins only.
+        let blind = Path::new("/shared/Inbox [NEXUS-DB]");
+        assert!(!dropbox_contents_readable(blind, area, "bob", false));
+        assert!(dropbox_contents_readable(blind, area, "bob", true));
+
+        // User drop box: the named owner or an admin.
+        let alice_box = Path::new("/shared/For Alice [NEXUS-DB-alice]");
+        assert!(dropbox_contents_readable(alice_box, area, "alice", false));
+        assert!(!dropbox_contents_readable(alice_box, area, "bob", false));
+        assert!(dropbox_contents_readable(alice_box, area, "bob", true));
+
+        // Innermost-wins: bob's box inside alice's box — bob reads it.
+        let nested = Path::new("/shared/For Alice [NEXUS-DB-alice]/Re [NEXUS-DB-bob]");
+        assert!(dropbox_contents_readable(nested, area, "bob", false));
+        assert!(!dropbox_contents_readable(nested, area, "alice", false));
+
+        // A deep path resolves through its innermost drop-box ancestor.
+        let deep = Path::new("/shared/Inbox [NEXUS-DB]/sub/dir");
+        assert!(!dropbox_contents_readable(deep, area, "bob", false));
+    }
+
+    #[test]
+    fn test_dropbox_entry_visible() {
+        let area = Path::new("/shared");
+
+        // Ordinary content in an open area: visible.
+        assert!(dropbox_entry_visible(
+            Path::new("/shared/Docs/file.txt"),
+            area,
+            "bob",
+            false,
+            false
+        ));
+
+        // A top-level drop box FOLDER is visible to everyone — only its contents
+        // are gated, and its parent (the open area) is readable.
+        let alice_box = Path::new("/shared/For Alice [NEXUS-DB-alice]");
+        assert!(dropbox_entry_visible(alice_box, area, "bob", false, true));
+        assert!(dropbox_entry_visible(alice_box, area, "alice", false, true));
+
+        // A file INSIDE alice's box is hidden from non-owners (parent unreadable,
+        // and a file is never itself a box), but the owner sees it.
+        let inside = Path::new("/shared/For Alice [NEXUS-DB-alice]/secret.txt");
+        assert!(!dropbox_entry_visible(inside, area, "bob", false, false));
+        assert!(dropbox_entry_visible(inside, area, "alice", false, false));
+
+        // M1: bob's box nested inside alice's box. The folder itself is visible to
+        // its owner (innermost-wins, self-inclusive) despite alice's parent box…
+        let nested = Path::new("/shared/For Alice [NEXUS-DB-alice]/Re [NEXUS-DB-bob]");
+        assert!(dropbox_entry_visible(nested, area, "bob", false, true));
+        // …but not to an unrelated user; admins see everything.
+        assert!(!dropbox_entry_visible(nested, area, "carol", false, true));
+        assert!(dropbox_entry_visible(nested, area, "carol", true, true));
+
+        // A non-box SUBDIR inside alice's box stays hidden from non-owners — the
+        // self-inclusive term doesn't fire, since it isn't a box bob can read.
+        let subdir = Path::new("/shared/For Alice [NEXUS-DB-alice]/notes");
+        assert!(!dropbox_entry_visible(subdir, area, "bob", false, true));
+
+        // L1: a regular FILE whose name merely carries a drop-box suffix, in an
+        // open area, is visible (is_dir = false, parent readable).
+        let suffix_file = Path::new("/shared/Budget [NEXUS-DB-alice]");
+        assert!(dropbox_entry_visible(
+            suffix_file,
+            area,
+            "bob",
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn test_is_unreadable_dropbox_dir() {
+        let area = Path::new("/shared");
+
+        // A top-level user box is an unreadable box dir for non-owners; not for
+        // the owner or an admin.
+        let alice_box = Path::new("/shared/For Alice [NEXUS-DB-alice]");
+        assert!(is_unreadable_dropbox_dir(
+            alice_box, area, "bob", false, true
+        ));
+        assert!(!is_unreadable_dropbox_dir(
+            alice_box, area, "alice", false, true
+        ));
+        assert!(!is_unreadable_dropbox_dir(
+            alice_box, area, "bob", true, true
+        ));
+
+        // Generic blind box: unreadable for non-admins.
+        let blind = Path::new("/shared/Inbox [NEXUS-DB]");
+        assert!(is_unreadable_dropbox_dir(blind, area, "bob", false, true));
+        assert!(!is_unreadable_dropbox_dir(blind, area, "bob", true, true));
+
+        // L1: a FILE that merely looks like a box (is_dir = false) is never an
+        // unreadable box dir, so copy/rename of it isn't blocked.
+        assert!(!is_unreadable_dropbox_dir(
+            alice_box, area, "bob", false, false
+        ));
+
+        // M1: bob's own nested box is not "unreadable" to bob.
+        let nested = Path::new("/shared/For Alice [NEXUS-DB-alice]/Re [NEXUS-DB-bob]");
+        assert!(!is_unreadable_dropbox_dir(nested, area, "bob", false, true));
+
+        // An ordinary directory is not a box at all.
+        assert!(!is_unreadable_dropbox_dir(
+            Path::new("/shared/Docs"),
+            area,
+            "bob",
+            false,
+            true
+        ));
     }
 }

@@ -21,8 +21,8 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    FolderType, allows_upload, build_and_validate_candidate_path, is_hidden_name,
-    parse_folder_type, resolve_path, resolve_user_area,
+    DropboxScope, FolderType, allows_upload, build_and_validate_candidate_path, innermost_dropbox,
+    is_hidden_name, parse_folder_type, resolve_path, resolve_user_area,
 };
 
 /// Read directory entries (sorted dirs-first, then by name). None if unreadable.
@@ -373,37 +373,22 @@ fn dropbox_context(
     is_admin: bool,
     username: &str,
 ) -> DropboxContext {
-    let mut path = current_dir;
-
-    while path != area_root {
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            match parse_folder_type(name) {
-                FolderType::DropBox => {
-                    return DropboxContext {
-                        hide_contents: !is_admin,
-                        dropbox_owner: None,
-                    };
-                }
-                FolderType::UserDropBox(owner) => {
-                    let is_owner = fold_name(&owner) == fold_name(username);
-                    return DropboxContext {
-                        hide_contents: !is_admin && !is_owner,
-                        dropbox_owner: Some(owner),
-                    };
-                }
-                _ => {}
+    match innermost_dropbox(current_dir, area_root) {
+        None => DropboxContext {
+            hide_contents: false,
+            dropbox_owner: None,
+        },
+        Some(DropboxScope::Blind) => DropboxContext {
+            hide_contents: !is_admin,
+            dropbox_owner: None,
+        },
+        Some(DropboxScope::Owned(owner)) => {
+            let is_owner = fold_name(&owner) == fold_name(username);
+            DropboxContext {
+                hide_contents: !is_admin && !is_owner,
+                dropbox_owner: Some(owner),
             }
         }
-
-        match path.parent() {
-            Some(parent) => path = parent,
-            None => break,
-        }
-    }
-
-    DropboxContext {
-        hide_contents: false,
-        dropbox_owner: None,
     }
 }
 

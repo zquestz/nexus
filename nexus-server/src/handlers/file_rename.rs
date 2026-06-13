@@ -22,8 +22,8 @@ use crate::constants::{
 };
 use crate::db::Permission;
 use crate::files::{
-    activity_key, build_and_validate_candidate_path, in_owned_dropbox, rename_path_async,
-    resolve_path, resolve_user_area,
+    activity_key, build_and_validate_candidate_path, dropbox_entry_visible, in_owned_dropbox,
+    is_unreadable_dropbox_dir, rename_path_async, resolve_path, resolve_user_area,
 };
 
 pub async fn handle_file_rename<W>(
@@ -161,6 +161,45 @@ where
     let bypass_via_ownership =
         !root && in_owned_dropbox(&candidate, &area_root, &requesting_user.username);
     if !requesting_user.has_permission(Permission::FileRename) && !bypass_via_ownership {
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_PERMISSION_DENIED);
+        let response = ServerMessage::FileRenameResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Drop-box read-gate. `candidate_is_dir` follows symlinks so a symlinked drop
+    // box still counts as a directory; a regular file that merely *looks* like a
+    // drop box is renamed normally. A target the requester can't see is
+    // indistinguishable from a missing path. Renaming the drop box folder itself
+    // could strip its `[NEXUS-DB-…]` suffix and de-gate every file inside, so a
+    // requester without read access is denied. Owners and admins (who already
+    // read the contents) pass.
+    let candidate_is_dir = tokio::fs::metadata(&candidate)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+    if !dropbox_entry_visible(
+        &candidate,
+        &area_root,
+        &requesting_user.username,
+        requesting_user.is_admin,
+        candidate_is_dir,
+    ) {
+        let response = ServerMessage::FileRenameResponse {
+            success: false,
+            error: Some(err_file_not_found(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
+    }
+    if is_unreadable_dropbox_dir(
+        &candidate,
+        &area_root,
+        &requesting_user.username,
+        requesting_user.is_admin,
+        candidate_is_dir,
+    ) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_PERMISSION_DENIED);
         let response = ServerMessage::FileRenameResponse {
             success: false,
@@ -1167,5 +1206,133 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
         assert!(file_area.path().join("shared/elsewhere.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_file_rename_dropbox_gating() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        fs::create_dir_all(shared.join("For Alice [NEXUS-DB-alice]")).unwrap();
+        fs::write(shared.join("For Alice [NEXUS-DB-alice]/secret.txt"), "x").unwrap();
+
+        let file = "For Alice [NEXUS-DB-alice]/secret.txt";
+        let folder = "For Alice [NEXUS-DB-alice]";
+
+        // bob (non-owner with FileRename): the file inside is indistinguishable
+        // from missing; renaming the folder — which could strip its suffix and
+        // de-gate the contents — is permission-denied.
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileRename], false).await;
+        handle_file_rename(
+            file.to_string(),
+            "exposed.txt".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_file_not_found(DEFAULT_TEST_LOCALE)));
+            }
+            other => panic!("Expected FileRenameResponse, got: {:?}", other),
+        }
+        handle_file_rename(
+            folder.to_string(),
+            "Exposed".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            other => panic!("Expected FileRenameResponse, got: {:?}", other),
+        }
+        // The suffix is intact — nothing was de-gated.
+        assert!(shared.join("For Alice [NEXUS-DB-alice]").exists());
+
+        // alice (owner with FileRename): can rename her own drop box folder.
+        let alice = login_user(
+            &mut test_ctx,
+            "alice",
+            "pw",
+            &[Permission::FileRename],
+            false,
+        )
+        .await;
+        handle_file_rename(
+            folder.to_string(),
+            "Alice Box [NEXUS-DB-alice]".to_string(),
+            false,
+            Some(alice),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileRenameResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileRenameResponse, got: {:?}", other),
+        }
+        assert!(shared.join("Alice Box [NEXUS-DB-alice]").exists());
+    }
+
+    #[tokio::test]
+    async fn test_file_rename_nested_owned_and_suffix_named_file() {
+        let mut test_ctx = create_test_context().await;
+        let area = setup_file_area_basic(&mut test_ctx);
+        let shared = area.path().join("shared");
+        fs::create_dir_all(shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]")).unwrap();
+        fs::write(
+            shared.join("Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]/data.txt"),
+            "x",
+        )
+        .unwrap();
+        // A regular FILE whose name merely carries a drop-box suffix.
+        fs::write(shared.join("Budget [NEXUS-DB-alice]"), "y").unwrap();
+
+        let bob = login_user(&mut test_ctx, "bob", "pw", &[Permission::FileRename], false).await;
+
+        // L1: a regular file that only looks like a box is renamed normally.
+        handle_file_rename(
+            "Budget [NEXUS-DB-alice]".to_string(),
+            "Budget.txt".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileRenameResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileRenameResponse, got: {:?}", other),
+        }
+        assert!(shared.join("Budget.txt").exists());
+
+        // M1: bob renames his own nested box (owner + FileRename) — allowed.
+        handle_file_rename(
+            "Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]".to_string(),
+            "Renamed [NEXUS-DB-bob]".to_string(),
+            false,
+            Some(bob),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileRenameResponse { success, .. } => assert!(success),
+            other => panic!("Expected FileRenameResponse, got: {:?}", other),
+        }
+        assert!(
+            shared
+                .join("Outer [NEXUS-DB-alice]/Renamed [NEXUS-DB-bob]/data.txt")
+                .exists()
+        );
     }
 }
