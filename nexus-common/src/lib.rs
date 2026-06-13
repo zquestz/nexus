@@ -7,6 +7,7 @@ use std::time::Duration;
 pub mod address;
 mod error_kind;
 pub mod fingerprint;
+pub mod folders;
 pub mod framing;
 pub mod hash;
 pub mod io;

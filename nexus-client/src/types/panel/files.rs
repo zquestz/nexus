@@ -2,6 +2,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use nexus_common::folders::strip_folder_suffix;
 use nexus_common::framing::MessageId;
 
 use crate::i18n::t;
@@ -603,35 +604,11 @@ impl FilesManagementState {
         }
     }
 
-    /// Get the display name for a file entry (strips folder type suffixes)
+    /// Get the display name for a file entry (strips folder type suffixes).
+    ///
+    /// Delegates to the shared, Unicode-safe `nexus_common::folders` helper.
     pub fn display_name(name: &str) -> String {
-        // Suffixes to strip (case-insensitive, with leading space)
-        const SUFFIX_UPLOAD: &str = " [NEXUS-UL]";
-        const SUFFIX_DROPBOX: &str = " [NEXUS-DB]";
-        const SUFFIX_DROPBOX_PREFIX: &str = " [NEXUS-DB-";
-
-        let name_upper = name.to_uppercase();
-
-        // Check for user-specific dropbox suffix first (e.g., " [NEXUS-DB-alice]")
-        if let Some(pos) = name_upper.rfind(SUFFIX_DROPBOX_PREFIX.to_uppercase().as_str())
-            && name_upper.ends_with(']')
-        {
-            return name[..pos].to_string();
-        }
-
-        // Check for generic dropbox suffix
-        if name_upper.ends_with(SUFFIX_DROPBOX.to_uppercase().as_str()) {
-            let suffix_start = name.len() - SUFFIX_DROPBOX.len();
-            return name[..suffix_start].to_string();
-        }
-
-        // Check for upload suffix
-        if name_upper.ends_with(SUFFIX_UPLOAD.to_uppercase().as_str()) {
-            let suffix_start = name.len() - SUFFIX_UPLOAD.len();
-            return name[..suffix_start].to_string();
-        }
-
-        name.to_string()
+        strip_folder_suffix(name).to_string()
     }
 }
 
@@ -1210,6 +1187,18 @@ mod tests {
         assert_eq!(
             FilesManagementState::display_name("Files [NEXUS-UL] backup"),
             "Files [NEXUS-UL] backup"
+        );
+    }
+
+    #[test]
+    fn test_display_name_multibyte_label_does_not_panic() {
+        // Regression: a length-changing char before the marker ("ﬁ" U+FB01)
+        // used to corrupt the slice offset and panic while rendering the file
+        // list. A Unicode username must also survive intact.
+        assert_eq!(FilesManagementState::display_name("ﬁ [NEXUS-DB-bob]"), "ﬁ");
+        assert_eq!(
+            FilesManagementState::display_name("Café [NEXUS-DB-Ünïcödé]"),
+            "Café"
         );
     }
 

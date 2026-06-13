@@ -5,10 +5,11 @@
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
+use nexus_common::folders::strip_folder_suffix;
+
 use crate::constants::{
     ERR_FILE_ACCESS_DENIED, ERR_FILE_CANONICALIZE, ERR_FILE_INVALID_AREA_ROOT,
-    ERR_FILE_INVALID_PATH, ERR_FILE_NOT_FOUND, FOLDER_SUFFIX_DROPBOX, FOLDER_SUFFIX_DROPBOX_PREFIX,
-    FOLDER_SUFFIX_UPLOAD,
+    ERR_FILE_INVALID_PATH, ERR_FILE_NOT_FOUND,
 };
 use crate::files::folder_type::{FolderType, parse_folder_type};
 
@@ -280,35 +281,6 @@ pub async fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<Path
     Ok(canonical_parent.join(filename))
 }
 
-/// Strip folder type suffix from a name to get the display name
-///
-/// This is the inverse of how folders are named with suffixes like `[NEXUS-UL]`.
-/// Used for matching client paths that use stripped names against filesystem names.
-#[must_use]
-fn strip_folder_suffix(name: &str) -> String {
-    let name_upper = name.to_uppercase();
-
-    // User-specific dropbox suffix (e.g., " [NEXUS-DB-alice]") must be checked
-    // before the generic dropbox suffix.
-    if let Some(pos) = name_upper.rfind(FOLDER_SUFFIX_DROPBOX_PREFIX)
-        && name_upper.ends_with(']')
-    {
-        return name[..pos].to_string();
-    }
-
-    if name_upper.ends_with(FOLDER_SUFFIX_DROPBOX) {
-        let suffix_start = name.len() - FOLDER_SUFFIX_DROPBOX.len();
-        return name[..suffix_start].to_string();
-    }
-
-    if name_upper.ends_with(FOLDER_SUFFIX_UPLOAD) {
-        let suffix_start = name.len() - FOLDER_SUFFIX_UPLOAD.len();
-        return name[..suffix_start].to_string();
-    }
-
-    name.to_string()
-}
-
 /// Resolve a single path segment within a directory, with suffix matching
 ///
 /// Tries exact match first, then falls back to matching against stripped suffix names.
@@ -411,61 +383,6 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
-
-    #[test]
-    fn test_strip_folder_suffix_upload() {
-        assert_eq!(strip_folder_suffix("uploads [NEXUS-UL]"), "uploads");
-        assert_eq!(strip_folder_suffix("My Uploads [NEXUS-UL]"), "My Uploads");
-    }
-
-    #[test]
-    fn test_strip_folder_suffix_dropbox() {
-        assert_eq!(strip_folder_suffix("inbox [NEXUS-DB]"), "inbox");
-        assert_eq!(strip_folder_suffix("Drop Box [NEXUS-DB]"), "Drop Box");
-    }
-
-    #[test]
-    fn test_strip_folder_suffix_user_dropbox() {
-        assert_eq!(strip_folder_suffix("inbox [NEXUS-DB-alice]"), "inbox");
-        assert_eq!(strip_folder_suffix("For Bob [NEXUS-DB-bob]"), "For Bob");
-    }
-
-    #[test]
-    fn test_strip_folder_suffix_case_insensitive() {
-        assert_eq!(strip_folder_suffix("uploads [nexus-ul]"), "uploads");
-        assert_eq!(strip_folder_suffix("inbox [Nexus-DB]"), "inbox");
-        assert_eq!(strip_folder_suffix("inbox [NEXUS-db-Alice]"), "inbox");
-    }
-
-    #[test]
-    fn test_strip_folder_suffix_no_suffix() {
-        assert_eq!(strip_folder_suffix("normal"), "normal");
-        assert_eq!(strip_folder_suffix("My Documents"), "My Documents");
-        assert_eq!(strip_folder_suffix(""), "");
-    }
-
-    #[test]
-    fn test_strip_folder_suffix_preserves_non_suffix_brackets() {
-        // Brackets that aren't suffixes should be preserved
-        assert_eq!(strip_folder_suffix("folder [other]"), "folder [other]");
-        assert_eq!(strip_folder_suffix("[test] folder"), "[test] folder");
-    }
-
-    #[test]
-    fn test_strip_folder_suffix_malformed() {
-        // Incomplete/malformed suffixes should be treated as literal names
-        assert_eq!(strip_folder_suffix("folder [NEXUS-"), "folder [NEXUS-");
-        assert_eq!(strip_folder_suffix("folder [NEXUS-UL"), "folder [NEXUS-UL");
-        assert_eq!(strip_folder_suffix("folder [NEXUS-DB"), "folder [NEXUS-DB");
-        assert_eq!(
-            strip_folder_suffix("folder [NEXUS-DB-"),
-            "folder [NEXUS-DB-"
-        );
-        assert_eq!(
-            strip_folder_suffix("folder [NEXUS-DB-user"),
-            "folder [NEXUS-DB-user"
-        );
-    }
 
     fn setup_test_area() -> (TempDir, PathBuf) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");

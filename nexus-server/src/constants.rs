@@ -8,13 +8,6 @@ pub const FILES_DIR_NAME: &str = "files";
 pub const FILES_SHARED_DIR: &str = "shared";
 pub const FILES_USERS_DIR: &str = "users";
 
-/// Case-insensitive; includes the leading space.
-pub const FOLDER_SUFFIX_UPLOAD: &str = " [NEXUS-UL]";
-/// Case-insensitive; includes the leading space.
-pub const FOLDER_SUFFIX_DROPBOX: &str = " [NEXUS-DB]";
-/// Prefix for user-specific drop boxes; includes the leading space.
-pub const FOLDER_SUFFIX_DROPBOX_PREFIX: &str = " [NEXUS-DB-";
-
 /// Fallback when a path has no filename or a non-UTF-8 filename.
 pub const DEFAULT_FILENAME: &str = "file";
 

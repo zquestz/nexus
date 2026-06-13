@@ -23,17 +23,16 @@ pub fn is_duration_format(s: &str) -> bool {
         return true;
     }
 
-    // Must be digits followed by m, h, or d
-    if s.len() < 2 {
+    // Must be one or more ASCII digits followed by m, h, or d
+    let Some(num_part) = s
+        .strip_suffix('m')
+        .or_else(|| s.strip_suffix('h'))
+        .or_else(|| s.strip_suffix('d'))
+    else {
         return false;
-    }
+    };
 
-    let (num_part, unit) = s.split_at(s.len() - 1);
-    if !matches!(unit, "m" | "h" | "d") {
-        return false;
-    }
-
-    num_part.chars().all(|c| c.is_ascii_digit()) && !num_part.is_empty()
+    !num_part.is_empty() && num_part.chars().all(|c| c.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -77,5 +76,14 @@ mod tests {
         assert!(!is_duration_format("abc"));
         assert!(!is_duration_format("10min"));
         assert!(!is_duration_format("-10m"));
+    }
+
+    #[test]
+    fn test_is_duration_format_multibyte_no_panic() {
+        // Regression: byte-index split_at panicked on multi-byte final chars
+        assert!(!is_duration_format("причина"));
+        assert!(!is_duration_format("é"));
+        assert!(!is_duration_format("5分"));
+        assert!(!is_duration_format("10м")); // Cyrillic м, not ASCII m
     }
 }

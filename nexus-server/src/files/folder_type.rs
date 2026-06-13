@@ -8,9 +8,10 @@
 
 use std::path::Path;
 
+use nexus_common::folders::{
+    FOLDER_SUFFIX_DROPBOX, FOLDER_SUFFIX_UPLOAD, ascii_suffix_start, find_user_dropbox_marker,
+};
 use nexus_common::names::fold_name;
-
-use crate::constants::{FOLDER_SUFFIX_DROPBOX, FOLDER_SUFFIX_DROPBOX_PREFIX, FOLDER_SUFFIX_UPLOAD};
 
 /// Type of folder based on suffix convention
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,50 +56,34 @@ pub enum FolderType {
 /// ```
 #[must_use]
 pub fn parse_folder_type(name: &str) -> FolderType {
-    let name_upper = name.to_uppercase();
-
-    // FOLDER_SUFFIX_* constants are uppercase ASCII, so comparison against
-    // name_upper works. Require an actual folder name before the suffix (not
-    // just whitespace) so a bare `[NEXUS-UL]` isn't treated as writable.
-    if name_upper.ends_with(FOLDER_SUFFIX_UPLOAD) && name.len() > FOLDER_SUFFIX_UPLOAD.len() {
-        let prefix_end = name.len() - FOLDER_SUFFIX_UPLOAD.len();
-        if !name[..prefix_end].trim().is_empty() {
-            return FolderType::Upload;
-        }
-    }
-
-    // User-specific drop box `[NEXUS-DB-username]`: must end with `]` and
-    // contain `[NEXUS-DB-` before the username.
-    if name_upper.ends_with(']')
-        && let Some(prefix_pos) = name_upper.rfind(FOLDER_SUFFIX_DROPBOX_PREFIX)
+    // Marker matching is offset-safe (case-insensitive ASCII against the
+    // original name); see `nexus_common::folders`. Each type additionally
+    // requires an actual folder name before the suffix (not just whitespace)
+    // so a bare `[NEXUS-UL]` isn't treated as writable.
+    if let Some(prefix_end) = ascii_suffix_start(name, FOLDER_SUFFIX_UPLOAD)
+        && !name[..prefix_end].trim().is_empty()
     {
-        let bracket_pos = name.len() - 1;
-
-        let username_start = prefix_pos + FOLDER_SUFFIX_DROPBOX_PREFIX.len();
-        let username_end = bracket_pos;
-
-        // Require username content between prefix and bracket, and an
-        // actual folder name (not just whitespace) before the suffix.
-        if username_start < username_end && prefix_pos > 0 {
-            let username = &name[username_start..username_end];
-            // Reject brackets in the username — that means this isn't a
-            // well-formed suffix (e.g. `[NEXUS-DB-alice] extra]`).
-            if !username.contains('[')
-                && !username.contains(']')
-                && !username.is_empty()
-                && !name[..prefix_pos].trim().is_empty()
-            {
-                return FolderType::UserDropBox(username.to_string());
-            }
-        }
+        return FolderType::Upload;
     }
 
-    // Generic drop box: require an actual folder name before the suffix.
-    if name_upper.ends_with(FOLDER_SUFFIX_DROPBOX) && name.len() > FOLDER_SUFFIX_DROPBOX.len() {
-        let prefix_end = name.len() - FOLDER_SUFFIX_DROPBOX.len();
-        if !name[..prefix_end].trim().is_empty() {
-            return FolderType::DropBox;
-        }
+    // User-specific drop box `[NEXUS-DB-username]`.
+    if let Some((prefix_pos, username)) = find_user_dropbox_marker(name)
+        // Require an actual folder name before the suffix, and a non-empty
+        // username with no stray brackets (e.g. `[NEXUS-DB-alice] extra]`).
+        && prefix_pos > 0
+        && !name[..prefix_pos].trim().is_empty()
+        && !username.is_empty()
+        && !username.contains('[')
+        && !username.contains(']')
+    {
+        return FolderType::UserDropBox(username.to_string());
+    }
+
+    // Generic drop box.
+    if let Some(prefix_end) = ascii_suffix_start(name, FOLDER_SUFFIX_DROPBOX)
+        && !name[..prefix_end].trim().is_empty()
+    {
+        return FolderType::DropBox;
     }
 
     FolderType::Default
@@ -282,6 +267,19 @@ mod tests {
         assert_eq!(
             parse_folder_type("Folder [NEXUS-DB] [NEXUS-UL]"),
             FolderType::Upload
+        );
+    }
+
+    #[test]
+    fn test_multibyte_label_does_not_panic() {
+        // A length-changing char before the marker (`ﬁ` U+FB01 = 3 bytes,
+        // would uppercase to "FI" = 2 bytes) used to corrupt the slice offset
+        // and panic. The label and a Unicode username must parse intact.
+        assert_eq!(parse_folder_type("ﬁ [NEXUS-UL]"), FolderType::Upload);
+        assert_eq!(parse_folder_type("Straße [NEXUS-DB]"), FolderType::DropBox);
+        assert_eq!(
+            parse_folder_type("ﬁ [NEXUS-DB-Ünïcödé]"),
+            FolderType::UserDropBox("Ünïcödé".to_string())
         );
     }
 
