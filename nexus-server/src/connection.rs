@@ -4,6 +4,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -302,30 +303,36 @@ async fn stage_egress_frame(
 
 async fn write_frame_bytes_with_timeout<W>(
     writer: &mut FrameWriter<W>,
-    bytes: &[u8],
+    mut bytes: &[u8],
     flush: bool,
+    timeout: Duration,
+    timeout_error: &'static str,
 ) -> io::Result<()>
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    match time::timeout(BBS_WRITE_TIMEOUT, async {
-        // These bytes are already complete frame bytes. They intentionally
-        // bypass FrameWriter framing and are only safe while the loop enforces
-        // frame-boundary writes for every other path.
-        let inner = writer.get_mut();
-        inner.write_all(bytes).await?;
-        if flush {
-            inner.flush().await?;
+    // These bytes are already complete frame bytes. They intentionally
+    // bypass FrameWriter framing and are only safe while the loop enforces
+    // frame-boundary writes for every other path.
+    let inner = writer.get_mut();
+    while !bytes.is_empty() {
+        match time::timeout(timeout, inner.write(bytes)).await {
+            Ok(Ok(0)) => {
+                return Err(io::Error::new(io::ErrorKind::WriteZero, ERR_BBS_WRITE_ZERO));
+            }
+            Ok(Ok(written)) => bytes = &bytes[written..],
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Err(io::Error::new(io::ErrorKind::TimedOut, timeout_error)),
         }
+    }
+
+    if flush {
+        match time::timeout(timeout, inner.flush()).await {
+            Ok(result) => result,
+            Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, timeout_error)),
+        }
+    } else {
         Ok(())
-    })
-    .await
-    {
-        Ok(result) => result,
-        Err(_) => Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            ERR_BBS_WRITE_TIMEOUT,
-        )),
     }
 }
 
@@ -416,6 +423,8 @@ where
                     &mut frame_writer,
                     dispatch.chunk.as_bytes(),
                     is_final_frame_chunk,
+                    BBS_CHUNK_WRITE_TIMEOUT,
+                    ERR_BBS_CHUNK_WRITE_TIMEOUT,
                 )
                 .await
                 .is_err()
@@ -656,6 +665,8 @@ where
                             &mut frame_writer,
                             frame.as_ref(),
                             true,
+                            BBS_DIRECT_WRITE_TIMEOUT,
+                            ERR_BBS_WRITE_TIMEOUT,
                         )
                         .await
                         .is_err()
@@ -1177,7 +1188,9 @@ fn frame_error_command(err: &FrameError) -> Option<String> {
 mod tests {
     use super::*;
     use std::num::NonZeroUsize;
+    use std::pin::Pin;
     use std::sync::Arc;
+    use std::task::{Context, Poll};
     use std::time::Duration;
 
     use nexus_common::framing::{FrameContexts, RawFrame};
@@ -1186,7 +1199,7 @@ mod tests {
     };
     use nexus_common::protocol::{ChatAction, ServerMessage};
     use nexus_common::validators::{DEFAULT_CHANNEL, MAX_MESSAGE_LENGTH};
-    use tokio::io::{AsyncWriteExt, DuplexStream, ReadHalf, WriteHalf};
+    use tokio::io::{AsyncWrite, AsyncWriteExt, DuplexStream, ReadHalf, WriteHalf};
 
     use crate::egress::EgressManager;
     use crate::egress::task::{
@@ -1197,6 +1210,101 @@ mod tests {
 
     type TestReader = FrameReader<BufReader<ReadHalf<DuplexStream>>>;
     type TestWriter = FrameWriter<WriteHalf<DuplexStream>>;
+
+    struct PendingWriter;
+
+    impl AsyncWrite for PendingWriter {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Pending
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    struct ProgressThenPendingWriter {
+        writes_before_pending: usize,
+        bytes: Vec<u8>,
+    }
+
+    impl ProgressThenPendingWriter {
+        fn new(writes_before_pending: usize) -> Self {
+            Self {
+                writes_before_pending,
+                bytes: Vec::new(),
+            }
+        }
+    }
+
+    impl AsyncWrite for ProgressThenPendingWriter {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            if self.writes_before_pending == 0 {
+                return Poll::Pending;
+            }
+
+            self.writes_before_pending -= 1;
+            let written = buf.len().min(2);
+            self.bytes.extend_from_slice(&buf[..written]);
+            Poll::Ready(Ok(written))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn frame_byte_write_uses_supplied_timeout_error() {
+        let mut writer = FrameWriter::new(PendingWriter);
+
+        let err = write_frame_bytes_with_timeout(
+            &mut writer,
+            b"chunk",
+            false,
+            Duration::from_millis(1),
+            ERR_BBS_CHUNK_WRITE_TIMEOUT,
+        )
+        .await
+        .expect_err("pending chunk write should time out");
+
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(err.to_string(), ERR_BBS_CHUNK_WRITE_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn frame_byte_write_timeout_resets_after_progress() {
+        let mut writer = FrameWriter::new(ProgressThenPendingWriter::new(2));
+
+        let err = write_frame_bytes_with_timeout(
+            &mut writer,
+            b"payload",
+            false,
+            Duration::from_millis(1),
+            ERR_BBS_CHUNK_WRITE_TIMEOUT,
+        )
+        .await
+        .expect_err("writer should time out only after progress stops");
+
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(writer.get_ref().bytes, b"payl");
+    }
 
     struct TestConnection {
         reader: TestReader,

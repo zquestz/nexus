@@ -7,7 +7,7 @@ use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
-use crate::constants::{BBS_WRITE_TIMEOUT, ERR_BBS_WRITE_TIMEOUT};
+use crate::constants::{BBS_DIRECT_WRITE_TIMEOUT, ERR_BBS_WRITE_TIMEOUT};
 
 pub(crate) async fn send_server_message_with_write_timeout<W>(
     writer: &mut FrameWriter<W>,
@@ -18,7 +18,7 @@ where
     W: AsyncWrite + Unpin,
 {
     match time::timeout(
-        BBS_WRITE_TIMEOUT,
+        BBS_DIRECT_WRITE_TIMEOUT,
         send_server_message_with_id(writer, message, message_id),
     )
     .await

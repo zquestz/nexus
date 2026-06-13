@@ -129,9 +129,15 @@ pub const SESSION_MESSAGE_QUEUE_CAPACITY: usize = 1024;
 /// Control queue is reserved for the slow-client disconnect only.
 pub const SESSION_CONTROL_QUEUE_CAPACITY: usize = 1;
 
-/// Upper bound for one BBS protocol message write. This is intentionally high
-/// enough for very slow links while still bounding peers that stop reading.
-pub const BBS_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+/// Upper bound for one direct BBS protocol message write. This is intentionally
+/// high enough for very slow LAN/private-network peers while still bounding
+/// peers that stop reading.
+pub const BBS_DIRECT_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// Per-egress-chunk write timeout. Egress frames are chunked to 1-64 KiB, so
+/// this remains slow-client friendly while keeping public stalled readers from
+/// pinning a connection for the direct whole-frame timeout per chunk.
+pub const BBS_CHUNK_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// WF2Q+ scheduler chunk size in bytes.
 pub const CONFIG_KEY_SCHEDULER_CHUNK_SIZE: &str = "scheduler_chunk_size";
@@ -181,6 +187,8 @@ pub const ERR_TRACKER_BOOTSTRAP_FAILED: &str = "Failed to bootstrap tracker mana
 pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 pub const ERR_BBS_WRITE_TIMEOUT: &str = "BBS message write timed out";
+pub const ERR_BBS_CHUNK_WRITE_TIMEOUT: &str = "BBS egress chunk write timed out";
+pub const ERR_BBS_WRITE_ZERO: &str = "BBS write returned zero bytes";
 pub const ERR_EGRESS_STAGE_FAILED: &str = "egress message staging failed";
 
 #[cfg(unix)]
