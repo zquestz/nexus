@@ -266,11 +266,13 @@ where
     let account = match db.users.get_user_by_username(&username).await {
         Ok(Some(acc)) => acc,
         Ok(None) => {
-            // Match the wrong-password path's Argon2 cost so response timing
-            // does not reveal whether the username exists — same defense as
-            // the BBS port's login handler.
-            let min_strength = db.config.get_min_password_strength().await;
-            let _ = db::hash_password_async(password.clone(), min_strength, false).await;
+            // Equalize timing against the wrong-password path so response time
+            // does not reveal whether the username exists — same defense as the
+            // BBS port's login handler. Runs the same verify the real path runs
+            // (lenient input validation + full Argon2, no strength short-circuit)
+            // against a fixed dummy hash; the result is intentionally discarded.
+            let _ = db::verify_password_async(password.clone(), db::DUMMY_VERIFY_HASH.to_string())
+                .await;
             if !login_ip_trusted {
                 login_limiter.record_failure(login_ip);
             }

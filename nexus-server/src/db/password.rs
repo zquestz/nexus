@@ -15,6 +15,28 @@ use crate::constants::ERR_PASSWORD_TASK_JOIN;
 
 const FAST_HASH_PREFIX: &str = "$FAST$";
 
+/// Password [`DUMMY_VERIFY_HASH`] was generated from. Not a real credential —
+/// only the drift-guard test uses it, to re-derive the hash under the current
+/// `Argon2::default()` parameters.
+#[cfg(test)]
+const DUMMY_VERIFY_PASSWORD: &str = "nexus-login-timing-equalizer";
+
+/// A fixed Argon2id hash (current `Argon2::default()` params) used to equalize
+/// login response timing for an unknown username. A login handler that finds no
+/// account runs the real [`verify_password_async`] against THIS hash, so the
+/// unknown-user path pays the same Argon2 cost as a wrong-password attempt on a
+/// real account — closing the username-enumeration timing oracle. Because the
+/// equalizer goes through `verify_password` (lenient `validate_password_input`,
+/// not the strength check), a weak or empty password reaches Argon2 instead of
+/// short-circuiting sub-millisecond. The supplied password never matches; the
+/// result is discarded.
+///
+/// If `Argon2::default()` ever changes its parameters, the
+/// `dummy_hash_matches_current_argon2_defaults` test fails — regenerate this
+/// value from `DUMMY_VERIFY_PASSWORD` so the equalizer cost still matches the
+/// cost of verifying accounts hashed by the new defaults.
+pub const DUMMY_VERIFY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$7RgGov81OJ457eyqQUa7XQ$LFQL/pSW4kjwXefB0uoiSeE4qrWNIKON7v/AUn7eH/0";
+
 #[derive(Debug)]
 pub enum PasswordError {
     Validation(validators::PasswordError),
@@ -166,6 +188,42 @@ pub async fn verify_password_async(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dummy_hash_matches_current_argon2_defaults() {
+        // Re-derive the dummy hash from its known password and embedded salt
+        // under TODAY's Argon2::default(). If the params drift, the rehash won't
+        // match and this fails — the const must be regenerated so the timing
+        // equalizer's cost still tracks real-account verifies.
+        let parsed = PasswordHash::new(DUMMY_VERIFY_HASH).expect("DUMMY_VERIFY_HASH must parse");
+        let salt = parsed.salt.expect("DUMMY_VERIFY_HASH must carry a salt");
+        let rehash = Argon2::default()
+            .hash_password(DUMMY_VERIFY_PASSWORD.as_bytes(), salt)
+            .expect("re-hash must succeed")
+            .to_string();
+        assert_eq!(
+            rehash, DUMMY_VERIFY_HASH,
+            "Argon2::default() params drifted — regenerate DUMMY_VERIFY_HASH from DUMMY_VERIFY_PASSWORD"
+        );
+    }
+
+    #[test]
+    fn dummy_hash_runs_argon2_for_weak_and_empty_passwords() {
+        // It is a real Argon2id hash, not a fast/plaintext one.
+        assert!(DUMMY_VERIFY_HASH.starts_with("$argon2id$"));
+        assert!(!DUMMY_VERIFY_HASH.starts_with(FAST_HASH_PREFIX));
+
+        // The equalizer path uses verify_password (lenient input validation), so
+        // weak and empty passwords reach Argon2 and return false rather than
+        // short-circuiting on strength — which is what closes the timing oracle.
+        assert!(matches!(verify_password("a", DUMMY_VERIFY_HASH), Ok(false)));
+        assert!(matches!(verify_password("", DUMMY_VERIFY_HASH), Ok(false)));
+        // And the known password still verifies, confirming the const is intact.
+        assert!(matches!(
+            verify_password(DUMMY_VERIFY_PASSWORD, DUMMY_VERIFY_HASH),
+            Ok(true)
+        ));
+    }
 
     #[test]
     fn test_argon2_hash_and_verify() {

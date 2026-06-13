@@ -319,6 +319,13 @@ where
                 .await;
         }
     } else {
+        // Unknown username. This COUNT is one query the wrong-password path
+        // (account found → verify) doesn't run, so it's a deliberate timing
+        // asymmetry — but it's tens of µs against the dummy verify's ~50–500 ms
+        // Argon2 (and network jitter), far below any measurable signal, so it's
+        // not a usable enumeration oracle. Not hoisted onto every login to
+        // equalize, since that would add a query to the valid-login hot path to
+        // chase a sub-noise residual.
         let has_non_guest_users = match ctx.db.users.has_non_guest_users().await {
             Ok(has_users) => has_users,
             Err(e) => {
@@ -330,12 +337,14 @@ where
         };
 
         if has_non_guest_users {
-            // Match the wrong-password path's Argon2 cost so response timing
-            // does not reveal whether the username exists. The dummy result is
-            // intentionally not surfaced; externally this remains invalid
-            // credentials either way.
-            let min_strength = ctx.db.config.get_min_password_strength().await;
-            let _ = db::hash_password_async(password.clone(), min_strength, false).await;
+            // Equalize timing against the wrong-password path so response time
+            // does not reveal whether the username exists. Runs the same verify
+            // the real path runs (lenient input validation + full Argon2, no
+            // strength short-circuit) against a fixed dummy hash; the result is
+            // intentionally discarded — externally this is invalid credentials
+            // either way.
+            let _ = db::verify_password_async(password.clone(), db::DUMMY_VERIFY_HASH.to_string())
+                .await;
             if !login_ip_trusted {
                 ctx.login_limiter.record_failure(login_ip);
             }
