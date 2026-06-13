@@ -11,7 +11,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
-use tokio::time::{self, MissedTickBehavior};
+use tokio::time;
 use uuid::Uuid;
 
 use nexus_common::names::fold_name;
@@ -449,9 +449,10 @@ async fn run_voice_session(
     // Reused each tick to avoid per-frame allocation.
     let mut render_mix = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
 
-    // Audio processing interval
+    // Audio processing interval. Use the default Burst missed-tick behavior:
+    // skipping 10ms voice ticks creates tiny playback holes that sound like
+    // crunchy dropouts when the manager thread is delayed.
     let mut audio_interval = time::interval(Duration::from_millis(AUDIO_PROCESS_INTERVAL_MS));
-    audio_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
