@@ -563,13 +563,13 @@ const TRACKER_SERVER_REGISTER_RESPONSE_SIZE: usize =
         + json_string_field("error_kind", MAX_ERROR_KIND_LENGTH);
 
 /// `TrackerServerListResponse` payload ceiling. The tracker is a
-/// user-trusted originator (TLS+TOFU pinned), so the cap is purely a
-/// defense-in-depth against a hostile or compromised tracker shipping
-/// arbitrary-sized payloads to OOM the client. Per-entry worst case is
-/// ~2KB at the field caps, so 16MB ≈ 8,000 entries — well above any
-/// realistic tracker. Clients filter / sort large lists in the panel,
-/// so the cap is the OOM ceiling, not a UX limit.
-const TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE: usize = 16 * 1024 * 1024;
+/// user-trusted originator (TLS+TOFU pinned), but the client still
+/// bounds allocation and JSON parse cost for hostile, compromised, or
+/// misconfigured trackers. The reference tracker sizes successful
+/// list responses by actual serialized entry bytes and truncates before
+/// this limit, so its default 10,000-entry registry fits while custom
+/// oversized registries remain wire-safe.
+pub const TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE: usize = 32 * 1024 * 1024;
 
 // -----------------------------------------------------------------------------
 // Server messages - Voice
@@ -2461,7 +2461,7 @@ mod tests {
         ChannelJoinInfo, ChatAction, ClientMessage, GroupInfo, ServerInfo, ServerMessage, UserInfo,
         UserInfoDetailed,
     };
-    use crate::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
+    use crate::tracker_protocol::{ServerEntry, TrackerClientMessage, TrackerServerMessage};
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH,
         MAX_CHAT_TOPIC_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH,
@@ -4808,15 +4808,42 @@ mod tests {
     }
 
     #[test]
-    fn test_limit_tracker_server_list_response_capped_at_16mib() {
-        // TrackerServerListResponse cap: 16 MiB defense-in-depth ceiling
+    fn test_limit_tracker_server_list_response_capped_at_32mib() {
+        // TrackerServerListResponse cap: 32 MiB defense-in-depth ceiling
         // (see TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE in this module).
-        // Per-entry worst case is ~2 KiB at field caps, so the cap
-        // accommodates ~8,000 entries — well above any realistic
-        // tracker. Clients filter / sort large lists locally.
+        // The reference tracker sizes successful lists by actual
+        // serialized entry bytes and truncates before this limit.
         assert_eq!(
             max_payload_for_type("TrackerServerListResponse"),
-            16 * 1024 * 1024,
+            TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE as u64,
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_server_list_response_default_entries_fit_cap() {
+        let entry = ServerEntry {
+            name: unicode_str_of_len(MAX_SERVER_NAME_LENGTH),
+            description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+            address: str_of_len(MAX_PUBLIC_ADDRESS_LENGTH),
+            port: u16::MAX,
+            websocket_port: Some(u16::MAX),
+            version: str_of_len(MAX_VERSION_LENGTH),
+            fingerprint: str_of_len(SHA256_FINGERPRINT_LENGTH),
+            user_count: u32::MAX,
+            allows_guest: false,
+        };
+        let empty_response = TrackerServerMessage::TrackerServerListResponse {
+            success: true,
+            servers: Vec::new(),
+            error: None,
+            error_kind: None,
+        };
+        let entry_size = json_size(&entry);
+        let size_for_default_registry =
+            json_size(&empty_response) + (10_000 * entry_size) + (10_000 - 1);
+        assert!(
+            size_for_default_registry <= TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE,
+            "10,000 worst-case tracker entries serialize to {size_for_default_registry}, cap is {TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE}",
         );
     }
 

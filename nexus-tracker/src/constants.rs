@@ -259,6 +259,7 @@ pub const LOG_ADDRESS_DNS_TRANSIENT: &str =
 
 pub const LOG_LIST_RESPONSE: &str = "TrackerServerList: response sent";
 pub const LOG_LIST_REJECTED: &str = "TrackerServerList: rejected";
+pub const LOG_LIST_TRUNCATED: &str = "TrackerServerList: response truncated";
 
 /// Stored entry's `version` failed to parse during the compat-filter pass and
 /// was dropped. The registration-side `validate_version` gate makes this

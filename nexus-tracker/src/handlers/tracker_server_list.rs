@@ -12,8 +12,8 @@ use std::net::SocketAddr;
 use tokio::io::AsyncWrite;
 use tracing::{debug, warn};
 
-use nexus_common::framing::FrameWriter;
-use nexus_common::tracker_protocol::TrackerServerMessage;
+use nexus_common::framing::{FrameWriter, TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE};
+use nexus_common::tracker_protocol::{ServerEntry, TrackerServerMessage};
 use nexus_common::validators::{
     MAX_PASSWORD_LENGTH, MAX_VERSION_LENGTH, VersionError, validate_version,
 };
@@ -24,8 +24,8 @@ use crate::auth::check_password;
 use crate::connection_io::send_tracker_server_message_with_write_timeout;
 use crate::constants::{
     ERR_REGISTRY_MUTEX_POISONED, LOG_AUTH_RATE_LIMITED, LOG_LIST_DROP_UNPARSEABLE_VERSION,
-    LOG_LIST_REJECTED, LOG_LIST_RESPONSE, REASON_PASSWORD_TOO_LONG, REASON_RATE_LIMITED,
-    REASON_UNAUTHORIZED, REASON_VERSION_INVALID, REASON_VERSION_TOO_LONG,
+    LOG_LIST_REJECTED, LOG_LIST_RESPONSE, LOG_LIST_TRUNCATED, REASON_PASSWORD_TOO_LONG,
+    REASON_RATE_LIMITED, REASON_UNAUTHORIZED, REASON_VERSION_INVALID, REASON_VERSION_TOO_LONG,
 };
 use crate::errors::{
     err_tracker_password_too_long, err_tracker_rate_limited, err_tracker_unauthorized,
@@ -166,11 +166,25 @@ where
             false
         }
     });
+    let fit = truncate_servers_to_response_limit(&mut servers)?;
+    if fit.truncated() {
+        warn!(
+            ip = %peer_addr.ip(),
+            kept = fit.kept,
+            compatible_total = fit.compatible_total,
+            payload_bytes = fit.payload_size,
+            limit = TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE,
+            "{}",
+            LOG_LIST_TRUNCATED
+        );
+    }
 
     debug!(
         ip = %peer_addr.ip(),
         count = servers.len(),
+        compatible_total = fit.compatible_total,
         total = total,
+        payload_bytes = fit.payload_size,
         client_version = %client_version,
         "{}",
         LOG_LIST_RESPONSE
@@ -184,6 +198,75 @@ where
     };
     send_tracker_server_message_with_write_timeout(writer, &response).await?;
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ListResponseFit {
+    compatible_total: usize,
+    kept: usize,
+    payload_size: usize,
+}
+
+impl ListResponseFit {
+    fn truncated(self) -> bool {
+        self.kept < self.compatible_total
+    }
+}
+
+/// Trim a sorted compatible list to the largest prefix that serializes
+/// under the client-side `TrackerServerListResponse` frame cap. Size by
+/// actual JSON bytes instead of pessimistic field caps so ordinary short
+/// listings can include far more entries than the worst-case estimate.
+fn truncate_servers_to_response_limit(
+    servers: &mut Vec<ServerEntry>,
+) -> io::Result<ListResponseFit> {
+    let compatible_total = servers.len();
+    let mut payload_size = empty_success_response_payload_len()?;
+    let mut kept = 0;
+
+    for entry in servers.iter() {
+        let entry_size = serialized_server_entry_len(entry)?;
+        let comma = usize::from(kept > 0);
+        let Some(next_size) = payload_size
+            .checked_add(comma)
+            .and_then(|size| size.checked_add(entry_size))
+        else {
+            break;
+        };
+        if next_size > TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE {
+            break;
+        }
+        payload_size = next_size;
+        kept += 1;
+    }
+
+    if kept < compatible_total {
+        servers.truncate(kept);
+    }
+
+    Ok(ListResponseFit {
+        compatible_total,
+        kept,
+        payload_size,
+    })
+}
+
+fn empty_success_response_payload_len() -> io::Result<usize> {
+    let response = TrackerServerMessage::TrackerServerListResponse {
+        success: true,
+        servers: Vec::new(),
+        error: None,
+        error_kind: None,
+    };
+    serde_json::to_vec(&response)
+        .map(|payload| payload.len())
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+fn serialized_server_entry_len(entry: &ServerEntry) -> io::Result<usize> {
+    serde_json::to_vec(entry)
+        .map(|payload| payload.len())
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 /// Build and send a failure-shaped `TrackerServerListResponse`.
@@ -203,4 +286,96 @@ where
     };
     send_tracker_server_message_with_write_timeout(writer, &response).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nexus_common::validators::{
+        MAX_PUBLIC_ADDRESS_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
+        MAX_VERSION_LENGTH,
+    };
+
+    fn fingerprint() -> String {
+        let mut value = "AA:".repeat(31);
+        value.push_str("AA");
+        value
+    }
+
+    fn small_entry(index: usize) -> ServerEntry {
+        ServerEntry {
+            name: format!("server-{index:05}"),
+            description: None,
+            address: "bbs.example.com".to_string(),
+            port: 23,
+            websocket_port: None,
+            version: "0.9.1".to_string(),
+            fingerprint: fingerprint(),
+            user_count: index as u32,
+            allows_guest: false,
+        }
+    }
+
+    fn large_entry(index: usize) -> ServerEntry {
+        let prefix = format!("{index:05}");
+        let name = format!(
+            "{}{}",
+            prefix,
+            "\u{1F680}".repeat(MAX_SERVER_NAME_LENGTH - prefix.chars().count())
+        );
+        ServerEntry {
+            name,
+            description: Some("\u{1F680}".repeat(MAX_SERVER_DESCRIPTION_LENGTH)),
+            address: "x".repeat(MAX_PUBLIC_ADDRESS_LENGTH),
+            port: u16::MAX,
+            websocket_port: Some(u16::MAX),
+            version: "x".repeat(MAX_VERSION_LENGTH),
+            fingerprint: fingerprint(),
+            user_count: u32::MAX,
+            allows_guest: false,
+        }
+    }
+
+    #[test]
+    fn truncation_uses_actual_serialized_size() {
+        let mut servers = (0..20_000).map(small_entry).collect::<Vec<_>>();
+
+        let fit = truncate_servers_to_response_limit(&mut servers).expect("fit response");
+
+        assert_eq!(fit.compatible_total, 20_000);
+        assert_eq!(fit.kept, 20_000);
+        assert!(!fit.truncated());
+        assert!(fit.payload_size <= TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE);
+    }
+
+    #[test]
+    fn truncation_stops_before_frame_cap_and_preserves_order() {
+        let sample = large_entry(0);
+        let entry_size = serialized_server_entry_len(&sample).expect("entry serializes");
+        let empty_size = empty_success_response_payload_len().expect("empty response serializes");
+        let count = ((TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE - empty_size) / (entry_size + 1)) + 2;
+        let mut servers = (0..count).map(large_entry).collect::<Vec<_>>();
+
+        let fit = truncate_servers_to_response_limit(&mut servers).expect("fit response");
+
+        assert!(fit.truncated());
+        assert_eq!(fit.compatible_total, count);
+        assert_eq!(fit.kept, servers.len());
+        assert!(fit.payload_size <= TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE);
+        for (index, entry) in servers.iter().enumerate() {
+            assert!(entry.name.starts_with(&format!("{index:05}")));
+        }
+
+        let response = TrackerServerMessage::TrackerServerListResponse {
+            success: true,
+            servers,
+            error: None,
+            error_kind: None,
+        };
+        let final_payload_size = serde_json::to_vec(&response)
+            .expect("response serializes")
+            .len();
+        assert_eq!(fit.payload_size, final_payload_size);
+        assert!(final_payload_size <= TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE);
+    }
 }

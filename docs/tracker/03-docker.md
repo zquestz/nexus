@@ -119,7 +119,7 @@ docker run -d \
 | `NEXUS_TRACKER_LOG_RETENTION`      | `30d`     | Log file retention (e.g. "30d", "7d", "0" for stderr only)                               |
 | `NEXUS_TRACKER_NO_LOG_TIMESTAMPS`  | `true`    | Disable stderr timestamps (Docker provides its own); set to empty to re-enable           |
 | `NO_COLOR`                         | (empty)   | Set to any value to force plain stderr output                                            |
-| `NEXUS_TRACKER_MAX_ENTRIES`        | `10000`   | Maximum number of registered servers (0 = unlimited)                                     |
+| `NEXUS_TRACKER_MAX_ENTRIES`        | `10000`   | Maximum number of registered servers (0 = unlimited; list responses remain frame-capped) |
 | `NEXUS_TRACKER_MAX_ENTRIES_PER_IP` | `1`       | Maximum entries from one IPv4 address or IPv6 `/64` (0 = unlimited)                      |
 | `NEXUS_TRACKER_REFRESH_INTERVAL`   | `300`     | Refresh interval in seconds (range 120–600)                                              |
 | `NEXUS_TRACKER_RATE_CONNECTIONS`   | `20`      | Connections per minute per IPv4 address or IPv6 `/64` (0 = unlimited)                    |
@@ -375,7 +375,7 @@ services:
           memory: 256M
 ```
 
-The tracker is far less resource-hungry than a BBS server — it holds an in-memory registry capped by `--max-entries` and serves short request/response exchanges. 256MB of memory is generous for the default 10,000-entry cap.
+The tracker is far less resource-hungry than a BBS server — it holds an in-memory registry capped by `--max-entries` and serves short request/response exchanges. 256MB of memory is generous for the default 10,000-entry cap and the 32 MiB tracker-list frame cap.
 
 ### Health Check
 

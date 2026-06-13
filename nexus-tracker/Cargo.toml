@@ -19,6 +19,7 @@ idna = "1"
 # in a way that confused the universal2 cross-compile). Revisit if 7.6+
 # fixes it.
 rpassword = "=7.4.0"
+serde_json = "1.0"
 tokio-rustls = { version = "0.26", features = ["ring"] }
 tokio-tungstenite = "0.29"
 fluent = "0.17"
@@ -26,7 +27,6 @@ fluent-bundle = "0.16"
 unic-langid = "0.9"
 
 [dev-dependencies]
-serde_json = "1.0"
 tempfile = "3.20"
 tokio = { version = "1.49", features = ["test-util"] }
 fluent-syntax = "0.12"

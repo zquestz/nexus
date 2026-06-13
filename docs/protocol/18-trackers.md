@@ -508,13 +508,15 @@ The error path also returns `servers: []`; clients distinguish empty-
 success from failure via the `success` field, not the `servers`
 length.
 
-**Listing size.** `TrackerServerListResponse` carries the full set of
-registered servers in a single response. The per-message-type payload
-limit is **16 MiB** — a defense-in-depth ceiling rather than a UX
-limit. Per-entry worst case is roughly 2 KiB at the field caps, so
-the cap accommodates roughly 8,000 entries; far above any realistic
-tracker. Clients filter / sort large lists locally (search box,
-column sort) so a large result set is usable, not unwieldy.
+**Listing size.** `TrackerServerListResponse` carries registered
+servers in a single response. The per-message-type payload limit is
+**32 MiB** — a defense-in-depth ceiling on client allocation and JSON
+parse cost. The reference tracker sizes successful list responses by
+actual serialized entry bytes after compatibility filtering and
+truncates before this cap, so its default 10,000-entry registry fits
+while larger custom registries remain wire-safe. Clients filter / sort
+large lists locally (search box, column sort) so a large result set is
+usable, not unwieldy.
 
 **Ordering.** The tracker returns entries sorted alphabetically by `name`,
 case-insensitive ascending. Clients may resort locally for other views,

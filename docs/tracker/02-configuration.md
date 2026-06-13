@@ -8,24 +8,24 @@ This guide covers all command-line options for the Nexus tracker.
 nexus-trackerd [OPTIONS]
 ```
 
-| Option                         | Short | Default            | Description                                                                                |
-| ------------------------------ | ----- | ------------------ | ------------------------------------------------------------------------------------------ |
-| `--bind <IP>`                  | `-b`  | `0.0.0.0`          | IP address to bind to                                                                      |
-| `--port <PORT>`                | `-p`  | `7510`             | Tracker port                                                                               |
-| `--data-dir <PATH>`            | `-d`  | (platform default) | Tracker data directory (certs, password hashes, logs)                                      |
-| `--log-level <LEVEL>`          |       | `info`             | Log level (none, error, warn, info, debug)                                                 |
-| `--log-retention <DURATION>`   |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only)                                 |
-| `--no-log-timestamps`          |       | `false`            | Disable timestamps in stderr output                                                        |
-| `--upnp`                       |       | `false`            | Enable UPnP port forwarding                                                                |
-| `--websocket`                  |       | `false`            | Enable WebSocket support                                                                   |
-| `--websocket-port <PORT>`      |       | `7511`             | WebSocket tracker port (requires `--websocket`)                                            |
-| `--max-entries <N>`            |       | `10000`            | Maximum number of registered servers (0 = unlimited; max 1,000,000)                        |
-| `--max-entries-per-ip <N>`     |       | `1`                | Maximum entries from one IPv4 address or IPv6 `/64` (0 = unlimited; max 1,000)             |
-| `--refresh-interval <SECONDS>` |       | `300`              | Refresh interval to instruct servers (range 120–600)                                       |
-| `--rate-connections <N>`       |       | `20`               | Connections per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000)          |
-| `--rate-auth-failures <N>`     |       | `5`                | Failed auth attempts per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000) |
-| `--help`                       | `-h`  |                    | Show help message                                                                          |
-| `--version`                    | `-V`  |                    | Show version                                                                               |
+| Option                         | Short | Default            | Description                                                                                             |
+| ------------------------------ | ----- | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `--bind <IP>`                  | `-b`  | `0.0.0.0`          | IP address to bind to                                                                                   |
+| `--port <PORT>`                | `-p`  | `7510`             | Tracker port                                                                                            |
+| `--data-dir <PATH>`            | `-d`  | (platform default) | Tracker data directory (certs, password hashes, logs)                                                   |
+| `--log-level <LEVEL>`          |       | `info`             | Log level (none, error, warn, info, debug)                                                              |
+| `--log-retention <DURATION>`   |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only)                                              |
+| `--no-log-timestamps`          |       | `false`            | Disable timestamps in stderr output                                                                     |
+| `--upnp`                       |       | `false`            | Enable UPnP port forwarding                                                                             |
+| `--websocket`                  |       | `false`            | Enable WebSocket support                                                                                |
+| `--websocket-port <PORT>`      |       | `7511`             | WebSocket tracker port (requires `--websocket`)                                                         |
+| `--max-entries <N>`            |       | `10000`            | Maximum number of registered servers (0 = unlimited; max 1,000,000; list responses remain frame-capped) |
+| `--max-entries-per-ip <N>`     |       | `1`                | Maximum entries from one IPv4 address or IPv6 `/64` (0 = unlimited; max 1,000)                          |
+| `--refresh-interval <SECONDS>` |       | `300`              | Refresh interval to instruct servers (range 120–600)                                                    |
+| `--rate-connections <N>`       |       | `20`               | Connections per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000)                       |
+| `--rate-auth-failures <N>`     |       | `5`                | Failed auth attempts per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000)              |
+| `--help`                       | `-h`  |                    | Show help message                                                                                       |
+| `--version`                    | `-V`  |                    | Show version                                                                                            |
 
 The tracker also supports two administrative subcommands for password management:
 
@@ -148,6 +148,7 @@ nexus-trackerd --max-entries 0
 | `--max-entries-per-ip` | 1       | Per-source cap keyed by IPv4 address or IPv6 `/64`; raise for shared NAT'd networks or prefixes where multiple operators register from the same bucket |
 
 When a cap is reached, further registrations from the offending IPv4 address or IPv6 `/64` receive `error_kind: capacity` and are not added.
+The default 10,000-entry registry fits in the 32 MiB tracker-list frame cap. If operators raise `--max-entries` above that or set it to `0`, the tracker may accept more registrations than fit in one client list response; oversized compatible lists are truncated by actual serialized size before sending.
 
 ## Refresh Interval
 

@@ -211,6 +211,8 @@ reachable on more than one address family.
 2. Raise the relevant cap: `nexus-trackerd --max-entries 50000` or `--max-entries-per-ip 5`
 3. For shared NAT'd networks or IPv6 prefixes where multiple legitimate operators register from the same bucket, raise `--max-entries-per-ip`
 
+Very large global caps can exceed what fits in one tracker-list frame. The tracker still accepts registrations up to the configured cap, but client list responses are truncated by serialized size before the 32 MiB frame limit.
+
 ### Registered servers disappear from the list
 
 **Cause:** Stale eviction. Entries are evicted after **2× the refresh interval** (default: 600 seconds with the 300s refresh interval) if no refresh arrives.

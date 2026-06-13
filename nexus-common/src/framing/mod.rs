@@ -39,8 +39,8 @@ mod writer;
 pub use error::FrameError;
 pub use frame::RawFrame;
 pub use limits::{
-    FrameContexts, FrameTypeInfo, MAX_TRACKERS_PER_SERVER, frame_type_info, known_message_types,
-    max_payload_for_type,
+    FrameContexts, FrameTypeInfo, MAX_TRACKERS_PER_SERVER, TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE,
+    frame_type_info, known_message_types, max_payload_for_type,
 };
 pub use message_id::MessageId;
 pub use reader::{
