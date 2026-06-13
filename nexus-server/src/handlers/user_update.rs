@@ -59,12 +59,14 @@ use super::{
 use crate::db::hash_password;
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{
-    Permission, Permissions, UpdateUserParams, hash_password_async, verify_password_async,
+    Permission, Permissions, UpdateUserParams, UserAccount, hash_password_async,
+    verify_password_async,
 };
 use crate::files::{
     UserAreaMigration, UserAreaMigrationError, migrate_user_area_on_username_change,
 };
 use crate::users::manager::UserManager;
+use crate::users::user::UserSession;
 use crate::voice::send_voice_leave_notifications;
 
 pub struct UserUpdateRequest {
@@ -99,6 +101,195 @@ fn has_effective_update_fields(request: &UserUpdateRequest) -> bool {
         || request.inherit_bandwidth_weight == Some(true)
 }
 
+fn user_update_error(error: String) -> Outcome {
+    Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+        success: false,
+        error: Some(error),
+        id: None,
+        username: None,
+    }))
+}
+
+fn validate_target_username(target_username: &str, locale: &str) -> Result<(), Outcome> {
+    if let Err(e) = validators::validate_username(target_username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(locale),
+            UsernameError::TooLong => {
+                err_username_too_long(locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(locale),
+        };
+        return Err(user_update_error(error_msg));
+    }
+    Ok(())
+}
+
+async fn validate_user_update_authority_preconditions<W>(
+    request: &UserUpdateRequest,
+    requesting_user: &UserSession,
+    target_account: &UserAccount,
+    ctx: &HandlerContext<'_, W>,
+) -> Result<(), Outcome>
+where
+    W: AsyncWrite + Unpin,
+{
+    let target_username = &target_account.username;
+    let is_self_edit = fold_name(target_username) == fold_name(&requesting_user.username);
+
+    if is_self_edit {
+        // Shared accounts have no password and no admissible self-edit fields.
+        if requesting_user.is_shared {
+            return Err(user_update_error(err_shared_cannot_self_edit(ctx.locale)));
+        }
+
+        // Defense in depth: these fields are never accepted on self-edit,
+        // even from an admin. Client UI hard-disables them on self-rows.
+        if request.is_admin.is_some()
+            || request.enabled.is_some()
+            || request.permissions.is_some()
+            || request.revokes.is_some()
+            || request.remove_group == Some(true)
+        {
+            return Err(user_update_error(err_cannot_edit_self(ctx.locale)));
+        }
+
+        // Admin self-edit: group_id violates admin XOR group. Non-admin
+        // group_id is caught below with a different error.
+        if requesting_user.is_admin && request.group_id.is_some() {
+            return Err(user_update_error(err_admin_cannot_have_group(ctx.locale)));
+        }
+
+        // Non-admin self-edit allows only password; admins additionally
+        // allow username and bandwidth-weight fields.
+        if !requesting_user.is_admin
+            && (request.username.is_some()
+                || request.group_id.is_some()
+                || request.bandwidth_weight.is_some()
+                || request.inherit_bandwidth_weight == Some(true))
+        {
+            return Err(user_update_error(err_cannot_edit_self(ctx.locale)));
+        }
+
+        if request
+            .password
+            .as_ref()
+            .is_some_and(|password| !password.trim().is_empty())
+            && request.current_password.is_none()
+        {
+            return Err(user_update_error(err_current_password_required(ctx.locale)));
+        }
+    } else {
+        if !requesting_user.has_permission(Permission::UserEdit) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
+            return Err(user_update_error(err_permission_denied(ctx.locale)));
+        }
+
+        // Non-admins cannot edit admin users.
+        if !requesting_user.is_admin && target_account.is_admin {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
+            return Err(user_update_error(err_cannot_edit_admin(ctx.locale)));
+        }
+
+        // A non-admin must not RESET the password of a target holding any
+        // effective permission the editor lacks — that is account takeover
+        // (logging in as them), a back door around "can't grant permissions
+        // you don't have". Only the password reset is blocked here; the
+        // target's other fields stay governed by the delegation model. Admins
+        // and self-edit are exempt (self-edit verifies current_password).
+        if !requesting_user.is_admin
+            && request
+                .password
+                .as_deref()
+                .is_some_and(|p| !p.trim().is_empty())
+        {
+            let target_perms = match ctx.db.users.get_user_permissions(request.id).await {
+                Ok(perms) => perms,
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_PERMISSIONS);
+                    return Err(user_update_error(err_database(ctx.locale)));
+                }
+            };
+            if target_perms
+                .permissions
+                .iter()
+                .any(|perm| !requesting_user.has_permission(*perm))
+            {
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_username, "{}", LOG_USER_UPDATE_PRIVILEGED_PASSWORD);
+                return Err(user_update_error(err_cannot_reset_privileged_password(
+                    ctx.locale,
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_user_update_common_request_shape(
+    request: &UserUpdateRequest,
+    target_username: &str,
+    locale: &str,
+) -> Result<(), Outcome> {
+    if !has_effective_update_fields(request) {
+        return Err(user_update_error(err_no_fields_to_update(locale)));
+    }
+
+    if let Some(ref new_username) = request.username
+        && let Err(e) = validators::validate_username(new_username)
+    {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(locale),
+            UsernameError::TooLong => {
+                err_username_too_long(locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(locale),
+        };
+        return Err(user_update_error(error_msg));
+    }
+
+    // The guest account cannot be renamed.
+    if let Some(ref new_username) = request.username
+        && fold_name(target_username) == GUEST_USERNAME
+        && fold_name(new_username) != GUEST_USERNAME
+    {
+        return Err(user_update_error(err_cannot_rename_guest(locale)));
+    }
+
+    // The guest account password cannot be changed.
+    if request
+        .password
+        .as_ref()
+        .is_some_and(|password| !password.trim().is_empty())
+        && fold_name(target_username) == GUEST_USERNAME
+    {
+        return Err(user_update_error(err_cannot_change_guest_password(locale)));
+    }
+
+    Ok(())
+}
+
+fn validate_user_update_password_strength(
+    password: &str,
+    target_username: &str,
+    min_strength: validators::PasswordStrength,
+    locale: &str,
+) -> Result<(), Outcome> {
+    if let Err(e) = validators::validate_password(password, min_strength, &[target_username]) {
+        let error_msg = match e {
+            PasswordError::Empty => err_password_empty(locale),
+            PasswordError::TooLong => {
+                err_password_too_long(locale, validators::MAX_PASSWORD_LENGTH)
+            }
+            PasswordError::TooWeak { required, .. } => {
+                err_password_too_weak(locale, required.score())
+            }
+        };
+        return Err(user_update_error(error_msg));
+    }
+
+    Ok(())
+}
+
 pub async fn handle_user_update<W>(
     request: UserUpdateRequest,
     ctx: &mut HandlerContext<'_, W>,
@@ -111,6 +302,140 @@ where
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_UPDATE))
             .await;
+    };
+
+    let password_change_requested = request
+        .password
+        .as_ref()
+        .is_some_and(|password| !password.trim().is_empty());
+    let mut verified_self_password_hash: Option<String> = None;
+    let precomputed_password_hash = if password_change_requested {
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => {
+                return dispatch_outcome(Outcome::Disconnect, ctx, HANDLER_USER_UPDATE).await;
+            }
+        };
+
+        let target_account = match ctx.db.users.get_user_by_id(request.id).await {
+            Ok(Some(account)) => account,
+            Ok(None) => {
+                return dispatch_outcome(
+                    user_update_error(err_user_not_found(ctx.locale, &request.id.to_string())),
+                    ctx,
+                    HANDLER_USER_UPDATE,
+                )
+                .await;
+            }
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %request.id, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_LOOKUP);
+                return dispatch_outcome(
+                    user_update_error(err_database(ctx.locale)),
+                    ctx,
+                    HANDLER_USER_UPDATE,
+                )
+                .await;
+            }
+        };
+        let target_username = target_account.username.clone();
+
+        if let Err(outcome) = validate_target_username(&target_username, ctx.locale) {
+            return dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await;
+        }
+
+        if let Err(outcome) = validate_user_update_authority_preconditions(
+            &request,
+            &requesting_user,
+            &target_account,
+            ctx,
+        )
+        .await
+        {
+            return dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await;
+        }
+
+        if fold_name(&target_username) == fold_name(&requesting_user.username) {
+            let Some(ref current_password) = request.current_password else {
+                return dispatch_outcome(
+                    user_update_error(err_current_password_required(ctx.locale)),
+                    ctx,
+                    HANDLER_USER_UPDATE,
+                )
+                .await;
+            };
+
+            match verify_password_async(
+                current_password.to_string(),
+                target_account.hashed_password.clone(),
+            )
+            .await
+            {
+                Ok(true) => {
+                    verified_self_password_hash = Some(target_account.hashed_password.clone());
+                }
+                Ok(false) => {
+                    return dispatch_outcome(
+                        user_update_error(err_current_password_incorrect(ctx.locale)),
+                        ctx,
+                        HANDLER_USER_UPDATE,
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
+                    return dispatch_outcome(
+                        user_update_error(err_internal_error(ctx.locale)),
+                        ctx,
+                        HANDLER_USER_UPDATE,
+                    )
+                    .await;
+                }
+            }
+        }
+
+        if let Err(outcome) =
+            validate_user_update_common_request_shape(&request, &target_username, ctx.locale)
+        {
+            return dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await;
+        }
+
+        let min_strength = ctx.db.config.get_min_password_strength().await;
+        let Some(password) = request.password.as_ref() else {
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_HASH_ERROR);
+            return dispatch_outcome(
+                user_update_error(err_internal_error(ctx.locale)),
+                ctx,
+                HANDLER_USER_UPDATE,
+            )
+            .await;
+        };
+        if let Err(outcome) = validate_user_update_password_strength(
+            password,
+            &target_username,
+            min_strength,
+            ctx.locale,
+        ) {
+            return dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await;
+        }
+
+        match hash_password_async(password.clone(), min_strength, false).await {
+            Ok(hash) => Some(hash),
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);
+                return dispatch_outcome(
+                    user_update_error(err_internal_error(ctx.locale)),
+                    ctx,
+                    HANDLER_USER_UPDATE,
+                )
+                .await;
+            }
+        }
+    } else {
+        None
     };
 
     // Guard lives only inside this block; all socket sends happen after it.
@@ -149,269 +474,72 @@ where
         };
         let target_username = target_account.username.clone();
 
-        if let Err(e) = validators::validate_username(&target_username) {
-            let error_msg = match e {
-                UsernameError::Empty => err_username_empty(ctx.locale),
-                UsernameError::TooLong => {
-                    err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-                }
-                UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-            };
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(error_msg),
-                id: None,
-                username: None,
-            }));
+        if let Err(outcome) = validate_target_username(&target_username, ctx.locale) {
+            break 'locked outcome;
         }
 
         // Self-edit allows a more restrictive field set than editing others;
         // drives the password / shared-account / forbidden-field branches below.
         let is_self_edit = fold_name(&target_username) == fold_name(&requesting_user.username);
-        let has_effective_fields = has_effective_update_fields(&request);
 
-        if is_self_edit {
-            // Shared accounts have no password and no admissible self-edit fields.
-            if requesting_user.is_shared {
-                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(err_shared_cannot_self_edit(ctx.locale)),
-                    id: None,
-                    username: None,
-                }));
-            }
-
-            // Defense in depth: these fields are never accepted on self-edit,
-            // even from an admin. Client UI hard-disables them on self-rows.
-            if request.is_admin.is_some()
-                || request.enabled.is_some()
-                || request.permissions.is_some()
-                || request.revokes.is_some()
-                || request.remove_group == Some(true)
-            {
-                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(err_cannot_edit_self(ctx.locale)),
-                    id: None,
-                    username: None,
-                }));
-            }
-
-            // Admin self-edit: group_id violates admin XOR group. Non-admin
-            // group_id is caught below with a different error.
-            if requesting_user.is_admin && request.group_id.is_some() {
-                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(err_admin_cannot_have_group(ctx.locale)),
-                    id: None,
-                    username: None,
-                }));
-            }
-
-            // Non-admin self-edit allows only password; admins additionally
-            // allow username and bandwidth-weight fields.
-            if !requesting_user.is_admin
-                && (request.username.is_some()
-                    || request.group_id.is_some()
-                    || request.bandwidth_weight.is_some()
-                    || request.inherit_bandwidth_weight == Some(true))
-            {
-                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(err_cannot_edit_self(ctx.locale)),
-                    id: None,
-                    username: None,
-                }));
-            }
-
-            // Password change requires current_password verification.
-            if let Some(ref new_password) = request.password
-                && !new_password.trim().is_empty()
-            {
-                let Some(ref current_password) = request.current_password else {
-                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                        success: false,
-                        error: Some(err_current_password_required(ctx.locale)),
-                        id: None,
-                        username: None,
-                    }));
-                };
-
-                let password_hash = match ctx.db.users.get_user_by_username(&target_username).await
-                {
-                    Ok(Some(user)) => user.hashed_password,
-                    Ok(None) => {
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_user_not_found(ctx.locale, &target_username)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                    Err(e) => {
-                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_database(ctx.locale)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                };
-
-                match verify_password_async(current_password.to_string(), password_hash.clone())
-                    .await
-                {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_current_password_incorrect(ctx.locale)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                    Err(e) => {
-                        // Argon2id failure isn't a protocol violation.
-                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_internal_error(ctx.locale)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                }
-            }
-        } else {
-            if !requesting_user.has_permission(Permission::UserEdit) {
-                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
-                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(err_permission_denied(ctx.locale)),
-                    id: None,
-                    username: None,
-                }));
-            }
-
-            // Non-admins cannot edit admin users.
-            if !requesting_user.is_admin {
-                match ctx.db.users.get_user_by_username(&target_username).await {
-                    Ok(Some(target_user)) if target_user.is_admin => {
-                        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_cannot_edit_admin(ctx.locale)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                    Ok(Some(_)) => {} // Target is not admin, proceed
-                    Ok(None) => {
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_user_not_found(ctx.locale, &target_username)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                    Err(e) => {
-                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_database(ctx.locale)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                }
-            }
-
-            // A non-admin must not RESET the password of a target holding any
-            // effective permission the editor lacks — that is account takeover
-            // (logging in as them), a back door around "can't grant permissions
-            // you don't have". Only the password reset is blocked here; the
-            // target's other fields stay governed by the delegation model. Admins
-            // and self-edit are exempt (self-edit verifies current_password
-            // above). Admin *targets* must be rejected by the is_admin guard
-            // above — that rejection is load-bearing here, because
-            // get_user_permissions returns the explicit set WITHOUT the admin-all
-            // override, so this comparison alone would under-block an admin
-            // target. The "perms the editor lacks" set is invariant under this
-            // edit — delegation already blocks granting or revoking unowned
-            // perms — so there is no laundering path.
-            if !requesting_user.is_admin
-                && request
-                    .password
-                    .as_deref()
-                    .is_some_and(|p| !p.trim().is_empty())
-            {
-                let target_perms = match ctx.db.users.get_user_permissions(request.id).await {
-                    Ok(perms) => perms,
-                    Err(e) => {
-                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_PERMISSIONS);
-                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_database(ctx.locale)),
-                            id: None,
-                            username: None,
-                        }));
-                    }
-                };
-                if target_perms
-                    .permissions
-                    .iter()
-                    .any(|perm| !requesting_user.has_permission(*perm))
-                {
-                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_username, "{}", LOG_USER_UPDATE_PRIVILEGED_PASSWORD);
-                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                        success: false,
-                        error: Some(err_cannot_reset_privileged_password(ctx.locale)),
-                        id: None,
-                        username: None,
-                    }));
-                }
-            }
-        }
-
-        if !has_effective_fields {
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_no_fields_to_update(ctx.locale)),
-                id: None,
-                username: None,
-            }));
-        }
-
-        if let Some(ref new_username) = request.username
-            && let Err(e) = validators::validate_username(new_username)
+        if let Err(outcome) = validate_user_update_authority_preconditions(
+            &request,
+            &requesting_user,
+            &target_account,
+            ctx,
+        )
+        .await
         {
-            let error_msg = match e {
-                UsernameError::Empty => err_username_empty(ctx.locale),
-                UsernameError::TooLong => {
-                    err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+            break 'locked outcome;
+        }
+
+        // Password change requires current_password verification.
+        if is_self_edit
+            && let Some(ref new_password) = request.password
+            && !new_password.trim().is_empty()
+        {
+            let current_account = match ctx.db.users.get_user_by_id(request.id).await {
+                Ok(Some(user)) => user,
+                Ok(None) => {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_user_not_found(ctx.locale, &target_username)),
+                        id: None,
+                        username: None,
+                    }));
                 }
-                UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_database(ctx.locale)),
+                        id: None,
+                        username: None,
+                    }));
+                }
             };
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(error_msg),
-                id: None,
-                username: None,
-            }));
+
+            if verified_self_password_hash
+                .as_ref()
+                .is_none_or(|verified_hash| verified_hash != &current_account.hashed_password)
+            {
+                // The current-password verify ran before this lock was
+                // acquired. If an admin reset landed meanwhile, fail as
+                // stale credentials instead of committing against a hash
+                // the user did not verify.
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_current_password_incorrect(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
         }
 
-        // The guest account cannot be renamed.
-        if let Some(ref new_username) = request.username
-            && fold_name(&target_username) == GUEST_USERNAME
-            && fold_name(new_username) != GUEST_USERNAME
+        if let Err(outcome) =
+            validate_user_update_common_request_shape(&request, &target_username, ctx.locale)
         {
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_cannot_rename_guest(ctx.locale)),
-                id: None,
-                username: None,
-            }));
+            break 'locked outcome;
         }
 
         // A username can't take a nickname an active session already holds (they
@@ -424,19 +552,6 @@ where
             break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_username_is_active_nickname(ctx.locale)),
-                id: None,
-                username: None,
-            }));
-        }
-
-        // The guest account password cannot be changed.
-        if let Some(ref new_password) = request.password
-            && !new_password.trim().is_empty()
-            && fold_name(&target_username) == GUEST_USERNAME
-        {
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_cannot_change_guest_password(ctx.locale)),
                 id: None,
                 username: None,
             }));
@@ -926,30 +1041,18 @@ where
                 None
             } else {
                 let min_strength = ctx.db.config.get_min_password_strength().await;
-                if let Err(e) =
-                    validators::validate_password(password, min_strength, &[&target_username])
-                {
-                    let error_msg = match e {
-                        PasswordError::Empty => err_password_empty(ctx.locale),
-                        PasswordError::TooLong => {
-                            err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
-                        }
-                        PasswordError::TooWeak { required, .. } => {
-                            err_password_too_weak(ctx.locale, required.score())
-                        }
-                    };
-                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
-                        success: false,
-                        error: Some(error_msg),
-                        id: None,
-                        username: None,
-                    }));
+                if let Err(outcome) = validate_user_update_password_strength(
+                    password,
+                    &target_username,
+                    min_strength,
+                    ctx.locale,
+                ) {
+                    break 'locked outcome;
                 }
-                // Argon2id failure isn't a protocol violation.
-                match hash_password_async(password.clone(), min_strength, false).await {
-                    Ok(hash) => Some(hash),
-                    Err(e) => {
-                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);
+                match precomputed_password_hash.as_ref() {
+                    Some(hash) => Some(hash.clone()),
+                    None => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_HASH_ERROR);
                         break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                             success: false,
                             error: Some(err_internal_error(ctx.locale)),

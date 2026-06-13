@@ -1,6 +1,7 @@
 //! UserCreate message handler
 
 use std::io;
+use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 
 use tokio::io::AsyncWrite;
@@ -34,6 +35,7 @@ use super::{
     err_username_is_active_nickname, err_username_too_long,
 };
 use crate::db::{CreateUserParams, Permission, Permissions, hash_password_async};
+use crate::users::user::UserSession;
 
 pub struct UserCreateRequest {
     pub username: String,
@@ -46,6 +48,87 @@ pub struct UserCreateRequest {
     pub revokes: Option<Vec<String>>,
     pub bandwidth_weight: Option<u16>,
     pub inherit_bandwidth_weight: Option<bool>,
+}
+
+fn user_create_error(error: String) -> Outcome {
+    Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+        success: false,
+        error: Some(error),
+        id: None,
+        username: None,
+    }))
+}
+
+struct UserCreatePasswordValidation<'a> {
+    username: &'a str,
+    password: &'a str,
+    is_admin: bool,
+    is_shared: bool,
+    group_id: Option<i64>,
+    requesting_user: &'a UserSession,
+    min_strength: validators::PasswordStrength,
+    locale: &'a str,
+    peer_addr: SocketAddr,
+}
+
+fn validate_user_create_password_preconditions(
+    validation: UserCreatePasswordValidation<'_>,
+) -> Result<(), Outcome> {
+    if !validation
+        .requesting_user
+        .has_permission(Permission::UserCreate)
+    {
+        warn!(user = %validation.requesting_user.username, ip = %validation.peer_addr, "{}", LOG_USER_CREATE_PERMISSION_DENIED);
+        return Err(user_create_error(err_permission_denied(validation.locale)));
+    }
+
+    if let Err(e) = validators::validate_username(validation.username) {
+        let error_msg = match e {
+            UsernameError::Empty => err_username_empty(validation.locale),
+            UsernameError::TooLong => {
+                err_username_too_long(validation.locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(validation.locale),
+        };
+        return Err(user_create_error(error_msg));
+    }
+
+    if validation.is_admin && !validation.requesting_user.is_admin {
+        return Err(user_create_error(err_cannot_create_admin(
+            validation.locale,
+        )));
+    }
+
+    if validation.is_shared && validation.is_admin {
+        return Err(user_create_error(err_shared_cannot_be_admin(
+            validation.locale,
+        )));
+    }
+
+    if validation.is_admin && validation.group_id.is_some() {
+        return Err(user_create_error(err_admin_cannot_have_group(
+            validation.locale,
+        )));
+    }
+
+    if let Err(e) = validators::validate_password(
+        validation.password,
+        validation.min_strength,
+        &[validation.username],
+    ) {
+        let error_msg = match e {
+            PasswordError::Empty => err_password_empty(validation.locale),
+            PasswordError::TooLong => {
+                err_password_too_long(validation.locale, validators::MAX_PASSWORD_LENGTH)
+            }
+            PasswordError::TooWeak { required, .. } => {
+                err_password_too_weak(validation.locale, required.score())
+            }
+        };
+        return Err(user_create_error(error_msg));
+    }
+
+    Ok(())
 }
 
 pub async fn handle_user_create<W>(
@@ -76,6 +159,58 @@ where
             .await;
     };
 
+    // Do the expensive password hash before taking the global user-state write
+    // lock. The locked block below repeats these checks before committing, so
+    // this preflight cannot be the only authority for a race-sensitive decision.
+    let preflight_user = match ctx
+        .user_manager
+        .get_user_by_session_id(requesting_session_id)
+        .await
+    {
+        Some(u) => u,
+        None => {
+            return dispatch_outcome(Outcome::Disconnect, ctx, HANDLER_USER_CREATE).await;
+        }
+    };
+
+    let preflight_min_strength = ctx.db.config.get_min_password_strength().await;
+    if let Err(outcome) =
+        validate_user_create_password_preconditions(UserCreatePasswordValidation {
+            username: &username,
+            password: &password,
+            is_admin,
+            is_shared,
+            group_id,
+            requesting_user: &preflight_user,
+            min_strength: preflight_min_strength,
+            locale: ctx.locale,
+            peer_addr: ctx.peer_addr,
+        })
+    {
+        return dispatch_outcome(outcome, ctx, HANDLER_USER_CREATE).await;
+    }
+
+    // Argon2id failure isn't a protocol violation.
+    let password_hash = match hash_password_async(password.clone(), preflight_min_strength, false)
+        .await
+    {
+        Ok(hash) => hash,
+        Err(e) => {
+            error!(user = %preflight_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_HASH_ERROR);
+            return dispatch_outcome(
+                Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_internal_error(ctx.locale)),
+                    id: None,
+                    username: None,
+                })),
+                ctx,
+                HANDLER_USER_CREATE,
+            )
+            .await;
+        }
+    };
+
     // Guard lives only inside this block; all socket sends happen after it.
     let outcome = 'locked: {
         let _state_guard = ctx.user_manager.lock_user_state().await;
@@ -88,81 +223,21 @@ where
             None => break 'locked Outcome::Disconnect,
         };
 
-        if !requesting_user.has_permission(Permission::UserCreate) {
-            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_PERMISSION_DENIED);
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_permission_denied(ctx.locale)),
-                id: None,
-                username: None,
-            }));
-        }
-
-        if let Err(e) = validators::validate_username(&username) {
-            let error_msg = match e {
-                UsernameError::Empty => err_username_empty(ctx.locale),
-                UsernameError::TooLong => {
-                    err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-                }
-                UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-            };
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(error_msg),
-                id: None,
-                username: None,
-            }));
-        }
-
-        // Reject non-admin privilege escalation cleanly (typed response, not
-        // disconnect), matching user_update.rs's gate.
-        if is_admin && !requesting_user.is_admin {
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_cannot_create_admin(ctx.locale)),
-                id: None,
-                username: None,
-            }));
-        }
-
-        // Shared accounts cannot be admins.
-        if is_shared && is_admin {
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_shared_cannot_be_admin(ctx.locale)),
-                id: None,
-                username: None,
-            }));
-        }
-
-        // Admins cannot be group members (schema CHECK is the safety net).
-        // Reject here for a clean error, before the expensive password hash.
-        if is_admin && group_id.is_some() {
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_admin_cannot_have_group(ctx.locale)),
-                id: None,
-                username: None,
-            }));
-        }
-
         let min_strength = ctx.db.config.get_min_password_strength().await;
-        if let Err(e) = validators::validate_password(&password, min_strength, &[&username]) {
-            let error_msg = match e {
-                PasswordError::Empty => err_password_empty(ctx.locale),
-                PasswordError::TooLong => {
-                    err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
-                }
-                PasswordError::TooWeak { required, .. } => {
-                    err_password_too_weak(ctx.locale, required.score())
-                }
-            };
-            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(error_msg),
-                id: None,
-                username: None,
-            }));
+        if let Err(outcome) =
+            validate_user_create_password_preconditions(UserCreatePasswordValidation {
+                username: &username,
+                password: &password,
+                is_admin,
+                is_shared,
+                group_id,
+                requesting_user: &requesting_user,
+                min_strength,
+                locale: ctx.locale,
+                peer_addr: ctx.peer_addr,
+            })
+        {
+            break 'locked outcome;
         }
 
         if let Err(e) = validators::validate_permissions(&permissions) {
@@ -302,8 +377,9 @@ where
 
         // Non-admins may set a per-user weight override only up to their own
         // resolved weight (admins bypass). Skipped when `inherit` wins, since
-        // the value would be discarded. Checked before the password hash so a
-        // non-admin can't force Argon2id CPU burn with an over-cap weight.
+        // the value would be discarded. Argon2 is already complete here; the
+        // global Argon2 semaphore bounds that CPU cost, and this locked check
+        // remains the authoritative delegation gate before commit.
         if inherit_bandwidth_weight != Some(true) {
             if !requesting_user.is_admin
                 && let Some(w) = bandwidth_weight
@@ -428,20 +504,6 @@ where
                 username: None,
             }));
         }
-
-        // Argon2id failure isn't a protocol violation.
-        let password_hash = match hash_password_async(password.clone(), min_strength, false).await {
-            Ok(hash) => hash,
-            Err(e) => {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_HASH_ERROR);
-                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
-                    success: false,
-                    error: Some(err_internal_error(ctx.locale)),
-                    id: None,
-                    username: None,
-                }));
-            }
-        };
 
         let final_bandwidth_weight = if inherit_bandwidth_weight == Some(true) {
             None
