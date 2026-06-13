@@ -190,7 +190,7 @@ impl NexusApp {
         token: Uuid,
         result: Result<Option<std::net::SocketAddr>, String>,
     ) -> Task<Message> {
-        let (participants, can_transmit) = {
+        let (participants, can_transmit, server_fingerprint) = {
             let Some(conn) = self.connections.get(&connection_id) else {
                 return Task::none();
             };
@@ -205,7 +205,11 @@ impl NexusApp {
                 return Task::none();
             }
 
-            (session.participants.clone(), session.can_transmit)
+            (
+                session.participants.clone(),
+                session.can_transmit,
+                conn.connection_info.certificate_fingerprint.clone(),
+            )
         };
 
         let socket_addr = match result {
@@ -231,6 +235,7 @@ impl NexusApp {
         // Start voice session with audio settings
         let (handle, event_rx) = VoiceSessionHandle::start(VoiceSessionConfig {
             server_addr: socket_addr,
+            server_fingerprint,
             token,
             participants,
             can_transmit,

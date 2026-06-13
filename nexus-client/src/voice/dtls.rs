@@ -7,13 +7,16 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use dtls::Error as DtlsError;
 use dtls::config::Config as DtlsConfig;
 use dtls::conn::DTLSConn;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
+use tokio_rustls::rustls::pki_types::CertificateDer;
 use uuid::Uuid;
 use webrtc_util::Conn;
 
+use nexus_common::fingerprint::format_certificate_fingerprint;
 use nexus_common::voice::{
     RelayedVoicePacket, VOICE_KEEPALIVE_INTERVAL_SECS, VoiceMessageType, VoicePacket,
 };
@@ -30,6 +33,33 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Receive poll timeout in milliseconds (allows select! to check other branches)
 const RECV_POLL_TIMEOUT_MS: u64 = 100;
+
+/// Error when the DTLS peer certificate doesn't match the TLS-verified fingerprint.
+const ERR_VOICE_CERT_FINGERPRINT_MISMATCH: &str =
+    "voice server certificate does not match the verified TLS certificate";
+
+// =============================================================================
+// Certificate pinning
+// =============================================================================
+
+/// Whether the DTLS peer's leaf certificate matches the expected (TLS-verified)
+/// fingerprint.
+///
+/// The DTLS (UDP) channel is independent of the TCP TLS channel, so we pin the
+/// UDP peer certificate to the same fingerprint the TCP connection already
+/// verified via two-stage TOFU. Without this, an on-path attacker could answer
+/// the UDP handshake with their own certificate and capture the session token
+/// and audio.
+///
+/// Returns `false` if `expected` is empty or the peer presented no certificate,
+/// so callers fail closed. Only the leaf (first) certificate is pinned, matching
+/// how the TCP side fingerprints the end-entity certificate.
+fn peer_fingerprint_matches(peer_certs: &[Vec<u8>], expected: &str) -> bool {
+    !expected.is_empty()
+        && peer_certs
+            .first()
+            .is_some_and(|leaf| format_certificate_fingerprint(leaf) == expected)
+}
 
 // =============================================================================
 // Voice DTLS Client
@@ -58,11 +88,17 @@ impl VoiceDtlsClient {
     /// # Arguments
     /// * `server_addr` - Server address (host:port)
     /// * `token` - Voice session token from VoiceJoinResponse
+    /// * `expected_fingerprint` - TLS-verified server fingerprint to pin the
+    ///   DTLS peer certificate against
     ///
     /// # Returns
     /// * `Ok(VoiceDtlsClient)` - Connected client
     /// * `Err(String)` - Error message if connection failed
-    pub async fn connect(server_addr: SocketAddr, token: Uuid) -> Result<Self, String> {
+    pub async fn connect(
+        server_addr: SocketAddr,
+        token: Uuid,
+        expected_fingerprint: String,
+    ) -> Result<Self, String> {
         // Create UDP socket bound to any available port
         // Use the appropriate address family based on server address (IPv4 vs IPv6)
         let bind_addr = if server_addr.is_ipv6() {
@@ -82,11 +118,27 @@ impl VoiceDtlsClient {
 
         let socket = Arc::new(socket);
 
-        // Create DTLS config for client mode
-        // We use insecure_skip_verify because we've already verified
-        // the server's certificate via the TCP connection using TOFU
+        // Create DTLS config for client mode.
+        //
+        // The DTLS (UDP) channel is independent of the TCP TLS channel, so the
+        // TCP-side TOFU verification does NOT cover it. `insecure_skip_verify`
+        // only disables webpki CA-chain validation (the server cert is
+        // self-signed); the `verify_peer_certificate` callback still runs and
+        // pins the peer cert to the TLS-verified fingerprint, so an on-path
+        // attacker answering the handshake with another cert is rejected.
         let config = DtlsConfig {
             insecure_skip_verify: true,
+            verify_peer_certificate: Some(Arc::new(
+                move |certs: &[Vec<u8>], _chain: &[CertificateDer<'static>]| {
+                    if peer_fingerprint_matches(certs, &expected_fingerprint) {
+                        Ok(())
+                    } else {
+                        Err(DtlsError::Other(
+                            ERR_VOICE_CERT_FINGERPRINT_MISMATCH.to_string(),
+                        ))
+                    }
+                },
+            )),
             ..Default::default()
         };
 
@@ -329,16 +381,20 @@ pub enum VoiceDtlsCommand {
 /// # Arguments
 /// * `server_addr` - Server address to connect to
 /// * `token` - Voice session token
+/// * `expected_fingerprint` - TLS-verified server fingerprint to pin the DTLS
+///   peer certificate against
 /// * `event_tx` - Channel to send events
 /// * `command_rx` - Channel to receive commands
 pub async fn run_voice_client(
     server_addr: SocketAddr,
     token: Uuid,
+    expected_fingerprint: String,
     event_tx: mpsc::UnboundedSender<VoiceDtlsEvent>,
     mut command_rx: mpsc::UnboundedReceiver<VoiceDtlsCommand>,
 ) {
     // Connect to server
-    let mut client = match VoiceDtlsClient::connect(server_addr, token).await {
+    let mut client = match VoiceDtlsClient::connect(server_addr, token, expected_fingerprint).await
+    {
         Ok(c) => c,
         Err(e) => {
             let _ = event_tx.send(VoiceDtlsEvent::Error(e));
@@ -468,5 +524,25 @@ mod tests {
         let _ = VoiceDtlsCommand::SendSpeakingStarted;
         let _ = VoiceDtlsCommand::SendSpeakingStopped;
         let _ = VoiceDtlsCommand::Disconnect;
+    }
+
+    #[test]
+    fn test_peer_fingerprint_matches() {
+        let cert = b"server cert der bytes".to_vec();
+        let fp = format_certificate_fingerprint(&cert);
+
+        // Correct leaf certificate matches its own fingerprint.
+        assert!(peer_fingerprint_matches(std::slice::from_ref(&cert), &fp));
+        // Only the leaf (first) certificate is pinned; a chain still matches.
+        assert!(peer_fingerprint_matches(
+            &[cert.clone(), b"intermediate".to_vec()],
+            &fp
+        ));
+        // A different (attacker) certificate is rejected.
+        assert!(!peer_fingerprint_matches(&[b"attacker cert".to_vec()], &fp));
+        // No certificate presented -> rejected (fail closed).
+        assert!(!peer_fingerprint_matches(&[], &fp));
+        // Empty expected fingerprint -> rejected (fail closed).
+        assert!(!peer_fingerprint_matches(&[cert], ""));
     }
 }

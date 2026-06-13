@@ -202,7 +202,7 @@ Audio packets use DTLS-encrypted UDP for low-latency transmission.
 - **Token authorization** — Every packet carries the session token (issued over the authenticated TCP connection) and the server validates it on every packet. The token _is_ the authorization, so voice works regardless of the UDP source IP — clients behind NAT or a proxy are not rejected for an IP mismatch.
 - **Per-IP connection cap** — Concurrent voice connections per source IP are bounded (sharing the per-IP connection-limit value, counted separately) to limit resource exhaustion.
 - **Permission check** — `voice_talk` required to transmit audio
-- **DTLS encryption** — All UDP traffic is encrypted
+- **DTLS encryption with certificate pinning** — All UDP traffic is DTLS-encrypted. The DTLS (UDP) channel is independent of the TCP TLS channel, so the client pins the DTLS peer certificate to the same SHA-256 fingerprint it already verified for the TCP connection (two-stage TOFU). A handshake presenting any other certificate is rejected, preventing an on-path attacker from intercepting voice audio or capturing the session token over UDP.
 
 Access control order:
 
@@ -290,7 +290,8 @@ Recommended adaptive buffer: 20-200ms (2-20 frames at 10ms per frame)
 
 ### DTLS Errors
 
-If DTLS handshake fails:
+If DTLS handshake fails (including a peer-certificate fingerprint mismatch, which
+aborts the handshake):
 
 - Client shows error message
 - Client sends `VoiceLeave` over TCP to clean up server state

@@ -34,6 +34,8 @@ use super::processor::{AudioProcessor, AudioProcessorSettings};
 pub struct VoiceSessionConfig {
     /// Server address for DTLS connection
     pub server_addr: SocketAddr,
+    /// TLS-verified server fingerprint to pin the DTLS peer certificate against
+    pub server_fingerprint: String,
     /// Voice session token from VoiceJoinResponse
     pub token: Uuid,
     /// Nicknames currently in the voice session when the DTLS client starts
@@ -348,6 +350,7 @@ async fn run_voice_session(
     let dtls_handle = tokio::spawn(run_voice_client(
         config.server_addr,
         config.token,
+        config.server_fingerprint.clone(),
         dtls_event_tx,
         dtls_command_rx,
     ));
