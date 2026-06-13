@@ -18,13 +18,12 @@ use tracing::{debug, error, info, warn};
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::hash::StreamingHasher;
 use nexus_common::io::read_transfer_client_message_with_full_timeout;
-use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_IO_ERROR};
 
 use crate::constants::*;
 use crate::db::Permission;
-use crate::files::folder_type::{FolderType, parse_folder_type};
+use crate::files::folder_type::dropbox_contents_readable;
 use crate::files::path::resolve_path;
 use crate::handlers::{
     err_source_busy, err_transfer_access_denied, err_transfer_file_failed, err_transfer_read_failed,
@@ -59,17 +58,15 @@ where
     let is_admin = transfer.user().is_admin;
     let peer_addr = transfer.peer_addr();
 
-    let resolved_path =
-        match validate_and_resolve_download_path(transfer, &locale, &download_path, use_root).await
-        {
-            Ok(path) => path,
-            Err(e) => return send_download_transfer_error(transfer.writer(), &e).await,
-        };
-
-    if !can_access_for_download(&resolved_path, &username, is_admin) {
-        let err = TransferError::permission(err_transfer_access_denied(&locale));
-        return send_download_transfer_error(transfer.writer(), &err).await;
-    }
+    let DownloadTarget {
+        area_root,
+        candidate,
+        resolved: resolved_path,
+    } = match validate_and_resolve_download_path(transfer, &locale, &download_path, use_root).await
+    {
+        Ok(target) => target,
+        Err(e) => return send_download_transfer_error(transfer.writer(), &e).await,
+    };
 
     let _scan_activity_guard = match tokio::fs::metadata(&resolved_path).await {
         Ok(metadata) if metadata.is_dir() => {
@@ -100,7 +97,7 @@ where
 
     let files = match timeout(
         DOWNLOAD_SCAN_TIMEOUT,
-        scan_files_for_transfer(&resolved_path, &username, is_admin),
+        scan_files_for_transfer(&candidate, &area_root, &username, is_admin),
     )
     .await
     {
@@ -391,12 +388,21 @@ impl From<StreamError> for StreamFileError {
     }
 }
 
+/// The paths a validated download needs: the `area_root` (virtual scan bound),
+/// the `candidate` (virtual request path — scan root and drop-box gate input),
+/// and the `resolved` canonical path (coarse subtree activity lock).
+struct DownloadTarget {
+    area_root: std::path::PathBuf,
+    candidate: std::path::PathBuf,
+    resolved: std::path::PathBuf,
+}
+
 async fn validate_and_resolve_download_path(
     transfer: &Transfer<'_, impl AsyncRead + Unpin, impl AsyncWrite + Unpin>,
     locale: &str,
     download_path: &str,
     use_root: bool,
-) -> Result<std::path::PathBuf, TransferError> {
+) -> Result<DownloadTarget, TransferError> {
     let user = transfer.user();
     validate_transfer_path(download_path, locale)?;
     check_permission(user, Permission::FileDownload, locale)?;
@@ -411,61 +417,91 @@ async fn validate_and_resolve_download_path(
     .await?;
     let candidate = build_validated_path(&area_root, download_path, locale).await?;
 
-    resolve_path(&area_root, &candidate)
+    // Drop-box read-gate on the VIRTUAL candidate, before resolve: a symlinked
+    // drop box is recognized by its suffix (not bypassed via a suffix-less
+    // target), and content the requester may not read is denied without an
+    // existence oracle — the verdict is a pure virtual-path computation,
+    // independent of whether the path exists. `metadata` follows symlinks so a
+    // symlinked drop box still counts as a directory.
+    let is_dir = tokio::fs::metadata(&candidate)
         .await
-        .map_err(|e| path_error_to_transfer_error(e, locale))
-}
-
-/// Check if a path can be accessed for download (dropbox restrictions)
-pub(crate) fn can_access_for_download(path: &Path, username: &str, is_admin: bool) -> bool {
-    for ancestor in path.ancestors() {
-        if let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) {
-            match parse_folder_type(name) {
-                FolderType::DropBox => {
-                    // Generic dropbox: admins only.
-                    if !is_admin {
-                        return false;
-                    }
-                }
-                FolderType::UserDropBox(owner) => {
-                    // User dropbox: the named owner or an admin.
-                    if !is_admin && fold_name(&owner) != fold_name(username) {
-                        return false;
-                    }
-                }
-                FolderType::Upload | FolderType::Default => {
-                    // Open to all.
-                }
-            }
-        }
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+    if !can_download(
+        &candidate,
+        &area_root,
+        &user.username,
+        user.is_admin,
+        is_dir,
+    ) {
+        return Err(TransferError::permission(err_transfer_access_denied(
+            locale,
+        )));
     }
-    true
+
+    let resolved = resolve_path(&area_root, &candidate)
+        .await
+        .map_err(|e| path_error_to_transfer_error(e, locale))?;
+    Ok(DownloadTarget {
+        area_root,
+        candidate,
+        resolved,
+    })
 }
 
+/// Download read-gate: may `username` read the contents at `candidate`?
+///
+/// Directory-aware, matching the BBS file handlers: a **directory** is gated on
+/// its own innermost drop box (a drop-box folder is denied to non-owners, a
+/// nested owned box is allowed), while a **file** is gated on its parent's (a
+/// regular file whose name merely carries a drop-box suffix is not treated as a
+/// box). `candidate` and `area_root` are **virtual** paths (pre-canonicalization)
+/// so a drop box implemented as a symlink is recognized by its suffix instead of
+/// being bypassed via its suffix-less target. Innermost-wins via
+/// [`dropbox_contents_readable`].
+fn can_download(
+    candidate: &Path,
+    area_root: &Path,
+    username: &str,
+    is_admin: bool,
+    is_dir: bool,
+) -> bool {
+    let gate_path = if is_dir {
+        candidate
+    } else {
+        candidate.parent().unwrap_or(area_root)
+    };
+    dropbox_contents_readable(gate_path, area_root, username, is_admin)
+}
+
+/// Build the file list for a download. `scan_root` is the VIRTUAL candidate
+/// (already authorized by the first gate); `area_root` bounds the per-subfolder
+/// drop-box gate. Virtual paths are canonicalized per-file at stream time.
 async fn scan_files_for_transfer(
-    resolved_path: &Path,
+    scan_root: &Path,
+    area_root: &Path,
     username: &str,
     is_admin: bool,
 ) -> io::Result<Vec<FileInfo>> {
     let mut files = Vec::new();
 
-    let metadata = tokio::fs::metadata(resolved_path).await?;
+    let metadata = tokio::fs::metadata(scan_root).await?;
 
     if metadata.is_file() {
-        let file_name = resolved_path
+        let file_name = scan_root
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(DEFAULT_FILENAME);
 
         files.push(FileInfo {
             relative_path: file_name.to_string(),
-            absolute_path: resolved_path.to_path_buf(),
+            absolute_path: scan_root.to_path_buf(),
             size: metadata.len(),
         });
     } else if metadata.is_dir() {
         // Empty prefix: the client already includes the directory name in local_path,
         // so paths are relative to inside the directory ("song.mp3", "Jazz/tune.mp3").
-        scan_directory_recursive(resolved_path, "", &mut files, username, is_admin).await?;
+        scan_directory_recursive(scan_root, area_root, "", &mut files, username, is_admin).await?;
     }
 
     Ok(files)
@@ -475,6 +511,7 @@ async fn scan_files_for_transfer(
 /// parent-directory download can't leak their contents.
 fn scan_directory_recursive<'a>(
     dir: &'a Path,
+    area_root: &'a Path,
     prefix: &'a str,
     files: &'a mut Vec<FileInfo>,
     username: &'a str,
@@ -503,30 +540,34 @@ fn scan_directory_recursive<'a>(
 
             // Dotfiles are included; show_hidden only affects the browser UI, not transfers.
 
-            // Access-check the symlink's location, not its target: symlinks are
-            // admin-created and trusted, so one pointing into a dropbox is an
-            // intentional exposure.
-            if !can_access_for_download(&path, username, is_admin) {
-                debug!(path = %file_name, "{}", LOG_SCAN_DROPBOX_DENIED);
-                continue;
-            }
-
             let relative = if prefix.is_empty() {
                 file_name.clone()
             } else {
                 format!("{}/{}", prefix, file_name)
             };
 
-            if metadata.is_file() {
+            if metadata.is_dir() {
+                // Gate drop-box subfolders by their VIRTUAL location (innermost-wins)
+                // so a parent-directory download skips boxes the requester can't
+                // read. A no-suffix symlink that points into a box stays an
+                // intentional admin exposure — its location has no suffix — matching
+                // FileList; a suffix-named box (real or symlinked) is gated here.
+                if !dropbox_contents_readable(&path, area_root, username, is_admin) {
+                    debug!(path = %file_name, "{}", LOG_SCAN_DROPBOX_DENIED);
+                    continue;
+                }
+                debug!(path = %relative, "{}", LOG_SCAN_RECURSING);
+                scan_directory_recursive(&path, area_root, &relative, files, username, is_admin)
+                    .await?;
+            } else if metadata.is_file() {
+                // The parent directory is already authorized, so every file in it is
+                // readable; a file whose name merely carries a suffix isn't a box.
                 debug!(path = %relative, bytes = metadata.len(), "{}", LOG_SCAN_ADDING_FILE);
                 files.push(FileInfo {
                     relative_path: relative,
                     absolute_path: path,
                     size: metadata.len(),
                 });
-            } else if metadata.is_dir() {
-                debug!(path = %relative, "{}", LOG_SCAN_RECURSING);
-                scan_directory_recursive(&path, &relative, files, username, is_admin).await?;
             } else {
                 debug!(path = %file_name, "{}", LOG_SCAN_SPECIAL_FILE);
             }
@@ -1690,60 +1731,285 @@ mod tests {
         assert_download_starts_then_conflicts(client_read, &mut transfer, "bundle").await;
     }
 
+    const DL_AREA: &str = "/files/shared";
+
     #[test]
-    fn test_can_access_default_folder() {
-        let path = Path::new("/files/shared/Documents/readme.txt");
-        assert!(can_access_for_download(path, "alice", false));
-        assert!(can_access_for_download(path, "bob", false));
-        assert!(can_access_for_download(path, "admin", true));
+    fn test_can_download_open_area() {
+        let area = Path::new(DL_AREA);
+        // A regular file and an upload folder's file are open to everyone.
+        for p in [
+            "/files/shared/Documents/readme.txt",
+            "/files/shared/Uploads [NEXUS-UL]/file.zip",
+        ] {
+            let path = Path::new(p);
+            assert!(can_download(path, area, "alice", false, false));
+            assert!(can_download(path, area, "bob", false, false));
+        }
     }
 
     #[test]
-    fn test_can_access_upload_folder() {
-        let path = Path::new("/files/shared/Uploads [NEXUS-UL]/file.zip");
-        assert!(can_access_for_download(path, "alice", false));
-        assert!(can_access_for_download(path, "bob", false));
-        assert!(can_access_for_download(path, "admin", true));
-    }
-
-    #[test]
-    fn test_cannot_access_dropbox_non_admin() {
+    fn test_can_download_blind_dropbox_file_admins_only() {
+        let area = Path::new(DL_AREA);
         let path = Path::new("/files/shared/Submissions [NEXUS-DB]/secret.txt");
-        assert!(!can_access_for_download(path, "alice", false));
-        assert!(!can_access_for_download(path, "bob", false));
+        assert!(!can_download(path, area, "alice", false, false));
+        assert!(!can_download(path, area, "bob", false, false));
+        assert!(can_download(path, area, "admin", true, false));
+        // One level deeper, the innermost (blind) box still gates.
+        let deep = Path::new("/files/shared/Submissions [NEXUS-DB]/sub/file.txt");
+        assert!(!can_download(deep, area, "alice", false, false));
+        assert!(can_download(deep, area, "admin", true, false));
     }
 
     #[test]
-    fn test_admin_can_access_dropbox() {
-        let path = Path::new("/files/shared/Submissions [NEXUS-DB]/secret.txt");
-        assert!(can_access_for_download(path, "admin", true));
-    }
-
-    #[test]
-    fn test_user_can_access_own_user_dropbox() {
+    fn test_can_download_user_dropbox_file_owner_or_admin() {
+        let area = Path::new(DL_AREA);
         let path = Path::new("/files/shared/For Alice [NEXUS-DB-alice]/file.txt");
-        assert!(can_access_for_download(path, "alice", false));
-        assert!(can_access_for_download(path, "ALICE", false)); // case insensitive
+        assert!(can_download(path, area, "alice", false, false));
+        assert!(can_download(path, area, "ALICE", false, false)); // case-insensitive
+        assert!(!can_download(path, area, "bob", false, false));
+        assert!(!can_download(path, area, "charlie", false, false));
+        assert!(can_download(path, area, "admin", true, false));
     }
 
     #[test]
-    fn test_user_cannot_access_other_user_dropbox() {
-        let path = Path::new("/files/shared/For Alice [NEXUS-DB-alice]/file.txt");
-        assert!(!can_access_for_download(path, "bob", false));
-        assert!(!can_access_for_download(path, "charlie", false));
+    fn test_can_download_dropbox_folder_itself() {
+        let area = Path::new(DL_AREA);
+        // Downloading the box folder reads its contents: owner/admin only.
+        let folder = Path::new("/files/shared/For Alice [NEXUS-DB-alice]");
+        assert!(can_download(folder, area, "alice", false, true));
+        assert!(!can_download(folder, area, "bob", false, true));
+        assert!(can_download(folder, area, "admin", true, true));
     }
 
     #[test]
-    fn test_admin_can_access_any_user_dropbox() {
-        let path = Path::new("/files/shared/For Alice [NEXUS-DB-alice]/file.txt");
-        assert!(can_access_for_download(path, "admin", true));
+    fn test_can_download_suffix_named_file_is_not_a_box() {
+        let area = Path::new(DL_AREA);
+        // A regular FILE whose name merely carries a suffix is gated on its parent
+        // (the open area), so it downloads normally — it is not a drop box.
+        let file = Path::new("/files/shared/Report [NEXUS-DB-alice]");
+        assert!(can_download(file, area, "bob", false, false));
     }
 
     #[test]
-    fn test_nested_dropbox_blocks_access() {
-        // File is in a regular folder, but parent is a dropbox
-        let path = Path::new("/files/shared/Submissions [NEXUS-DB]/subfolder/file.txt");
-        assert!(!can_access_for_download(path, "alice", false));
-        assert!(can_access_for_download(path, "admin", true));
+    fn test_can_download_nested_owned_box() {
+        let area = Path::new(DL_AREA);
+        // bob owns the inner box nested inside alice's: innermost-wins lets him
+        // download the folder and the files within it.
+        let inner_dir = Path::new("/files/shared/Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]");
+        let inner_file =
+            Path::new("/files/shared/Outer [NEXUS-DB-alice]/Inner [NEXUS-DB-bob]/data.txt");
+        assert!(can_download(inner_dir, area, "bob", false, true));
+        assert!(can_download(inner_file, area, "bob", false, false));
+        // But alice's outer box (and a file directly in it) stays alice-only.
+        let outer_dir = Path::new("/files/shared/Outer [NEXUS-DB-alice]");
+        let outer_file = Path::new("/files/shared/Outer [NEXUS-DB-alice]/note.txt");
+        assert!(!can_download(outer_dir, area, "bob", false, true));
+        assert!(!can_download(outer_file, area, "bob", false, false));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_download_symlinked_dropbox_is_denied_to_non_owner() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        // The secret lives in a suffix-less backing directory…
+        let backing = shared_root.join("store/alicebox");
+        fs::create_dir_all(&backing).await.unwrap();
+        fs::write(backing.join("secret.txt"), b"top secret")
+            .await
+            .unwrap();
+        // …reached through a SYMLINK whose name carries the drop-box suffix.
+        symlink(&backing, shared_root.join("For Alice [NEXUS-DB-alice]")).unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let _client_write = client_write; // hold the client half so the duplex stays open
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
+        );
+
+        // The box resolves to a suffix-less backing dir, but the gate runs on the
+        // virtual (suffix-bearing) candidate, so "tester" (non-admin, not alice)
+        // is denied — the canonical-path bypass is closed.
+        handle_download(
+            &mut transfer,
+            DownloadParams {
+                path: "For Alice [NEXUS-DB-alice]/secret.txt".to_string(),
+                root: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        match read_server_message(&mut reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message
+        {
+            ServerMessage::FileDownloadResponse { success, .. } => assert!(!success),
+            other => panic!("Expected FileDownloadResponse, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_download_directory_skips_unreadable_dropbox_subfolder() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let bundle = shared_root.join("bundle");
+        // One open file plus a blind drop box the non-admin can't read.
+        fs::create_dir_all(bundle.join("Secret [NEXUS-DB]"))
+            .await
+            .unwrap();
+        fs::write(bundle.join("open.txt"), b"open").await.unwrap();
+        fs::write(bundle.join("Secret [NEXUS-DB]/hidden.txt"), b"hidden")
+            .await
+            .unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let _client_write = client_write;
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
+        );
+
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let server = async {
+            handle_download(
+                &mut transfer,
+                DownloadParams {
+                    path: "bundle".to_string(),
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+        // The blind drop box subfolder is skipped, so only `open.txt` is included.
+        let client = async {
+            match read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message
+            {
+                ServerMessage::FileDownloadResponse {
+                    success,
+                    file_count,
+                    ..
+                } => {
+                    assert!(success);
+                    assert_eq!(file_count, Some(1));
+                }
+                other => panic!("Expected FileDownloadResponse, got: {:?}", other),
+            }
+        };
+        tokio::join!(server, client);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_download_through_no_suffix_symlink_into_box_is_allowed() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        // A blind drop box with a file…
+        let box_dir = shared_root.join("Secret [NEXUS-DB]");
+        fs::create_dir_all(&box_dir).await.unwrap();
+        fs::write(box_dir.join("secret.txt"), b"exposed")
+            .await
+            .unwrap();
+        // …and a NO-SUFFIX symlink pointing into it. An admin-created symlink whose
+        // own name carries no suffix is a deliberate exposure (see the FileList
+        // policy), so a non-admin download through it is allowed by design.
+        symlink(&box_dir, shared_root.join("openlink")).unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let _client_write = client_write;
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
+        );
+
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let server = async {
+            handle_download(
+                &mut transfer,
+                DownloadParams {
+                    path: "openlink/secret.txt".to_string(),
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+        let client = async {
+            match read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message
+            {
+                ServerMessage::FileDownloadResponse {
+                    success,
+                    file_count,
+                    ..
+                } => {
+                    assert!(success);
+                    assert_eq!(file_count, Some(1));
+                }
+                other => panic!("Expected FileDownloadResponse, got: {:?}", other),
+            }
+        };
+        tokio::join!(server, client);
     }
 }
