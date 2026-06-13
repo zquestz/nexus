@@ -84,6 +84,7 @@ err-cannot-kick-self = U kunt uzelf niet verwijderen
 err-cannot-kick-admin = Kan beheerdergebruikers niet verwijderen
 err-cannot-delete-admin = Alleen beheerders kunnen beheerdergebruikers verwijderen
 err-cannot-edit-admin = Alleen beheerders kunnen beheerdergebruikers bewerken
+err-cannot-reset-privileged-password = U kunt het wachtwoord niet opnieuw instellen van een gebruiker die rechten heeft die u niet hebt
 err-cannot-message-self = U kunt geen berichten naar uzelf sturen
 err-cannot-disable-last-admin = Kan de laatste beheerder niet uitschakelen
 

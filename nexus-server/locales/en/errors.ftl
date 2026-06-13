@@ -72,6 +72,7 @@ err-cannot-kick-self = You cannot kick yourself
 err-cannot-kick-admin = Cannot kick admin users
 err-cannot-delete-admin = Only admins can delete admin users
 err-cannot-edit-admin = Only admins can edit admin users
+err-cannot-reset-privileged-password = You cannot reset the password of a user who has permissions you do not have
 err-cannot-message-self = You cannot message yourself
 err-cannot-disable-last-admin = Cannot disable the last admin
 

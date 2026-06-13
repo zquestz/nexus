@@ -84,6 +84,7 @@ err-cannot-kick-self = 自分自身をキックできません
 err-cannot-kick-admin = 管理者ユーザーをキックできません
 err-cannot-delete-admin = 管理者ユーザーを削除できるのは管理者のみです
 err-cannot-edit-admin = 管理者ユーザーを編集できるのは管理者のみです
+err-cannot-reset-privileged-password = 自分が持っていない権限を持つユーザーのパスワードをリセットすることはできません
 err-cannot-message-self = 自分自身にメッセージを送ることはできません
 err-cannot-disable-last-admin = 最後の管理者を無効化できません
 

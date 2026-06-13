@@ -84,6 +84,7 @@ err-cannot-kick-self = 자기 자신을 추방할 수 없습니다
 err-cannot-kick-admin = 관리자 사용자를 추방할 수 없습니다
 err-cannot-delete-admin = 관리자만 관리자 사용자를 삭제할 수 있습니다
 err-cannot-edit-admin = 관리자만 관리자 사용자를 편집할 수 있습니다
+err-cannot-reset-privileged-password = 본인에게 없는 권한을 가진 사용자의 비밀번호는 재설정할 수 없습니다
 err-cannot-message-self = 자기 자신에게 메시지를 보낼 수 없습니다
 err-cannot-disable-last-admin = 마지막 관리자를 비활성화할 수 없습니다
 

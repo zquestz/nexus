@@ -172,6 +172,10 @@ pub fn err_cannot_edit_admin(locale: &str) -> String {
     t(locale, "err-cannot-edit-admin")
 }
 
+pub fn err_cannot_reset_privileged_password(locale: &str) -> String {
+    t(locale, "err-cannot-reset-privileged-password")
+}
+
 pub fn err_cannot_kick_self(locale: &str) -> String {
     t(locale, "err-cannot-kick-self")
 }

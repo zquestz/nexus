@@ -23,8 +23,8 @@ use crate::constants::{
     LOG_USER_UPDATE_FILE_AREA_MIGRATE_FAILED, LOG_USER_UPDATE_FILE_AREA_MIGRATED,
     LOG_USER_UPDATE_FILE_AREA_ROLLBACK_FAILED, LOG_USER_UPDATE_FILE_AREA_TARGET_EXISTS,
     LOG_USER_UPDATE_HASH_ERROR, LOG_USER_UPDATE_NOT_LOGGED_IN, LOG_USER_UPDATE_PASSWORD_VERIFY,
-    LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_SUCCESS, LOG_USER_UPDATE_UNOWNED_PERMISSION,
-    LOG_USER_UPDATE_UNOWNED_REVOKE,
+    LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_PRIVILEGED_PASSWORD,
+    LOG_USER_UPDATE_SUCCESS, LOG_USER_UPDATE_UNOWNED_PERMISSION, LOG_USER_UPDATE_UNOWNED_REVOKE,
 };
 
 #[cfg(test)]
@@ -37,10 +37,11 @@ use super::{
     err_bandwidth_weight_inherit_would_elevate, err_bandwidth_weight_zero,
     err_cannot_change_guest_password, err_cannot_demote_last_admin, err_cannot_disable_last_admin,
     err_cannot_edit_admin, err_cannot_edit_self, err_cannot_rename_guest,
-    err_current_password_incorrect, err_current_password_required, err_database,
-    err_group_not_found, err_group_shared_mismatch, err_internal_error, err_no_fields_to_update,
-    err_not_logged_in, err_password_empty, err_password_too_long, err_password_too_weak,
-    err_permission_denied, err_permission_grant_revoke_conflict, err_permissions_contains_newlines,
+    err_cannot_reset_privileged_password, err_current_password_incorrect,
+    err_current_password_required, err_database, err_group_not_found, err_group_shared_mismatch,
+    err_internal_error, err_no_fields_to_update, err_not_logged_in, err_password_empty,
+    err_password_too_long, err_password_too_weak, err_permission_denied,
+    err_permission_grant_revoke_conflict, err_permissions_contains_newlines,
     err_permissions_empty_permission, err_permissions_invalid_characters,
     err_permissions_permission_too_long, err_permissions_too_many, err_personal_file_area_busy,
     err_personal_file_area_exists, err_personal_file_area_migration_failed,
@@ -323,6 +324,52 @@ where
                             username: None,
                         }));
                     }
+                }
+            }
+
+            // A non-admin must not RESET the password of a target holding any
+            // effective permission the editor lacks — that is account takeover
+            // (logging in as them), a back door around "can't grant permissions
+            // you don't have". Only the password reset is blocked here; the
+            // target's other fields stay governed by the delegation model. Admins
+            // and self-edit are exempt (self-edit verifies current_password
+            // above). Admin *targets* must be rejected by the is_admin guard
+            // above — that rejection is load-bearing here, because
+            // get_user_permissions returns the explicit set WITHOUT the admin-all
+            // override, so this comparison alone would under-block an admin
+            // target. The "perms the editor lacks" set is invariant under this
+            // edit — delegation already blocks granting or revoking unowned
+            // perms — so there is no laundering path.
+            if !requesting_user.is_admin
+                && request
+                    .password
+                    .as_deref()
+                    .is_some_and(|p| !p.trim().is_empty())
+            {
+                let target_perms = match ctx.db.users.get_user_permissions(request.id).await {
+                    Ok(perms) => perms,
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_PERMISSIONS);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                };
+                if target_perms
+                    .permissions
+                    .iter()
+                    .any(|perm| !requesting_user.has_permission(*perm))
+                {
+                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_username, "{}", LOG_USER_UPDATE_PRIVILEGED_PASSWORD);
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_cannot_reset_privileged_password(ctx.locale)),
+                        id: None,
+                        username: None,
+                    }));
                 }
             }
         }
@@ -11142,5 +11189,200 @@ mod tests {
             saw_broadcast_for_robert,
             "cross-trigger update (username + bandwidth) must bypass suppression and broadcast"
         );
+    }
+
+    /// Helper: create a non-admin target with the given permissions.
+    async fn create_target_with_perms(
+        test_ctx: &mut TestContext,
+        username: &str,
+        perms: &[db::Permission],
+    ) -> i64 {
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username,
+                hashed_password: "oldhash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::from(perms),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap()
+            .id
+    }
+
+    fn password_reset_request(target_id: i64, session_id: u32) -> UserUpdateRequest {
+        UserUpdateRequest {
+            id: target_id,
+            current_password: None,
+            username: None,
+            password: Some("newpassword".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_reset_richer_users_password() {
+        let mut test_ctx = create_test_context().await;
+
+        // Editor holds UserEdit + ChatSend, but NOT UserKick.
+        let editor = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+        // carol holds UserKick — a permission the editor lacks.
+        let carol =
+            create_target_with_perms(&mut test_ctx, "carol", &[db::Permission::UserKick]).await;
+
+        let result = handle_user_update(
+            password_reset_request(carol, editor),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error,
+                    Some(err_cannot_reset_privileged_password(DEFAULT_TEST_LOCALE))
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got: {other:?}"),
+        }
+
+        // The password was not changed — no takeover.
+        let after = test_ctx
+            .db
+            .users
+            .get_user_by_username("carol")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.hashed_password, "oldhash");
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_can_reset_weaker_users_password() {
+        let mut test_ctx = create_test_context().await;
+
+        let editor = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+        // dave's permissions are a subset of the editor's.
+        let dave =
+            create_target_with_perms(&mut test_ctx, "dave", &[db::Permission::ChatSend]).await;
+
+        handle_user_update(
+            password_reset_request(dave, editor),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "got error: {error:?}");
+            }
+            other => panic!("Expected UserUpdateResponse, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_can_reset_richer_users_password() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let carol =
+            create_target_with_perms(&mut test_ctx, "carol", &[db::Permission::UserKick]).await;
+
+        handle_user_update(
+            password_reset_request(carol, admin),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "got error: {error:?}");
+            }
+            other => panic!("Expected UserUpdateResponse, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_non_password_edit_of_richer_user_allowed() {
+        let mut test_ctx = create_test_context().await;
+
+        let editor = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+        let carol =
+            create_target_with_perms(&mut test_ctx, "carol", &[db::Permission::UserKick]).await;
+
+        // No password in the request → the takeover gate doesn't fire; a delegated
+        // non-password edit (disable) of a richer user stays allowed.
+        let request = UserUpdateRequest {
+            id: carol,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: Some(false),
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(editor),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "got error: {error:?}");
+            }
+            other => panic!("Expected UserUpdateResponse, got: {other:?}"),
+        }
+        let after = test_ctx
+            .db
+            .users
+            .get_user_by_username("carol")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!after.enabled);
     }
 }

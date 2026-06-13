@@ -84,6 +84,7 @@ err-cannot-kick-self = Sie können sich nicht selbst hinauswerfen
 err-cannot-kick-admin = Administrator-Benutzer können nicht hinausgeworfen werden
 err-cannot-delete-admin = Nur Administratoren können Administrator-Benutzer löschen
 err-cannot-edit-admin = Nur Administratoren können Administrator-Benutzer bearbeiten
+err-cannot-reset-privileged-password = Sie können das Passwort eines Benutzers, der Berechtigungen besitzt, die Sie nicht haben, nicht zurücksetzen
 err-cannot-message-self = Sie können sich nicht selbst eine Nachricht senden
 err-cannot-disable-last-admin = Der letzte Administrator kann nicht deaktiviert werden
 

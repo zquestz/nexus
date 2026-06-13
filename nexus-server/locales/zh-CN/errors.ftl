@@ -84,6 +84,7 @@ err-cannot-kick-self = 您无法踢出自己
 err-cannot-kick-admin = 无法踢出管理员用户
 err-cannot-delete-admin = 只有管理员才能删除管理员用户
 err-cannot-edit-admin = 只有管理员才能编辑管理员用户
+err-cannot-reset-privileged-password = 您无法重置拥有您不具备的权限的用户的密码
 err-cannot-message-self = 您无法给自己发消息
 err-cannot-disable-last-admin = 无法禁用最后一个管理员
 
