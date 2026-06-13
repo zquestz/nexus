@@ -64,6 +64,12 @@ pub struct SchedulerPacket<T> {
     pub bytes: usize,
     pub payload: T,
     pub priority: PacketPriority,
+    /// Whether this packet completes a logical frame. The scheduler will not
+    /// serve another queue's packets until a connection's in-progress frame
+    /// reaches its final chunk, so a priority frame cannot interleave inside a
+    /// partially dispatched normal frame. A standalone packet is a complete
+    /// frame (`true`); a non-final chunk of a multi-chunk frame is `false`.
+    pub is_final: bool,
 }
 
 impl<T> SchedulerPacket<T> {
@@ -72,6 +78,7 @@ impl<T> SchedulerPacket<T> {
             bytes,
             payload,
             priority: PacketPriority::Normal,
+            is_final: true,
         }
     }
 
@@ -80,6 +87,7 @@ impl<T> SchedulerPacket<T> {
             bytes,
             payload,
             priority: PacketPriority::Priority,
+            is_final: true,
         }
     }
 }
@@ -409,6 +417,7 @@ impl<T> Wf2qScheduler<T> {
                 head_tags: None,
                 priority_queue: VecDeque::new(),
                 queue: VecDeque::new(),
+                active_queue: None,
             },
         );
 
@@ -603,6 +612,7 @@ impl<T> Wf2qScheduler<T> {
             QueuedPacket {
                 bytes,
                 payload: packet.payload,
+                is_final: packet.is_final,
             },
             packet.priority,
         );
@@ -839,7 +849,12 @@ impl<T> Wf2qScheduler<T> {
             connection_states
                 .get(&connection_id)
                 .filter(|connection| {
-                    !connection.blocked && !connection.in_flight && !connection.is_empty()
+                    // `front_packet()` (not `is_empty()`) so a connection locked
+                    // to a momentarily-empty queue is not treated as dispatchable
+                    // — it must wait for its in-progress frame to continue.
+                    !connection.blocked
+                        && !connection.in_flight
+                        && connection.front_packet().is_some()
                 })
                 .map(|_| FlowSelection {
                     connection_id,
@@ -1167,6 +1182,10 @@ struct ConnectionState<T> {
     head_tags: Option<PacketTags>,
     priority_queue: VecDeque<QueuedPacket<T>>,
     queue: VecDeque<QueuedPacket<T>>,
+    /// While a multi-chunk frame is mid-dispatch, pops are locked to the queue
+    /// it came from until its final chunk, so another queue's frame cannot
+    /// interleave on the wire. `None` outside a frame.
+    active_queue: Option<PacketPriority>,
 }
 
 impl<T> ConnectionState<T> {
@@ -1181,7 +1200,13 @@ impl<T> ConnectionState<T> {
                 None
             }
             PacketPriority::Priority => {
-                let preempted_start = if self.priority_queue.is_empty() && !self.queue.is_empty() {
+                // Don't let a priority arrival preempt the head tag while a
+                // normal frame is mid-dispatch — the head is locked to that
+                // frame, so the priority packet waits for the frame boundary.
+                let preempted_start = if self.active_queue.is_none()
+                    && self.priority_queue.is_empty()
+                    && !self.queue.is_empty()
+                {
                     self.head_tags.take().map(|tags| tags.start)
                 } else {
                     None
@@ -1192,14 +1217,42 @@ impl<T> ConnectionState<T> {
         }
     }
 
+    /// Which queue the next packet must be served from. While a frame is
+    /// mid-dispatch, pops are locked to its queue and never fall back to the
+    /// other one: if the locked queue is momentarily empty the connection
+    /// reports nothing servable and waits for the frame to continue, so a
+    /// priority frame can never interleave inside a normal frame regardless of
+    /// how a caller enqueues chunks. Outside a frame, priority-first.
+    fn select_queue(&self) -> Option<PacketPriority> {
+        match self.active_queue {
+            Some(PacketPriority::Priority) => {
+                (!self.priority_queue.is_empty()).then_some(PacketPriority::Priority)
+            }
+            Some(PacketPriority::Normal) => {
+                (!self.queue.is_empty()).then_some(PacketPriority::Normal)
+            }
+            None if !self.priority_queue.is_empty() => Some(PacketPriority::Priority),
+            None if !self.queue.is_empty() => Some(PacketPriority::Normal),
+            None => None,
+        }
+    }
+
     fn front_packet(&self) -> Option<&QueuedPacket<T>> {
-        self.priority_queue.front().or_else(|| self.queue.front())
+        match self.select_queue()? {
+            PacketPriority::Priority => self.priority_queue.front(),
+            PacketPriority::Normal => self.queue.front(),
+        }
     }
 
     fn pop_front_packet(&mut self) -> Option<QueuedPacket<T>> {
-        self.priority_queue
-            .pop_front()
-            .or_else(|| self.queue.pop_front())
+        let from = self.select_queue()?;
+        let packet = match from {
+            PacketPriority::Priority => self.priority_queue.pop_front(),
+            PacketPriority::Normal => self.queue.pop_front(),
+        }?;
+        // Lock subsequent pops to this queue until the frame's final chunk.
+        self.active_queue = if packet.is_final { None } else { Some(from) };
+        Some(packet)
     }
 
     fn is_empty(&self) -> bool {
@@ -1214,6 +1267,7 @@ impl<T> ConnectionState<T> {
 struct QueuedPacket<T> {
     bytes: usize,
     payload: T,
+    is_final: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -2032,6 +2086,79 @@ mod tests {
         assert_eq!(scheduler.dequeue().unwrap().connection_id, in_flight);
 
         assert_eq!(scheduler.dequeue().unwrap().connection_id, sibling);
+    }
+
+    #[test]
+    fn priority_frame_does_not_interleave_inside_a_normal_frame() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
+
+        // A two-chunk normal frame: chunk 1 is non-final, chunk 2 completes it.
+        let mut chunk1 = sized_packet(PACKET_BYTES, 1);
+        chunk1.is_final = false;
+        scheduler.enqueue(connection, chunk1).unwrap();
+        scheduler
+            .enqueue(connection, sized_packet(PACKET_BYTES, 2))
+            .unwrap();
+
+        // Dispatch chunk 1 of the normal frame.
+        assert_eq!(scheduler.dequeue().unwrap().payload, 1);
+        assert!(scheduler.set_connection_in_flight(connection, false));
+
+        // A priority frame is staged while the normal frame is mid-dispatch.
+        scheduler
+            .enqueue(connection, priority_sized_packet(PACKET_BYTES, 99))
+            .unwrap();
+
+        // The next dispatch must finish the normal frame (chunk 2), not let the
+        // priority frame interleave inside it.
+        assert_eq!(
+            scheduler.dequeue().unwrap().payload,
+            2,
+            "priority frame must not interleave inside a partially dispatched normal frame"
+        );
+        assert!(scheduler.set_connection_in_flight(connection, false));
+
+        // At the frame boundary, the priority frame now dispatches.
+        assert_eq!(scheduler.dequeue().unwrap().payload, 99);
+    }
+
+    #[test]
+    fn lock_holds_when_the_normal_queue_drains_before_the_final_chunk() {
+        // EgressManager enqueues a frame's chunks contiguously, but the scheduler
+        // invariant must hold even if a caller enqueues them incrementally: while
+        // locked to the normal queue, a momentarily-empty queue means "wait for
+        // the frame to continue", never "serve the priority queue".
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
+
+        // Dispatch a non-final first chunk, leaving the normal queue empty.
+        let mut chunk1 = sized_packet(PACKET_BYTES, 1);
+        chunk1.is_final = false;
+        scheduler.enqueue(connection, chunk1).unwrap();
+        assert_eq!(scheduler.dequeue().unwrap().payload, 1);
+        assert!(scheduler.set_connection_in_flight(connection, false));
+
+        // A priority frame arrives while the connection is locked to the now-empty
+        // normal queue.
+        scheduler
+            .enqueue(connection, priority_sized_packet(PACKET_BYTES, 99))
+            .unwrap();
+
+        // The lock holds: nothing dispatches until the normal frame continues.
+        assert!(scheduler.dequeue().is_none());
+
+        // The normal frame's final chunk arrives and dispatches first.
+        scheduler
+            .enqueue(connection, sized_packet(PACKET_BYTES, 2))
+            .unwrap();
+        assert_eq!(scheduler.dequeue().unwrap().payload, 2);
+        assert!(scheduler.set_connection_in_flight(connection, false));
+
+        // Only now, at the frame boundary, does the priority frame dispatch.
+        assert_eq!(scheduler.dequeue().unwrap().payload, 99);
     }
 
     #[test]

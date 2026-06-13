@@ -389,10 +389,13 @@ impl EgressManager {
                 self.unregister(connection_id);
                 return Err(EgressEnqueueError::EmptyFrame);
             };
-            let packet = match priority {
+            let mut packet = match priority {
                 EgressMessagePriority::Normal => SchedulerPacket::new(chunk.len(), chunk),
                 EgressMessagePriority::Priority => SchedulerPacket::priority(chunk.len(), chunk),
             };
+            // Carry per-chunk finality so the scheduler keeps a partially
+            // dispatched frame's chunks contiguous on the wire.
+            packet.is_final = is_final_frame_chunk;
             if let Err(err) = self.scheduler.enqueue(connection_id, packet) {
                 // This should be unreachable after the manager-map check and
                 // non-empty chunk construction. If the manager/scheduler
@@ -875,6 +878,44 @@ mod tests {
         assert_eq!(expect_dispatch(&mut manager), connection);
         let dispatch = rx.try_recv().unwrap();
         assert_eq!(dispatch.chunk.as_bytes(), b"normal");
+    }
+
+    #[test]
+    fn priority_frame_does_not_interleave_inside_multi_chunk_normal_frame() {
+        // Chunk size 4 so an 8-byte frame splits into two chunks.
+        let mut manager = manager(4);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        // A two-chunk normal frame.
+        assert_eq!(manager.enqueue_frame(connection, frame(b"AAAABBBB")), Ok(2));
+
+        // Dispatch chunk 1 of the normal frame.
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"AAAA");
+        assert!(manager.ack(connection));
+
+        // A priority frame is staged while the normal frame is mid-dispatch.
+        assert_eq!(
+            manager.enqueue_priority_frame(connection, frame(b"PRIO")),
+            Ok(1)
+        );
+
+        // The next dispatch must finish the normal frame (chunk 2), not let the
+        // priority frame's bytes interleave inside the normal frame's payload.
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        assert_eq!(
+            rx.try_recv().unwrap().chunk.as_bytes(),
+            b"BBBB",
+            "priority frame must not interleave inside the normal frame"
+        );
+        assert!(manager.ack(connection));
+
+        // At the frame boundary, the priority frame dispatches.
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"PRIO");
+        assert!(manager.ack(connection));
     }
 
     #[test]
