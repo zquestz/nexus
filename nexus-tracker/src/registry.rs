@@ -1,8 +1,9 @@
 //! In-memory registry of currently-registered Nexus servers.
 //!
 //! One entry per open tracker connection, keyed by [`ConnectionId`].
-//! Enforces a global cap (`--max-entries`) and per-source-IP cap
-//! (`--max-entries-per-ip`); `0` means unlimited for either.
+//! Enforces a global cap (`--max-entries`) and per-source cap
+//! (`--max-entries-per-ip`, keyed by IPv4 address or IPv6 /64); `0`
+//! means unlimited for either.
 //!
 //! Holds no lock; the use site wraps it in `Arc<Mutex<Registry>>`.
 //! Staleness is not tracked here: each connection reads frames with a
@@ -13,6 +14,7 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Instant;
 
+use nexus_common::address::ipv6_slash_64_bucket_key;
 use nexus_common::tracker_protocol::ServerEntry;
 
 /// Identifier for a registered entry, assigned at register time.
@@ -33,7 +35,7 @@ pub struct RegisteredEntry {
 pub enum RegisterError {
     /// Total tracker capacity (`--max-entries`) reached.
     Capacity,
-    /// Per-source-IP cap (`--max-entries-per-ip`) reached.
+    /// Per-source cap (`--max-entries-per-ip`) reached.
     PerIpCapacity,
 }
 
@@ -60,7 +62,7 @@ impl Registry {
     }
 
     /// Register a fresh entry, returning the new `ConnectionId`. Errors
-    /// when the global or per-IP cap is reached.
+    /// when the global or per-source cap is reached.
     pub fn register(
         &mut self,
         entry: ServerEntry,
@@ -70,8 +72,9 @@ impl Registry {
         if self.is_full() {
             return Err(RegisterError::Capacity);
         }
+        let ip_bucket = ipv6_slash_64_bucket_key(peer_ip);
         if self.max_per_ip != 0 {
-            let count = self.counts_by_ip.get(&peer_ip).copied().unwrap_or(0);
+            let count = self.counts_by_ip.get(&ip_bucket).copied().unwrap_or(0);
             if count >= self.max_per_ip {
                 return Err(RegisterError::PerIpCapacity);
             }
@@ -89,7 +92,7 @@ impl Registry {
                 last_refresh: now,
             },
         );
-        *self.counts_by_ip.entry(peer_ip).or_insert(0) += 1;
+        *self.counts_by_ip.entry(ip_bucket).or_insert(0) += 1;
 
         Ok(id)
     }
@@ -148,10 +151,11 @@ impl Registry {
     }
 
     fn decrement_ip_count(&mut self, peer_ip: &IpAddr) {
-        if let Some(count) = self.counts_by_ip.get_mut(peer_ip) {
+        let ip_bucket = ipv6_slash_64_bucket_key(*peer_ip);
+        if let Some(count) = self.counts_by_ip.get_mut(&ip_bucket) {
             *count = count.saturating_sub(1);
             if *count == 0 {
-                self.counts_by_ip.remove(peer_ip);
+                self.counts_by_ip.remove(&ip_bucket);
             }
         }
     }
@@ -160,7 +164,7 @@ impl Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
     use std::time::Duration;
 
     /// Build a `ServerEntry` for tests; vary `name` or `user_count`.
@@ -182,6 +186,12 @@ mod tests {
 
     fn ip(octet: u8) -> IpAddr {
         IpAddr::V4(Ipv4Addr::new(192, 0, 2, octet))
+    }
+
+    fn ipv6(segment4: u16, host: u16) -> IpAddr {
+        IpAddr::V6(Ipv6Addr::new(
+            0x2001, 0x0db8, 0x1234, segment4, 0, 0, 0, host,
+        ))
     }
 
     #[test]
@@ -210,7 +220,7 @@ mod tests {
         let mut r = Registry::new(0, 1);
         let now = Instant::now();
         r.register(make_entry("First"), ip(1), now).unwrap();
-        // Second register from same IP exceeds the per-IP cap of 1.
+        // Second register from same IP exceeds the per-source cap of 1.
         let err = r.register(make_entry("Second"), ip(1), now).unwrap_err();
         assert_eq!(err, RegisterError::PerIpCapacity);
     }
@@ -248,6 +258,41 @@ mod tests {
         // But a sixth register from any of those IPs is rejected.
         let err = r.register(make_entry("Dup"), ip(0), now).unwrap_err();
         assert_eq!(err, RegisterError::PerIpCapacity);
+    }
+
+    #[test]
+    fn test_per_ip_cap_shares_ipv6_slash_64() {
+        let mut r = Registry::new(0, 1);
+        let now = Instant::now();
+
+        r.register(make_entry("First"), ipv6(0x5678, 1), now)
+            .unwrap();
+        let err = r
+            .register(make_entry("Second"), ipv6(0x5678, 2), now)
+            .unwrap_err();
+        assert_eq!(err, RegisterError::PerIpCapacity);
+
+        r.register(make_entry("Other prefix"), ipv6(0x5679, 1), now)
+            .expect("different /64 should have an independent cap bucket");
+    }
+
+    #[test]
+    fn test_unregister_frees_ipv6_slash_64_slot() {
+        let mut r = Registry::new(0, 1);
+        let now = Instant::now();
+
+        let id = r
+            .register(make_entry("First"), ipv6(0x5678, 1), now)
+            .unwrap();
+        assert_eq!(
+            r.register(make_entry("Second"), ipv6(0x5678, 2), now)
+                .unwrap_err(),
+            RegisterError::PerIpCapacity
+        );
+
+        r.unregister(id);
+        r.register(make_entry("Replacement"), ipv6(0x5678, 3), now)
+            .expect("unregister should free the shared /64 bucket");
     }
 
     #[test]

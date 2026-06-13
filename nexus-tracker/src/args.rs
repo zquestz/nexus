@@ -100,9 +100,10 @@ pub struct Cli {
     #[arg(long, default_value_t = 10_000, value_parser = clap::value_parser!(u32).range(0..=1_000_000))]
     pub max_entries: u32,
 
-    /// Maximum entries from a single source IP (0 = unlimited).
+    /// Maximum entries from one IPv4 address or IPv6 /64 (0 = unlimited).
     /// Default 1 keeps the listing one-per-operator; raise for shared
-    /// NAT'd networks where multiple operators register from the same IP.
+    /// NAT'd networks or IPv6 prefixes where multiple operators register
+    /// from the same bucket.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(0..=1000))]
     pub max_entries_per_ip: u32,
 

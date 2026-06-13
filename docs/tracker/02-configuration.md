@@ -8,24 +8,24 @@ This guide covers all command-line options for the Nexus tracker.
 nexus-trackerd [OPTIONS]
 ```
 
-| Option                         | Short | Default            | Description                                                                         |
-| ------------------------------ | ----- | ------------------ | ----------------------------------------------------------------------------------- |
-| `--bind <IP>`                  | `-b`  | `0.0.0.0`          | IP address to bind to                                                               |
-| `--port <PORT>`                | `-p`  | `7510`             | Tracker port                                                                        |
-| `--data-dir <PATH>`            | `-d`  | (platform default) | Tracker data directory (certs, password hashes, logs)                               |
-| `--log-level <LEVEL>`          |       | `info`             | Log level (none, error, warn, info, debug)                                          |
-| `--log-retention <DURATION>`   |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only)                          |
-| `--no-log-timestamps`          |       | `false`            | Disable timestamps in stderr output                                                 |
-| `--upnp`                       |       | `false`            | Enable UPnP port forwarding                                                         |
-| `--websocket`                  |       | `false`            | Enable WebSocket support                                                            |
-| `--websocket-port <PORT>`      |       | `7511`             | WebSocket tracker port (requires `--websocket`)                                     |
-| `--max-entries <N>`            |       | `10000`            | Maximum number of registered servers (0 = unlimited; max 1,000,000)                 |
-| `--max-entries-per-ip <N>`     |       | `1`                | Maximum entries from a single source IP (0 = unlimited; max 1,000)                  |
-| `--refresh-interval <SECONDS>` |       | `300`              | Refresh interval to instruct servers (range 120–600)                                |
-| `--rate-connections <N>`       |       | `20`               | Connections per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000)   |
+| Option                         | Short | Default            | Description                                                                                |
+| ------------------------------ | ----- | ------------------ | ------------------------------------------------------------------------------------------ |
+| `--bind <IP>`                  | `-b`  | `0.0.0.0`          | IP address to bind to                                                                      |
+| `--port <PORT>`                | `-p`  | `7510`             | Tracker port                                                                               |
+| `--data-dir <PATH>`            | `-d`  | (platform default) | Tracker data directory (certs, password hashes, logs)                                      |
+| `--log-level <LEVEL>`          |       | `info`             | Log level (none, error, warn, info, debug)                                                 |
+| `--log-retention <DURATION>`   |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only)                                 |
+| `--no-log-timestamps`          |       | `false`            | Disable timestamps in stderr output                                                        |
+| `--upnp`                       |       | `false`            | Enable UPnP port forwarding                                                                |
+| `--websocket`                  |       | `false`            | Enable WebSocket support                                                                   |
+| `--websocket-port <PORT>`      |       | `7511`             | WebSocket tracker port (requires `--websocket`)                                            |
+| `--max-entries <N>`            |       | `10000`            | Maximum number of registered servers (0 = unlimited; max 1,000,000)                        |
+| `--max-entries-per-ip <N>`     |       | `1`                | Maximum entries from one IPv4 address or IPv6 `/64` (0 = unlimited; max 1,000)             |
+| `--refresh-interval <SECONDS>` |       | `300`              | Refresh interval to instruct servers (range 120–600)                                       |
+| `--rate-connections <N>`       |       | `20`               | Connections per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000)          |
 | `--rate-auth-failures <N>`     |       | `5`                | Failed auth attempts per minute per IPv4 address or IPv6 `/64` (0 = unlimited; max 10,000) |
-| `--help`                       | `-h`  |                    | Show help message                                                                   |
-| `--version`                    | `-V`  |                    | Show version                                                                        |
+| `--help`                       | `-h`  |                    | Show help message                                                                          |
+| `--version`                    | `-V`  |                    | Show version                                                                               |
 
 The tracker also supports two administrative subcommands for password management:
 
@@ -135,19 +135,19 @@ Two flags cap registry growth:
 # Limit total entries
 nexus-trackerd --max-entries 1000
 
-# Limit entries per source IP (defends against one operator flooding the list)
+# Limit entries per IPv4 address or IPv6 /64 (defends against one operator flooding the list)
 nexus-trackerd --max-entries-per-ip 5
 
 # Disable the global cap (entries-per-IP still applies)
 nexus-trackerd --max-entries 0
 ```
 
-| Flag                   | Default | Purpose                                                                                               |
-| ---------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| `--max-entries`        | 10,000  | Hard cap on total registered servers; once reached, new registrations are rejected                    |
-| `--max-entries-per-ip` | 1       | Per-source-IP cap; raise for shared NAT'd networks where multiple operators register from the same IP |
+| Flag                   | Default | Purpose                                                                                                                                                |
+| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--max-entries`        | 10,000  | Hard cap on total registered servers; once reached, new registrations are rejected                                                                     |
+| `--max-entries-per-ip` | 1       | Per-source cap keyed by IPv4 address or IPv6 `/64`; raise for shared NAT'd networks or prefixes where multiple operators register from the same bucket |
 
-When a cap is reached, further registrations from the offending IP receive `error_kind: capacity` and are not added.
+When a cap is reached, further registrations from the offending IPv4 address or IPv6 `/64` receive `error_kind: capacity` and are not added.
 
 ## Refresh Interval
 
@@ -175,8 +175,8 @@ nexus-trackerd --rate-auth-failures 5
 nexus-trackerd --rate-connections 0
 ```
 
-| Limiter                | What it counts                                                                                 | What happens when empty                                                   |
-| ---------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Limiter                | What it counts                                                                                                  | What happens when empty                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `--rate-connections`   | New TCP connections per minute per IPv4 address or IPv6 `/64`                                                   | Excess connections are dropped at the framing layer with no response sent |
 | `--rate-auth-failures` | Failed authentication attempts per minute per IPv4 address or IPv6 `/64` (only failures debit; successes don't) | Further attempts are rejected with `error_kind: rate_limited`             |
 

@@ -131,7 +131,7 @@ pub fn err_tracker_capacity(locale: &str) -> String {
     t(locale, "err-tracker-capacity")
 }
 
-/// Source IP is at `--max-entries-per-ip`.
+/// Source IPv4 address or IPv6 /64 is at `--max-entries-per-ip`.
 pub fn err_tracker_per_ip_capacity(locale: &str) -> String {
     t(locale, "err-tracker-per-ip-capacity")
 }

@@ -48,6 +48,9 @@ pub const DOCUMENTATION_V6: Ipv6Net =
 /// unicast endpoint.
 pub const THIS_NETWORK: Ipv4Net = Ipv4Net::new_assert(Ipv4Addr::new(0, 0, 0, 0), 8);
 
+/// Number of IPv6 16-bit segments kept for a /64 source bucket.
+const IPV6_SLASH_64_PREFIX_SEGMENTS: usize = 4;
+
 // =============================================================================
 // Primitive predicates (project-specific ranges that `std` doesn't cover)
 // =============================================================================
@@ -74,6 +77,20 @@ pub fn is_ipv6_yggdrasil(ip: Ipv6Addr) -> bool {
 #[must_use]
 pub fn is_ipv6_documentation(ip: Ipv6Addr) -> bool {
     DOCUMENTATION_V6.contains(&ip)
+}
+
+/// Bucket an address for per-source limits: IPv4 stays per-address,
+/// IPv6 is keyed by its /64 routing prefix.
+#[must_use]
+pub fn ipv6_slash_64_bucket_key(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => {
+            let mut segments = v6.segments();
+            segments[IPV6_SLASH_64_PREFIX_SEGMENTS..].fill(0);
+            IpAddr::V6(Ipv6Addr::from(segments))
+        }
+        IpAddr::V4(_) => ip,
+    }
 }
 
 // =============================================================================
@@ -729,6 +746,29 @@ mod tests {
         // 80 from the top, so it's outside the IPv4-mapped prefix.
         let not_mapped: IpAddr = "::1:ffff:0:0".parse().unwrap();
         assert_eq!(normalize_ip(not_mapped), not_mapped);
+    }
+
+    #[test]
+    fn ipv6_slash_64_bucket_key_masks_host_bits() {
+        let first: IpAddr = "2001:db8:1234:5678::1".parse().unwrap();
+        let same_prefix: IpAddr = "2001:db8:1234:5678:ffff:ffff:ffff:ffff".parse().unwrap();
+        let other_prefix: IpAddr = "2001:db8:1234:5679::1".parse().unwrap();
+
+        assert_eq!(
+            ipv6_slash_64_bucket_key(first),
+            "2001:db8:1234:5678::".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(
+            ipv6_slash_64_bucket_key(first),
+            ipv6_slash_64_bucket_key(same_prefix)
+        );
+        assert_ne!(
+            ipv6_slash_64_bucket_key(first),
+            ipv6_slash_64_bucket_key(other_prefix)
+        );
+
+        let v4: IpAddr = "192.0.2.7".parse().unwrap();
+        assert_eq!(ipv6_slash_64_bucket_key(v4), v4);
     }
 
     #[test]

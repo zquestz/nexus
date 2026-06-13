@@ -23,15 +23,13 @@
 //! attack; call it from a periodic background task.
 
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv6Addr};
+use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const ERR_RATE_LIMITER_MUTEX_POISONED: &str = "rate limiter mutex poisoned";
 
-/// Number of IPv6 prefix segments (16 bits each) kept when bucketing by
-/// /64: the first four segments are the routing prefix.
-const IPV6_PREFIX_SEGMENTS: usize = 4;
+use crate::address::ipv6_slash_64_bucket_key;
 
 /// Outcome of a rate-limit check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,13 +90,10 @@ impl RateLimiter {
 
     /// Map an address to its bucket key (IPv6 /64 prefix when enabled).
     fn key(&self, ip: IpAddr) -> IpAddr {
-        match ip {
-            IpAddr::V6(v6) if self.ipv6_prefix_keying => {
-                let mut segments = v6.segments();
-                segments[IPV6_PREFIX_SEGMENTS..].fill(0);
-                IpAddr::V6(Ipv6Addr::from(segments))
-            }
-            other => other,
+        if self.ipv6_prefix_keying {
+            ipv6_slash_64_bucket_key(ip)
+        } else {
+            ip
         }
     }
 

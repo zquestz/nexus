@@ -76,7 +76,7 @@ nexus-trackerd --data-dir /var/lib/nexus-trackerd
 | `error_kind`   | Meaning                                                                                                                                                                          |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `unauthorized` | Tracker has a registration password set; the server sent the wrong one or none                                                                                                   |
-| `capacity`     | The tracker hit `--max-entries` or the server's source IP hit `--max-entries-per-ip`                                                                                             |
+| `capacity`     | The tracker hit `--max-entries`, or the server's source IPv4 address or IPv6 `/64` hit `--max-entries-per-ip`                                                                    |
 | `rate_limited` | The server's source IPv4 address or IPv6 `/64` hit `--rate-connections` or `--rate-auth-failures`                                                                                |
 | `invalid`      | Field-validation failure: bad fingerprint format, length over limit, or address-validation rejection (see [Address validation rejections](#address-validation-rejections) below) |
 
@@ -203,13 +203,13 @@ reachable on more than one address family.
 
 ### Servers report `capacity` errors
 
-**Cause:** Either the global cap (`--max-entries`) or the per-IP cap (`--max-entries-per-ip`) is full.
+**Cause:** Either the global cap (`--max-entries`) or the per-source cap (`--max-entries-per-ip`) is full.
 
 **Solutions:**
 
-1. Identify which cap is full — the global cap fires when total registrations equal `--max-entries`; the per-IP cap fires when one source IP equals `--max-entries-per-ip`
+1. Identify which cap is full — the global cap fires when total registrations equal `--max-entries`; the per-source cap fires when one IPv4 address or IPv6 `/64` equals `--max-entries-per-ip`
 2. Raise the relevant cap: `nexus-trackerd --max-entries 50000` or `--max-entries-per-ip 5`
-3. For shared NAT'd networks where multiple legitimate operators register from the same IP, raise `--max-entries-per-ip`
+3. For shared NAT'd networks or IPv6 prefixes where multiple legitimate operators register from the same bucket, raise `--max-entries-per-ip`
 
 ### Registered servers disappear from the list
 

@@ -120,7 +120,7 @@ docker run -d \
 | `NEXUS_TRACKER_NO_LOG_TIMESTAMPS`  | `true`    | Disable stderr timestamps (Docker provides its own); set to empty to re-enable           |
 | `NO_COLOR`                         | (empty)   | Set to any value to force plain stderr output                                            |
 | `NEXUS_TRACKER_MAX_ENTRIES`        | `10000`   | Maximum number of registered servers (0 = unlimited)                                     |
-| `NEXUS_TRACKER_MAX_ENTRIES_PER_IP` | `1`       | Maximum entries from a single source IP (0 = unlimited)                                  |
+| `NEXUS_TRACKER_MAX_ENTRIES_PER_IP` | `1`       | Maximum entries from one IPv4 address or IPv6 `/64` (0 = unlimited)                      |
 | `NEXUS_TRACKER_REFRESH_INTERVAL`   | `300`     | Refresh interval in seconds (range 120–600)                                              |
 | `NEXUS_TRACKER_RATE_CONNECTIONS`   | `20`      | Connections per minute per IPv4 address or IPv6 `/64` (0 = unlimited)                    |
 | `NEXUS_TRACKER_RATE_AUTH_FAILURES` | `5`       | Failed authentication attempts per minute per IPv4 address or IPv6 `/64` (0 = unlimited) |
