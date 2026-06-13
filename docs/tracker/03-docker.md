@@ -55,7 +55,7 @@ environment:
 | Tag      | Description                          |
 | -------- | ------------------------------------ |
 | `latest` | Most recent stable release           |
-| `0.1.2`  | Specific version                     |
+| `0.1.3`  | Specific version                     |
 | `0.1`    | Latest patch release in 0.1.x series |
 | `0`      | Latest release in 0.x.x series       |
 

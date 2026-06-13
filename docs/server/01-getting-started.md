@@ -103,7 +103,7 @@ Start the server with default settings:
 You'll see output like:
 
 ```
-2026-04-28T09:00:05.360381Z  INFO Nexus BBS Server v0.9.1
+2026-04-28T09:00:05.360381Z  INFO Nexus BBS Server v0.9.2
 2026-04-28T09:00:05.360455Z  INFO Log level: info
 2026-04-28T09:00:05.360473Z  INFO Log directory: ~/.local/share/nexusd/logs
 2026-04-28T09:00:05.371466Z  INFO Database: ~/.local/share/nexusd/nexus.db

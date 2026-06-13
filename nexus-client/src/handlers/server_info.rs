@@ -615,7 +615,7 @@ mod tests {
             server_name: Some("Original".to_string()),
             server_description: Some("v1".to_string()),
             public_address: Some("bbs.example.com".to_string()),
-            server_version: Some("0.9.1".to_string()),
+            server_version: Some("0.9.2".to_string()),
             server_image: String::new(),
             cached_server_image: None,
             chat_burst_limit: Some(10),
