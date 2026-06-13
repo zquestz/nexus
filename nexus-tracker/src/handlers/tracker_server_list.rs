@@ -13,7 +13,6 @@ use tokio::io::AsyncWrite;
 use tracing::{debug, warn};
 
 use nexus_common::framing::FrameWriter;
-use nexus_common::io::send_tracker_server_message;
 use nexus_common::tracker_protocol::TrackerServerMessage;
 use nexus_common::validators::{
     MAX_PASSWORD_LENGTH, MAX_VERSION_LENGTH, VersionError, validate_version,
@@ -22,6 +21,7 @@ use nexus_common::version::{self, Version};
 use nexus_common::{ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUTHORIZED};
 
 use crate::auth::check_password;
+use crate::connection_io::send_tracker_server_message_with_write_timeout;
 use crate::constants::{
     ERR_REGISTRY_MUTEX_POISONED, LOG_AUTH_RATE_LIMITED, LOG_LIST_DROP_UNPARSEABLE_VERSION,
     LOG_LIST_REJECTED, LOG_LIST_RESPONSE, REASON_PASSWORD_TOO_LONG, REASON_RATE_LIMITED,
@@ -182,7 +182,7 @@ where
         error: None,
         error_kind: None,
     };
-    send_tracker_server_message(writer, &response).await?;
+    send_tracker_server_message_with_write_timeout(writer, &response).await?;
     Ok(())
 }
 
@@ -201,6 +201,6 @@ where
         error: Some(message),
         error_kind: Some(error_kind.to_string()),
     };
-    send_tracker_server_message(writer, &response).await?;
+    send_tracker_server_message_with_write_timeout(writer, &response).await?;
     Ok(())
 }

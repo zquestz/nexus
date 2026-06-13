@@ -20,14 +20,16 @@ use tracing::{debug, info, warn};
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter};
 use nexus_common::io::{
     client_message_type, read_client_handshake_message_with_full_timeout,
-    read_tracker_client_message_with_full_timeout, send_server_message,
-    send_tracker_server_message,
+    read_tracker_client_message_with_full_timeout,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tls::accept_tls_with_timeout;
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use nexus_common::validators::MAX_LOCALE_LENGTH;
 
+use crate::connection_io::{
+    send_server_message_with_write_timeout, send_tracker_server_message_with_write_timeout,
+};
 use crate::constants::{
     DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED, LOG_HANDSHAKE_REQUIRED,
     LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, REASON_DISCONNECT_CLEAN_CLOSE,
@@ -391,7 +393,7 @@ async fn send_handshake_error<W>(
         command,
         disconnect: true,
     };
-    let _ = send_server_message(writer, &response).await;
+    let _ = send_server_message_with_write_timeout(writer, &response).await;
 }
 
 /// Best-effort `TrackerServerMessage::Error` for post-handshake violations. Failures silent.
@@ -403,7 +405,7 @@ async fn send_tracker_error<W>(
     W: AsyncWrite + Unpin,
 {
     let response = TrackerServerMessage::Error { message, command };
-    let _ = send_tracker_server_message(writer, &response).await;
+    let _ = send_tracker_server_message_with_write_timeout(writer, &response).await;
 }
 
 /// Map a [`FrameError`] to a translated diagnostic. Differentiates malformed JSON,

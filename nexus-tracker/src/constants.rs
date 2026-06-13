@@ -124,6 +124,17 @@ pub const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 /// or `TrackerServerList`) after handshake. Spec §Timeouts: 30 seconds.
 pub const ROLE_ESTABLISH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Max interval without write progress while sending a tracker response.
+/// The response is written in chunks so slow readers are allowed as long
+/// as each chunk can drain within this window.
+pub const TRACKER_WRITE_PROGRESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Chunk size for progress-bounded tracker response writes.
+pub const TRACKER_WRITE_CHUNK_SIZE: usize = 16 * 1024;
+
+pub const ERR_TRACKER_WRITE_TIMEOUT: &str = "Tracker response write timed out";
+pub const ERR_TRACKER_WRITE_ZERO: &str = "Tracker response write returned zero bytes";
+
 pub const LOG_ACCEPT_ERROR: &str = "Accept error";
 
 /// Connection error after TLS (frame, JSON, or unexpected disconnect).

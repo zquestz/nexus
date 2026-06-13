@@ -125,6 +125,22 @@ fn server_message_to_raw_frame(
     Ok(RawFrame::new(message_id, message_type, payload))
 }
 
+/// Serialize a `TrackerServerMessage` into complete frame bytes.
+///
+/// This uses the same message-type and JSON payload encoding as
+/// [`send_tracker_server_message`].
+pub fn tracker_server_message_to_frame_bytes(
+    message: &TrackerServerMessage,
+    message_id: MessageId,
+) -> io::Result<Arc<[u8]>> {
+    let message_type = tracker_server_message_type(message);
+    let payload =
+        serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    let frame = RawFrame::new(message_id, message_type, payload);
+    Ok(Arc::from(frame.to_bytes()))
+}
+
 // =============================================================================
 // Message Receiving
 // =============================================================================
@@ -902,6 +918,32 @@ mod tests {
             message_id,
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn tracker_server_message_to_frame_bytes_matches_writer() {
+        let message_id = MessageId::from_bytes(b"000000000004").unwrap();
+        let message = TrackerServerMessage::TrackerServerListResponse {
+            success: false,
+            servers: Vec::new(),
+            error: Some("denied".to_string()),
+            error_kind: Some("unauthorized".to_string()),
+        };
+        let serialized = tracker_server_message_to_frame_bytes(&message, message_id).unwrap();
+
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let frame = RawFrame::new(
+                message_id,
+                tracker_server_message_type(&message),
+                serde_json::to_vec(&message).unwrap(),
+            );
+            let mut writer = FrameWriter::new(cursor);
+            writer.write_frame(&frame).await.unwrap();
+        }
+
+        assert_eq!(serialized.as_ref(), buffer.as_slice());
     }
 
     #[tokio::test]

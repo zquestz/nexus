@@ -702,12 +702,16 @@ unauthenticated and half-broken connections.
 | TLS accepted, awaiting `Handshake`                       | 30 seconds                                                                | Disconnect, no response           |
 | Frame completion (any frame, mid-read)                   | 60 seconds                                                                | `Error` (best-effort), disconnect |
 | Awaiting first role-establishing message after handshake | 30 seconds                                                                | `Error`, disconnect               |
+| Response write progress                                  | 60 seconds per chunk                                                      | Disconnect                        |
 | Server connection idle between refreshes (stale entry)   | 2× `refresh_interval` (e.g., 600 seconds at the recommended 300s refresh) | Disconnect, delist (no response)  |
 
-The first three timeouts mirror the BBS port and protect against
-slowloris and resource-holding attacks. The last is the dominant liveness
-discipline for long-lived server registrations; client connections close
-promptly after the response and have no idle phase to time out.
+The first three read-side timeouts mirror the BBS port and protect
+against slowloris and resource-holding attacks. Response writes use a
+progress timeout rather than a whole-frame deadline, so slow clients can
+receive large listings as long as each chunk continues to drain. The
+stale-entry timeout is the dominant liveness discipline for long-lived
+server registrations; client connections close promptly after the
+response and have no idle phase to time out.
 
 ## Security and Privacy
 

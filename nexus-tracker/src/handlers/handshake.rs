@@ -11,11 +11,11 @@ use tracing::warn;
 
 use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::framing::FrameWriter;
-use nexus_common::io::send_server_message;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators;
 use nexus_common::version::{self, CompatibilityResult};
 
+use crate::connection_io::send_server_message_with_write_timeout;
 use crate::constants::{
     LOG_HANDSHAKE_CLIENT_TOO_NEW, LOG_HANDSHAKE_MAJOR_MISMATCH, LOG_HANDSHAKE_MINOR_MISMATCH,
 };
@@ -43,7 +43,7 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: Some(err_tracker_handshake_version_invalid(locale)),
             };
-            send_server_message(writer, &response).await?;
+            send_server_message_with_write_timeout(writer, &response).await?;
             return Ok(false);
         }
     };
@@ -59,7 +59,7 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: None,
             };
-            send_server_message(writer, &response).await?;
+            send_server_message_with_write_timeout(writer, &response).await?;
             Ok(true)
         }
         CompatibilityResult::MajorMismatch {
@@ -125,7 +125,7 @@ where
             client_version_str,
         )),
     };
-    send_server_message(writer, &response).await?;
+    send_server_message_with_write_timeout(writer, &response).await?;
     Ok(())
 }
 

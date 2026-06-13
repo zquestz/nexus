@@ -17,7 +17,6 @@ use tracing::{debug, info, warn};
 
 use nexus_common::address as common_address;
 use nexus_common::framing::FrameWriter;
-use nexus_common::io::send_tracker_server_message;
 use nexus_common::tracker_protocol::{ServerEntry, TrackerServerMessage};
 use nexus_common::validators::{
     MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
@@ -30,6 +29,7 @@ use nexus_common::{
 };
 
 use crate::auth::check_password;
+use crate::connection_io::send_tracker_server_message_with_write_timeout;
 use crate::constants::{
     ADDRESS_LOOKUP_TIMEOUT, ERR_REGISTRY_MUTEX_POISONED, LOG_ADDRESS_DNS_TRANSIENT,
     LOG_AUTH_RATE_LIMITED, LOG_REFRESH_GHOST_ID, LOG_REFRESH_TOO_SOON, LOG_REGISTER_NEW,
@@ -617,7 +617,7 @@ where
         error: None,
         error_kind: None,
     };
-    send_tracker_server_message(writer, &response).await?;
+    send_tracker_server_message_with_write_timeout(writer, &response).await?;
     Ok(())
 }
 
@@ -640,7 +640,7 @@ where
         error: Some(error_msg),
         error_kind: Some(error_kind.to_string()),
     };
-    send_tracker_server_message(writer, &response).await?;
+    send_tracker_server_message_with_write_timeout(writer, &response).await?;
     Ok(())
 }
 
