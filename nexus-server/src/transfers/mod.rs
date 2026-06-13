@@ -20,7 +20,7 @@ mod upload;
 
 use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
 
-use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::io::BufReader;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio_rustls::TlsAcceptor;
@@ -28,7 +28,6 @@ use tracing::{debug, error, warn};
 
 use nexus_common::address::is_private_network;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
-use nexus_common::io::send_server_message_with_id;
 use nexus_common::names::fold_name;
 use nexus_common::tls::accept_tls_with_timeout;
 
@@ -51,7 +50,10 @@ use auth::{
     handle_transfer_request, send_transfer_login_success,
 };
 use download::handle_download;
-use helpers::{login_error_response, send_error_and_close};
+use helpers::{
+    login_error_response, send_error_and_close, send_transfer_server_message_with_id,
+    shutdown_transfer_writer,
+};
 use registry::{ActiveTransfer, TransferDirection, TransferRegistration};
 use transfer::{Transfer, TransferContext, TransferEgress};
 use types::{AuthenticatedUser, TransferRequest};
@@ -182,7 +184,7 @@ where
         handle_transfer_handshake(&mut frame_reader, &mut frame_writer, &locale, fingerprint).await;
     if let Err(e) = handshake_result {
         debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_HANDSHAKE_FAILED);
-        let _ = frame_writer.get_mut().shutdown().await;
+        let _ = shutdown_transfer_writer(&mut frame_writer).await;
         return Ok(());
     }
 
@@ -201,7 +203,7 @@ where
         Ok(login) => login,
         Err(e) => {
             debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_LOGIN_FAILED);
-            let _ = frame_writer.get_mut().shutdown().await;
+            let _ = shutdown_transfer_writer(&mut frame_writer).await;
             return Ok(());
         }
     };
@@ -223,15 +225,16 @@ where
         Ok(success) => success,
         Err((message_id, error)) => {
             let response = login_error_response(error);
-            let _ = send_server_message_with_id(&mut frame_writer, &response, message_id).await;
-            let _ = frame_writer.get_mut().shutdown().await;
+            let _ = send_transfer_server_message_with_id(&mut frame_writer, &response, message_id)
+                .await;
+            let _ = shutdown_transfer_writer(&mut frame_writer).await;
             return Ok(());
         }
     };
 
     if let Err(e) = send_transfer_login_success(&mut frame_writer, login_success.message_id).await {
         debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_LOGIN_FAILED);
-        let _ = frame_writer.get_mut().shutdown().await;
+        let _ = shutdown_transfer_writer(&mut frame_writer).await;
         return Ok(());
     }
 
@@ -252,7 +255,7 @@ where
         Ok(req) => req,
         Err(e) => {
             debug!(user = %user.username, ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_REQUEST_FAILED);
-            let _ = frame_writer.get_mut().shutdown().await;
+            let _ = shutdown_transfer_writer(&mut frame_writer).await;
             return Ok(());
         }
     };

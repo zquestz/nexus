@@ -33,7 +33,8 @@ use super::hashing::{FALLBACK_FILE_NAME, HashingReader, hash_file_with_keepalive
 use super::helpers::{
     TransferError, build_validated_path, check_permission, check_root_permission,
     generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
-    send_download_error_and_close, send_download_transfer_error, validate_transfer_path,
+    send_download_error_and_close, send_download_transfer_error, shutdown_transfer_writer,
+    validate_transfer_path,
 };
 use super::transfer::{StreamError, Transfer};
 use super::types::{DownloadParams, FileInfo};
@@ -290,7 +291,7 @@ where
             Err(StreamFileError::Banned) => {
                 // Close the socket; client gets the ban reason on its BBS connection.
                 info!(id = %log_transfer_id, user = %username, ip = %peer_addr, "{}", LOG_DOWNLOAD_BANNED);
-                let _ = transfer.writer().get_mut().shutdown().await;
+                let _ = shutdown_transfer_writer(transfer.writer()).await;
                 return Ok(());
             }
             Err(StreamFileError::HashMismatch) => {
@@ -337,7 +338,7 @@ where
                     err = %e,
                     "{}", LOG_DOWNLOAD_STREAM_ERROR
                 );
-                let _ = transfer.writer().get_mut().shutdown().await;
+                let _ = shutdown_transfer_writer(transfer.writer()).await;
                 return Ok(());
             }
         }
@@ -356,7 +357,7 @@ where
         warn!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %download_path, "{}", LOG_DOWNLOAD_FAILED);
     }
 
-    let _ = transfer.writer().get_mut().shutdown().await;
+    let _ = shutdown_transfer_writer(transfer.writer()).await;
 
     Ok(())
 }

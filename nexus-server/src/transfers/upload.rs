@@ -15,9 +15,7 @@ use nexus_common::framing::{
     DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader, FrameWriter, MessageId,
 };
 use nexus_common::hash::StreamingHasher;
-use nexus_common::io::{
-    read_transfer_client_message_with_full_timeout, send_server_message_with_id,
-};
+use nexus_common::io::read_transfer_client_message_with_full_timeout;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::validators;
 
@@ -41,7 +39,7 @@ use super::hashing::{
 use super::helpers::{
     TransferError, build_validated_path, check_any_permission, check_root_permission,
     generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
-    send_upload_transfer_error, validate_transfer_path,
+    send_upload_transfer_error, shutdown_transfer_writer, validate_transfer_path,
 };
 use super::transfer::{StreamError, Transfer};
 use super::types::{AuthenticatedUser, ReceiveFileParams, UploadParams};
@@ -153,7 +151,7 @@ where
             Err(ReceiveFileError::Banned) => {
                 // Client gets the ban reason on the BBS connection.
                 info!(id = %log_transfer_id, user = %username, ip = %peer_addr, "{}", LOG_UPLOAD_BANNED);
-                let _ = transfer.writer().get_mut().shutdown().await;
+                let _ = shutdown_transfer_writer(transfer.writer()).await;
                 return Ok(());
             }
             Err(ReceiveFileError::Transfer(e)) => {
@@ -191,7 +189,7 @@ where
         transfer.file_index().mark_dirty();
     }
 
-    let _ = transfer.writer().get_mut().shutdown().await;
+    let _ = shutdown_transfer_writer(transfer.writer()).await;
 
     Ok(())
 }
@@ -298,7 +296,7 @@ where
 
     ensure_upload_has_available_space(destination, file_size, existing_size, locale).await?;
 
-    send_file_start_response(transfer.writer(), existing_size, existing_hash, locale).await?;
+    send_file_start_response(transfer, existing_size, existing_hash, locale).await?;
 
     // FileHashing keepalives are skipped automatically.
     let client_frame = read_file_data_or_file_hash(transfer.reader(), locale).await?;
@@ -744,22 +742,29 @@ where
     }
 }
 
-async fn send_file_start_response<W>(
-    frame_writer: &mut FrameWriter<W>,
+async fn send_file_start_response<R, W>(
+    transfer: &mut Transfer<'_, R, W>,
     existing_size: u64,
     existing_hash: Option<String>,
     locale: &str,
-) -> Result<(), TransferError>
+) -> Result<(), ReceiveFileError>
 where
-    W: AsyncWriteExt + Unpin,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
 {
     let response = ServerMessage::FileStartResponse {
         size: existing_size,
         blake3: existing_hash,
     };
-    send_server_message_with_id(frame_writer, &response, MessageId::new())
+    transfer
+        .send_direct_with_id(&response, MessageId::new())
         .await
-        .map_err(|_| TransferError::io_error(err_upload_connection_lost(locale)))
+        .map_err(|e| match e {
+            StreamError::Banned => ReceiveFileError::Banned,
+            _ => ReceiveFileError::Transfer(TransferError::io_error(err_upload_connection_lost(
+                locale,
+            ))),
+        })
 }
 
 #[derive(Debug)]
@@ -781,17 +786,23 @@ where
     R: AsyncReadExt + Unpin,
 {
     loop {
-        let h = match frame_reader.read_frame_header().await {
-            Ok(Some(h)) => h,
-            Ok(None) => {
-                return Err(TransferError::io_error(err_upload_connection_lost(locale)));
-            }
-            Err(_) => {
-                return Err(TransferError::protocol_error(err_upload_protocol_error(
-                    locale,
-                )));
-            }
-        };
+        let h =
+            match tokio::time::timeout(DEFAULT_PROGRESS_TIMEOUT, frame_reader.read_frame_header())
+                .await
+            {
+                Ok(Ok(Some(h))) => h,
+                Ok(Ok(None)) => {
+                    return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+                }
+                Ok(Err(_)) => {
+                    return Err(TransferError::protocol_error(err_upload_protocol_error(
+                        locale,
+                    )));
+                }
+                Err(_) => {
+                    return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+                }
+            };
 
         match h.message_type.as_str() {
             "FileHashing" => {

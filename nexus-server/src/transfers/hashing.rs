@@ -13,12 +13,13 @@ use std::time::Instant;
 
 use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::hash::StreamingHasher;
-use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::{HASH_BUFFER_SIZE, KEEPALIVE_INTERVAL};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 pub(crate) use nexus_common::{FALLBACK_FILE_NAME, FALLBACK_PART_FILE_NAME};
+
+use super::helpers::send_transfer_server_message_with_id;
 
 /// `AsyncRead` wrapper that updates a `StreamingHasher` with each read's new bytes
 /// before returning them to the caller.
@@ -121,7 +122,8 @@ where
             let msg = ServerMessage::FileHashing {
                 file: file_name.to_string(),
             };
-            let _ = send_server_message_with_id(frame_writer, &msg, MessageId::new()).await;
+            let _ =
+                send_transfer_server_message_with_id(frame_writer, &msg, MessageId::new()).await;
             last_keepalive = Instant::now();
         }
     }

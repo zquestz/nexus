@@ -5,6 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use tokio::io::AsyncWriteExt;
+use tokio::time::timeout;
 
 use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
@@ -16,6 +17,7 @@ use nexus_common::{
     ERROR_KIND_PROTOCOL_ERROR,
 };
 
+use crate::constants::{ERR_TRANSFER_WRITE_TIMEOUT, TRANSFER_WRITE_TIMEOUT};
 use crate::db::Permission;
 use crate::files::path::{PathError, build_and_validate_candidate_path};
 use crate::handlers::{
@@ -215,8 +217,8 @@ where
         file_count: None,
         transfer_id: None,
     };
-    let _ = send_server_message_with_id(frame_writer, &response, MessageId::new()).await;
-    let _ = frame_writer.get_mut().shutdown().await;
+    let _ = send_transfer_server_message_with_id(frame_writer, &response, MessageId::new()).await;
+    let _ = shutdown_transfer_writer(frame_writer).await;
     Ok(())
 }
 
@@ -246,8 +248,8 @@ where
         error_kind: error_kind.map(String::from),
         transfer_id: None,
     };
-    let _ = send_server_message_with_id(frame_writer, &response, MessageId::new()).await;
-    let _ = frame_writer.get_mut().shutdown().await;
+    let _ = send_transfer_server_message_with_id(frame_writer, &response, MessageId::new()).await;
+    let _ = shutdown_transfer_writer(frame_writer).await;
     Ok(())
 }
 
@@ -275,9 +277,38 @@ where
         command: None,
         disconnect: true,
     };
-    let _ = send_server_message_with_id(frame_writer, &response, MessageId::new()).await;
-    let _ = frame_writer.get_mut().shutdown().await;
+    let _ = send_transfer_server_message_with_id(frame_writer, &response, MessageId::new()).await;
+    let _ = shutdown_transfer_writer(frame_writer).await;
     Ok(())
+}
+
+pub(crate) async fn send_transfer_server_message_with_id<W>(
+    frame_writer: &mut FrameWriter<W>,
+    response: &ServerMessage,
+    message_id: MessageId,
+) -> io::Result<()>
+where
+    W: AsyncWriteExt + Unpin,
+{
+    match timeout(
+        TRANSFER_WRITE_TIMEOUT,
+        send_server_message_with_id(frame_writer, response, message_id),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(io::Error::other(ERR_TRANSFER_WRITE_TIMEOUT)),
+    }
+}
+
+pub(crate) async fn shutdown_transfer_writer<W>(frame_writer: &mut FrameWriter<W>) -> io::Result<()>
+where
+    W: AsyncWriteExt + Unpin,
+{
+    match timeout(TRANSFER_WRITE_TIMEOUT, frame_writer.get_mut().shutdown()).await {
+        Ok(result) => result,
+        Err(_) => Err(io::Error::other(ERR_TRANSFER_WRITE_TIMEOUT)),
+    }
 }
 
 /// Random 8-hex-char (32-bit) transfer ID for log correlation. NOT

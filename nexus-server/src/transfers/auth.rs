@@ -10,7 +10,7 @@ use tracing::warn;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{
     read_client_handshake_message_with_full_timeout, read_client_login_message_with_full_timeout,
-    read_transfer_client_message_with_full_timeout, send_server_message_with_id,
+    read_transfer_client_message_with_full_timeout,
 };
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -39,7 +39,9 @@ use crate::handlers::{
     err_version_too_long,
 };
 
-use super::helpers::{login_error_response, send_error_and_close};
+use super::helpers::{
+    login_error_response, send_error_and_close, send_transfer_server_message_with_id,
+};
 use super::types::{AuthenticatedUser, DownloadParams, TransferRequest, UploadParams};
 
 pub(crate) struct TransferLoginAuth {
@@ -87,7 +89,8 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: Some(err_handshake_required(locale)),
             };
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             return Err(io::Error::other(ERR_TRANSFER_HANDSHAKE_EXPECTED));
         }
     };
@@ -108,7 +111,8 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: Some(error_msg),
             };
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             return Err(io::Error::other(ERR_TRANSFER_VERSION_INVALID));
         }
     };
@@ -121,7 +125,8 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: None,
             };
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             Ok(())
         }
         CompatibilityResult::MajorMismatch {
@@ -138,7 +143,8 @@ where
                     client_major,
                 )),
             };
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             Err(io::Error::other(ERR_TRANSFER_VERSION_MAJOR_MISMATCH))
         }
         CompatibilityResult::MinorMismatch {
@@ -155,7 +161,8 @@ where
                     &version,
                 )),
             };
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             Err(io::Error::other(format!(
                 "{}{}",
                 ERR_TRANSFER_VERSION_MINOR_MISMATCH, server_minor
@@ -175,7 +182,8 @@ where
                     &version,
                 )),
             };
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             Err(io::Error::other(format!(
                 "{}{}",
                 ERR_TRANSFER_VERSION_CLIENT_TOO_NEW, server_minor
@@ -221,7 +229,8 @@ where
         } => (username, password, req_locale, nickname),
         _ => {
             let response = login_error_response(err_not_logged_in(locale));
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             return Err(io::Error::other(ERR_TRANSFER_LOGIN_EXPECTED));
         }
     };
@@ -236,7 +245,7 @@ where
     if !login_ip_trusted && login_limiter.check_only(login_ip) == RateCheck::Limited {
         warn!(ip = %login_ip, "{}", LOG_LOGIN_RATE_LIMITED);
         let response = login_error_response(err_login_rate_limited(locale));
-        send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_LOGIN_RATE_LIMITED));
     }
 
@@ -252,14 +261,14 @@ where
         && let Err(_) = validators::validate_username(&username)
     {
         let response = login_error_response(err_invalid_credentials(locale));
-        send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_USERNAME_INVALID));
     }
 
     // validate_password_input allows empty for guest accounts.
     if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
         let response = login_error_response(err_invalid_credentials(locale));
-        send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_PASSWORD_INVALID));
     }
 
@@ -277,12 +286,14 @@ where
                 login_limiter.record_failure(login_ip);
             }
             let response = login_error_response(err_invalid_credentials(locale));
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             return Err(io::Error::other(ERR_TRANSFER_USER_NOT_FOUND));
         }
         Err(e) => {
             let response = login_error_response(err_database(locale));
-            send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                .await?;
             return Err(io::Error::other(format!("{}{}", ERR_TRANSFER_DB_ERROR, e)));
         }
     };
@@ -295,7 +306,8 @@ where
             Ok(valid) => valid,
             Err(e) => {
                 let response = login_error_response(err_authentication(locale));
-                send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+                send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                    .await?;
                 return Err(io::Error::other(format!(
                     "{}{}",
                     ERR_TRANSFER_PASSWORD_VERIFY_ERROR, e
@@ -309,7 +321,7 @@ where
             login_limiter.record_failure(login_ip);
         }
         let response = login_error_response(err_invalid_credentials(locale));
-        send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_INVALID_CREDENTIALS));
     }
 
@@ -323,7 +335,7 @@ where
             err_account_disabled(locale, &username)
         };
         let response = login_error_response(error_msg);
-        send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_ACCOUNT_DISABLED));
     }
 
@@ -334,7 +346,8 @@ where
             Ok(perms) => perms.permissions,
             Err(e) => {
                 let response = login_error_response(err_database(locale));
-                send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+                send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
+                    .await?;
                 return Err(io::Error::other(format!("{}{}", ERR_TRANSFER_DB_ERROR, e)));
             }
         }
@@ -382,7 +395,7 @@ where
         group_id: None,
         group_name: None,
     };
-    send_server_message_with_id(frame_writer, &response, message_id).await
+    send_transfer_server_message_with_id(frame_writer, &response, message_id).await
 }
 
 /// Read the initial transfer request (FileDownload or FileUpload).

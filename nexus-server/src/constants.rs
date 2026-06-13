@@ -320,6 +320,11 @@ pub const ERR_TRANSFER_INVALID_CREDENTIALS: &str = "Invalid credentials";
 pub const ERR_TRANSFER_ACCOUNT_DISABLED: &str = "Account disabled";
 pub const ERR_TRANSFER_CONNECTION_CLOSED: &str = "Connection closed";
 pub const ERR_TRANSFER_READ_TIMEOUT: &str = "Read timeout";
+/// Per-write progress timeout for transfer downloads/control frames. A slow
+/// client is fine as long as socket writes keep completing; a stalled reader
+/// must not pin the transfer task forever.
+pub const TRANSFER_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+pub const ERR_TRANSFER_WRITE_TIMEOUT: &str = "Write timeout";
 
 pub const ERR_TRANSFER_READ_HANDSHAKE: &str = "Failed to read handshake: ";
 pub const ERR_TRANSFER_READ_LOGIN: &str = "Failed to read login: ";

@@ -1,21 +1,25 @@
 //! Transfer connection wrapper. Ban signals are checked between streaming
-//! chunks so a mid-transfer ban stops file data immediately.
+//! chunks and while waiting on socket writes, so a mid-transfer ban stops file
+//! data immediately.
 
 use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::oneshot;
+use tokio::time::timeout;
 
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
-use nexus_common::io::{send_server_message_with_id, server_message_to_frame_bytes};
+use nexus_common::io::server_message_to_frame_bytes;
 use nexus_common::protocol::ServerMessage;
 
 use crate::constants::{
     ERR_TRANSFER_EGRESS_ENQUEUE_FAILED, ERR_TRANSFER_EGRESS_TASK_FAILED,
-    ERR_TRANSFER_MISSING_FRAME_TERMINATOR, ERR_TRANSFER_READ_TIMEOUT,
+    ERR_TRANSFER_MISSING_FRAME_TERMINATOR, ERR_TRANSFER_READ_TIMEOUT, ERR_TRANSFER_WRITE_TIMEOUT,
+    TRANSFER_WRITE_TIMEOUT,
 };
 use crate::egress;
 use crate::egress::EgressEnqueueError;
@@ -64,6 +68,26 @@ impl From<io::Error> for StreamError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
     }
+}
+
+#[derive(Debug)]
+enum TransferWriteError {
+    Io(io::Error),
+    Banned,
+}
+
+impl TransferWriteError {
+    fn into_stream_error(self, frame_started: bool) -> StreamError {
+        match self {
+            Self::Io(err) if frame_started => StreamError::FrameStarted(err),
+            Self::Io(err) => StreamError::Io(err),
+            Self::Banned => StreamError::Banned,
+        }
+    }
+}
+
+fn transfer_write_timeout_error() -> io::Error {
+    io::Error::other(ERR_TRANSFER_WRITE_TIMEOUT)
 }
 
 /// Per-transfer context bundled to keep [`Transfer::new`]'s signature narrow.
@@ -201,8 +225,155 @@ where
         self.user_area_root.as_deref()
     }
 
+    async fn write_all_interruptible(&mut self, buf: &[u8]) -> Result<(), TransferWriteError> {
+        self.write_all_interruptible_with_timeout(buf, TRANSFER_WRITE_TIMEOUT)
+            .await
+    }
+
+    async fn write_all_interruptible_with_timeout(
+        &mut self,
+        mut buf: &[u8],
+        write_timeout: Duration,
+    ) -> Result<(), TransferWriteError> {
+        if self.is_banned() {
+            return Err(TransferWriteError::Banned);
+        }
+
+        while !buf.is_empty() {
+            let write = timeout(write_timeout, self.writer.get_mut().write(buf));
+            let bytes_written = match self.ban_rx.as_mut() {
+                Some(rx) => {
+                    tokio::select! {
+                        biased;
+                        ban = rx => {
+                            self.ban_rx = None;
+                            if ban.is_ok() {
+                                self.banned = true;
+                                return Err(TransferWriteError::Banned);
+                            }
+                            continue;
+                        }
+                        result = write => Self::map_interruptible_write_result(result)?,
+                    }
+                }
+                None => Self::map_interruptible_write_result(write.await)?,
+            };
+
+            if bytes_written == 0 {
+                return Err(TransferWriteError::Io(io::Error::from(
+                    io::ErrorKind::WriteZero,
+                )));
+            }
+
+            buf = &buf[bytes_written..];
+        }
+
+        Ok(())
+    }
+
+    fn map_interruptible_write_result(
+        result: Result<io::Result<usize>, tokio::time::error::Elapsed>,
+    ) -> Result<usize, TransferWriteError> {
+        match result {
+            Ok(Ok(bytes_written)) => Ok(bytes_written),
+            Ok(Err(err)) => Err(TransferWriteError::Io(err)),
+            Err(_) => Err(TransferWriteError::Io(transfer_write_timeout_error())),
+        }
+    }
+
+    async fn flush_interruptible(&mut self) -> Result<(), TransferWriteError> {
+        self.flush_interruptible_with_timeout(TRANSFER_WRITE_TIMEOUT)
+            .await
+    }
+
+    async fn flush_interruptible_with_timeout(
+        &mut self,
+        write_timeout: Duration,
+    ) -> Result<(), TransferWriteError> {
+        if self.is_banned() {
+            return Err(TransferWriteError::Banned);
+        }
+
+        loop {
+            let flush = timeout(write_timeout, self.writer.get_mut().flush());
+            match self.ban_rx.as_mut() {
+                Some(rx) => {
+                    tokio::select! {
+                        biased;
+                        ban = rx => {
+                            self.ban_rx = None;
+                            if ban.is_ok() {
+                                self.banned = true;
+                                return Err(TransferWriteError::Banned);
+                            }
+                            continue;
+                        }
+                        result = flush => return match result {
+                            Ok(Ok(())) => Ok(()),
+                            Ok(Err(err)) => Err(TransferWriteError::Io(err)),
+                            Err(_) => Err(TransferWriteError::Io(transfer_write_timeout_error())),
+                        },
+                    }
+                }
+                None => {
+                    return match flush.await {
+                        Ok(Ok(())) => Ok(()),
+                        Ok(Err(err)) => Err(TransferWriteError::Io(err)),
+                        Err(_) => Err(TransferWriteError::Io(transfer_write_timeout_error())),
+                    };
+                }
+            }
+        }
+    }
+
+    async fn recv_egress_dispatch_interruptible(
+        &mut self,
+    ) -> Result<Option<egress::EgressDispatch>, TransferWriteError> {
+        if self.is_banned() {
+            return Err(TransferWriteError::Banned);
+        }
+
+        loop {
+            let Some(egress) = self.egress.as_mut() else {
+                return Ok(None);
+            };
+            let recv = egress.dispatch_rx.recv();
+            match self.ban_rx.as_mut() {
+                Some(rx) => {
+                    tokio::select! {
+                        biased;
+                        ban = rx => {
+                            self.ban_rx = None;
+                            if ban.is_ok() {
+                                self.banned = true;
+                                return Err(TransferWriteError::Banned);
+                            }
+                            continue;
+                        }
+                        dispatch = recv => return Ok(dispatch),
+                    }
+                }
+                None => return Ok(recv.await),
+            }
+        }
+    }
+
     pub async fn send(&mut self, msg: &ServerMessage) -> Result<(), StreamError> {
         self.send_with_id(msg, MessageId::new()).await
+    }
+
+    pub async fn send_direct_with_id(
+        &mut self,
+        msg: &ServerMessage,
+        msg_id: MessageId,
+    ) -> Result<(), StreamError> {
+        let frame = server_message_to_frame_bytes(msg, msg_id).map_err(StreamError::Io)?;
+        self.write_all_interruptible(&frame)
+            .await
+            .map_err(|err| err.into_stream_error(false))?;
+        self.flush_interruptible()
+            .await
+            .map_err(|err| err.into_stream_error(false))
     }
 
     pub async fn send_with_id(
@@ -210,14 +381,17 @@ where
         msg: &ServerMessage,
         msg_id: MessageId,
     ) -> Result<(), StreamError> {
+        let frame = server_message_to_frame_bytes(msg, msg_id).map_err(StreamError::Io)?;
         if self.egress.is_some() {
-            let frame = server_message_to_frame_bytes(msg, msg_id).map_err(StreamError::Io)?;
             return self.send_egress_frame(frame).await;
         }
 
-        send_server_message_with_id(&mut self.writer, msg, msg_id)
+        self.write_all_interruptible(&frame)
             .await
-            .map_err(StreamError::Io)
+            .map_err(|err| err.into_stream_error(false))?;
+        self.flush_interruptible()
+            .await
+            .map_err(|err| err.into_stream_error(false))
     }
 
     /// Stream a file to the client, checking for a ban between chunks.
@@ -264,11 +438,9 @@ where
             msg_id,
             length
         );
-        self.writer
-            .get_mut()
-            .write_all(header.as_bytes())
+        self.write_all_interruptible(header.as_bytes())
             .await
-            .map_err(StreamError::Io)?;
+            .map_err(|err| err.into_stream_error(true))?;
 
         let mut buffer = vec![0u8; CHUNK_SIZE];
         let mut remaining = length;
@@ -292,11 +464,9 @@ where
                 ))));
             }
 
-            self.writer
-                .get_mut()
-                .write_all(&buffer[..bytes_read])
+            self.write_all_interruptible(&buffer[..bytes_read])
                 .await
-                .map_err(StreamError::FrameStarted)?;
+                .map_err(|err| err.into_stream_error(true))?;
 
             remaining -= bytes_read as u64;
             total_written += bytes_read as u64;
@@ -305,17 +475,13 @@ where
         }
 
         // Frame terminator
-        self.writer
-            .get_mut()
-            .write_all(b"\n")
+        self.write_all_interruptible(b"\n")
             .await
-            .map_err(StreamError::FrameStarted)?;
+            .map_err(|err| err.into_stream_error(true))?;
 
-        self.writer
-            .get_mut()
-            .flush()
+        self.flush_interruptible()
             .await
-            .map_err(StreamError::FrameStarted)?;
+            .map_err(|err| err.into_stream_error(true))?;
 
         Ok(total_written)
     }
@@ -486,38 +652,52 @@ where
 
     async fn drain_egress_chunks(&mut self, mut chunks: usize) -> Result<(), StreamError> {
         while chunks > 0 {
-            let Some(egress) = self.egress.as_mut() else {
+            let Some(connection_id) = self.egress.as_ref().map(|egress| egress.connection_id)
+            else {
                 return Err(StreamError::FrameStarted(io::Error::other(
                     "egress is not registered",
                 )));
             };
 
-            let Some(dispatch) = egress.dispatch_rx.recv().await else {
+            let Some(dispatch) = self
+                .recv_egress_dispatch_interruptible()
+                .await
+                .map_err(|err| err.into_stream_error(true))?
+            else {
                 return Err(StreamError::FrameStarted(io::Error::other(
                     "egress dispatch channel closed",
                 )));
             };
 
-            if dispatch.connection_id != egress.connection_id {
-                let _ = egress.handle.write_failed(dispatch.connection_id).await;
+            if dispatch.connection_id != connection_id {
+                if let Some(egress) = self.egress.as_ref() {
+                    let _ = egress.handle.write_failed(dispatch.connection_id).await;
+                }
                 continue;
             }
 
             if let Err(err) = self
-                .writer
-                .get_mut()
-                .write_all(dispatch.chunk.as_bytes())
+                .write_all_interruptible(dispatch.chunk.as_bytes())
                 .await
             {
-                let _ = egress.handle.write_failed(egress.connection_id).await;
-                return Err(StreamError::FrameStarted(err));
+                if let Some(egress) = self.egress.as_ref() {
+                    let _ = egress.handle.write_failed(connection_id).await;
+                }
+                return Err(err.into_stream_error(true));
             }
-            if let Err(err) = self.writer.get_mut().flush().await {
-                let _ = egress.handle.write_failed(egress.connection_id).await;
-                return Err(StreamError::FrameStarted(err));
+            if let Err(err) = self.flush_interruptible().await {
+                if let Some(egress) = self.egress.as_ref() {
+                    let _ = egress.handle.write_failed(connection_id).await;
+                }
+                return Err(err.into_stream_error(true));
             }
 
-            if let Err(err) = egress.handle.ack(egress.connection_id).await {
+            let Some(egress) = self.egress.as_ref() else {
+                return Err(StreamError::FrameStarted(io::Error::other(
+                    "egress is not registered",
+                )));
+            };
+            if let Err(err) = egress.handle.ack(connection_id).await {
                 return Err(StreamError::FrameStarted(egress_task_io_error(err)));
             }
 
@@ -534,23 +714,28 @@ where
     }
 
     async fn send_egress_frame(&mut self, frame: Arc<[u8]>) -> Result<(), StreamError> {
-        let Some(egress) = self.egress.as_mut() else {
-            self.writer
-                .get_mut()
-                .write_all(&frame)
+        if self.is_banned() {
+            return Err(StreamError::Banned);
+        }
+
+        let Some(connection_id) = self.egress.as_ref().map(|egress| egress.connection_id) else {
+            self.write_all_interruptible(&frame)
                 .await
-                .map_err(StreamError::Io)?;
-            self.writer
-                .get_mut()
-                .flush()
+                .map_err(|err| err.into_stream_error(false))?;
+            self.flush_interruptible()
                 .await
-                .map_err(StreamError::Io)?;
+                .map_err(|err| err.into_stream_error(false))?;
             return Ok(());
         };
 
+        let Some(egress) = self.egress.as_ref() else {
+            return Err(StreamError::Io(io::Error::other(
+                "egress is not registered",
+            )));
+        };
         match egress
             .handle
-            .stage_frame(egress.connection_id, Arc::clone(&frame))
+            .stage_frame(connection_id, Arc::clone(&frame))
             .await
         {
             Ok(Ok(_)) => {}
@@ -559,31 +744,44 @@ where
         }
 
         loop {
-            let Some(dispatch) = egress.dispatch_rx.recv().await else {
+            let Some(dispatch) = self
+                .recv_egress_dispatch_interruptible()
+                .await
+                .map_err(|err| err.into_stream_error(false))?
+            else {
                 return Err(StreamError::ConnectionClosed);
             };
 
-            if dispatch.connection_id != egress.connection_id {
-                let _ = egress.handle.write_failed(dispatch.connection_id).await;
+            if dispatch.connection_id != connection_id {
+                if let Some(egress) = self.egress.as_ref() {
+                    let _ = egress.handle.write_failed(dispatch.connection_id).await;
+                }
                 continue;
             }
 
             let is_final_frame_chunk = dispatch.chunk.is_final_frame_chunk();
             if let Err(err) = self
-                .writer
-                .get_mut()
-                .write_all(dispatch.chunk.as_bytes())
+                .write_all_interruptible(dispatch.chunk.as_bytes())
                 .await
             {
-                let _ = egress.handle.write_failed(egress.connection_id).await;
-                return Err(StreamError::Io(err));
+                if let Some(egress) = self.egress.as_ref() {
+                    let _ = egress.handle.write_failed(connection_id).await;
+                }
+                return Err(err.into_stream_error(false));
             }
-            if let Err(err) = self.writer.get_mut().flush().await {
-                let _ = egress.handle.write_failed(egress.connection_id).await;
-                return Err(StreamError::Io(err));
+            if let Err(err) = self.flush_interruptible().await {
+                if let Some(egress) = self.egress.as_ref() {
+                    let _ = egress.handle.write_failed(connection_id).await;
+                }
+                return Err(err.into_stream_error(false));
             }
 
-            if let Err(err) = egress.handle.ack(egress.connection_id).await {
+            let Some(egress) = self.egress.as_ref() else {
+                return Err(StreamError::Io(io::Error::other(
+                    "egress is not registered",
+                )));
+            };
+            if let Err(err) = egress.handle.ack(connection_id).await {
                 return Err(StreamError::Io(egress_task_io_error(err)));
             }
 
@@ -716,6 +914,7 @@ where
                 Err(oneshot::error::TryRecvError::Empty) => false,
                 Err(oneshot::error::TryRecvError::Closed) => {
                     // Sender dropped without signaling (e.g. registry gone) — not a ban.
+                    self.ban_rx = None;
                     false
                 }
             }
@@ -761,7 +960,7 @@ mod tests {
     use std::pin::Pin;
     use std::task::{Context, Poll};
     use tempfile::TempDir;
-    use tokio::io::{AsyncRead, ReadBuf, duplex};
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, duplex};
     use tokio::sync::mpsc;
 
     fn make_test_user() -> AuthenticatedUser {
@@ -914,6 +1113,26 @@ mod tests {
         }
     }
 
+    struct PendingWriter;
+
+    impl AsyncWrite for PendingWriter {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Pending
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
     #[test]
     fn test_stream_error_display() {
         let io_err = StreamError::Io(io::Error::other("test error"));
@@ -931,6 +1150,105 @@ mod tests {
         let io_err = io::Error::other("test");
         let stream_err: StreamError = io_err.into();
         assert!(matches!(stream_err, StreamError::Io(_)));
+    }
+
+    #[tokio::test]
+    async fn transfer_write_times_out_without_progress() {
+        let registry = TransferRegistry::new();
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let reader = tokio::io::BufReader::new(tokio::io::empty());
+        let mut transfer = Transfer::new(
+            FrameReader::new(reader),
+            FrameWriter::new(PendingWriter),
+            ban_rx,
+            info,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: None,
+            },
+        );
+
+        let result = transfer
+            .write_all_interruptible_with_timeout(b"blocked", Duration::from_millis(1))
+            .await;
+
+        match result {
+            Err(TransferWriteError::Io(err)) => {
+                assert_eq!(err.to_string(), ERR_TRANSFER_WRITE_TIMEOUT);
+            }
+            other => panic!("expected write timeout, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn transfer_write_is_interrupted_by_ban() {
+        let registry = TransferRegistry::new();
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let reader = tokio::io::BufReader::new(tokio::io::empty());
+        let mut transfer = Transfer::new(
+            FrameReader::new(reader),
+            FrameWriter::new(PendingWriter),
+            ban_rx,
+            info,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: None,
+            },
+        );
+
+        let (result, _) = tokio::join!(
+            transfer.write_all_interruptible_with_timeout(b"blocked", Duration::from_secs(30)),
+            async {
+                tokio::task::yield_now().await;
+                assert_eq!(registry.disconnect_matching(|_| true), 1);
+            }
+        );
+
+        assert!(matches!(result, Err(TransferWriteError::Banned)));
     }
 
     #[tokio::test]
@@ -1036,7 +1354,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transfer_send_works_when_banned() {
+    async fn test_transfer_send_stops_when_banned() {
         let registry = TransferRegistry::new();
         let (_client, server) = duplex(4096);
         let (server_read, server_write) = tokio::io::split(server);
@@ -1079,14 +1397,15 @@ mod tests {
         registry.disconnect_matching(|_| true);
         assert!(transfer.is_banned());
 
-        // send() must still work after a ban (error messages, etc.)
+        // Once a transfer is banned, all transfer-port writes stop. The BBS
+        // connection carries the user-visible ban reason.
         let msg = ServerMessage::Error {
             message: "Test".to_string(),
             command: None,
             disconnect: false,
         };
         let result = transfer.send(&msg).await;
-        assert!(result.is_ok());
+        assert!(matches!(result, Err(StreamError::Banned)));
     }
 
     #[tokio::test]
@@ -1641,7 +1960,7 @@ mod tests {
             .stream_file_to_client("FileData", &mut reader, CHUNK_SIZE as u64 + 1)
             .await;
         assert!(matches!(result, Err(StreamError::Banned)));
-        assert_eq!(info.get_bytes_transferred(), CHUNK_SIZE as u64);
+        assert_eq!(info.get_bytes_transferred(), 0);
 
         let result = transfer
             .send(&ServerMessage::TransferComplete {
@@ -1650,7 +1969,7 @@ mod tests {
                 error_kind: None,
             })
             .await;
-        assert!(matches!(result, Err(StreamError::Io(_))));
+        assert!(matches!(result, Err(StreamError::Banned)));
 
         drop(transfer);
         stop_egress_task(egress, egress_task, connection_id).await;
