@@ -10,6 +10,63 @@
 | Offline messages investigation       | Medium | See investigation notes below |
 | Connection Monitor egress visibility | Medium | See feature spec below        |
 
+## Audit Follow-Ups
+
+These are the remaining non-urgent items from the 0.9.2 hardening pass.
+
+### Chat Message Render Cache
+
+`nexus-client/src/views/chat.rs` still rebuilds the active message list during
+every `view()` and re-runs `linkify` for each visible message line.
+
+Recommended path:
+
+- Wrap the message list in `lazy()` using a `ChatMessagesDeps` value.
+- Hash the active tab identity, visible message count/content/timestamps, font
+  size, timestamp settings, and theme/palette inputs.
+- Keep the hash complete; stale chat rendering is worse than an extra rebuild.
+- Add tests proving the dependency hash changes on message, tab, font,
+  timestamp, and theme changes.
+
+### User Update Permission Resolution
+
+`nexus-server/src/db/users.rs::update_user` still has an inline final effective
+permission recompute after applying group/permission changes.
+
+Recommended path:
+
+- Replace the final inline `(group grants + direct grants) - revokes` block with
+  `UserDb::get_user_permissions_in_tx(&mut tx, user.id)` after the update rows
+  have landed.
+- Keep the admin short-circuit returning `Permissions::new()`.
+- Do not remove the earlier group-change override cleanup block; that mutates
+  grant/revoke rows and is separate from effective-permission resolution.
+- Add a regression where the returned permissions match an independent
+  `get_user_permissions` read after group grants and revokes.
+
+### User Update Handler Decomposition
+
+`nexus-server/src/handlers/user_update.rs::handle_user_update` still has a very
+large locked orchestration block. Some preflight validation has already been
+extracted for the Argon2 lock-hoist work, but the main handler remains hard to
+audit.
+
+Recommended path:
+
+- Preserve the invariant that the requester's direct socket response is staged
+  as an `Outcome` and sent after the user-state guard drops.
+- Keep broadcast/session side effects that require rename/permission
+  serialization inside the guarded section.
+- Continue extracting one phase at a time, running the `user_update` tests after
+  each step:
+  - field validation
+  - permission/group write planning
+  - old-account snapshot capture
+  - database update dispatch
+  - success side effects and broadcast cascade
+- Helpers should return `Result<_, Outcome>` and must not write directly to the
+  socket.
+
 ## Feature Specs
 
 ### Boards
