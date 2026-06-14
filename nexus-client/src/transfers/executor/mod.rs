@@ -382,7 +382,7 @@ where
         // Check for existing partial/complete file and create StreamingHasher
         // The hasher is pre-fed with existing file content for single-pass hashing.
         // Sends FileHashing keepalives to server while hashing large existing files.
-        let (local_size, mut hasher) = if let Ok(metadata) =
+        let (mut local_size, mut hasher, local_part_path) = if let Ok(metadata) =
             tokio::fs::metadata(&local_file_path).await
             && metadata.is_file()
             && metadata.len() > 0
@@ -396,7 +396,7 @@ where
             match hash_file_with_keepalives(&local_file_path, size, file_name, writer, cancel_flag)
                 .await
             {
-                Ok(h) => (size, h),
+                Ok(h) => (size, h, None),
                 Err(TransferError::Cancelled) => {
                     return Err(handle_possible_cancellation(
                         event_tx,
@@ -404,33 +404,47 @@ where
                         TransferError::Cancelled,
                     ));
                 }
-                Err(_) => (0, StreamingHasher::new()),
+                Err(_) => (0, StreamingHasher::new(), None),
             }
         } else if let Ok(metadata) = tokio::fs::metadata(&part_path).await
             && metadata.is_file()
             && metadata.len() > 0
         {
             let size = metadata.len();
-            let file_name = part_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(FALLBACK_FILE_NAME)
-                .to_string();
-            match hash_file_with_keepalives(&part_path, size, file_name, writer, cancel_flag).await
-            {
-                Ok(h) => (size, h),
-                Err(TransferError::Cancelled) => {
-                    return Err(handle_possible_cancellation(
-                        event_tx,
-                        id,
-                        TransferError::Cancelled,
-                    ));
+            if size > file_size {
+                let _ = tokio::fs::remove_file(&part_path).await;
+                (0, StreamingHasher::new(), None)
+            } else {
+                let file_name = part_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(FALLBACK_FILE_NAME)
+                    .to_string();
+                match hash_file_with_keepalives(&part_path, size, file_name, writer, cancel_flag)
+                    .await
+                {
+                    Ok(h) => (size, h, Some(part_path.clone())),
+                    Err(TransferError::Cancelled) => {
+                        return Err(handle_possible_cancellation(
+                            event_tx,
+                            id,
+                            TransferError::Cancelled,
+                        ));
+                    }
+                    Err(_) => (0, StreamingHasher::new(), None),
                 }
-                Err(_) => (0, StreamingHasher::new()),
             }
         } else {
-            (0, StreamingHasher::new())
+            (0, StreamingHasher::new(), None)
         };
+
+        if local_size > file_size {
+            if let Some(path) = local_part_path {
+                let _ = tokio::fs::remove_file(path).await;
+            }
+            local_size = 0;
+            hasher = StreamingHasher::new();
+        }
 
         // Build hash for FileStartResponse without consuming the hasher.
         let local_hash = if local_size > 0 {
@@ -533,8 +547,18 @@ where
                     transferred_bytes += local_size;
                 }
 
-                // Calculate bytes to receive
-                let bytes_to_receive = file_size - local_size;
+                // Calculate bytes to receive. A resume prefix larger than the
+                // server-advertised size is never valid; the pre-response
+                // cleanup above restarts stale local state, and this checked
+                // subtraction is the protocol guard for anything that remains.
+                let Some(bytes_to_receive) = file_size.checked_sub(local_size) else {
+                    return Err(send_failed_event(
+                        event_tx,
+                        id,
+                        TransferError::ProtocolError,
+                        None,
+                    ));
+                };
 
                 if header.payload_length != bytes_to_receive {
                     return Err(send_failed_event(
@@ -1318,5 +1342,222 @@ mod tests {
             .expect("read final file");
         assert_eq!(final_file, full);
         assert!(!part_path.exists());
+    }
+
+    #[tokio::test]
+    async fn oversized_download_part_restarts_from_zero() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let local_path = temp_dir.path().join("tiny.bin");
+        let part_path = PathBuf::from(format!("{}{}", local_path.display(), PART_SUFFIX));
+        tokio::fs::write(&part_path, b"stale oversized partial")
+            .await
+            .expect("write oversized part");
+        let payload = b"x";
+
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "tiny.bin".to_string(),
+            false,
+            false,
+            local_path.clone(),
+            None,
+            0,
+        );
+
+        let (client_io, server_io) = duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut server_reader = FrameReader::new(BufReader::new(server_read));
+        let mut server_writer = FrameWriter::new(server_write);
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let cancel_flag = Some(Arc::new(AtomicBool::new(false)));
+
+        let client = async {
+            execute_download(
+                &transfer,
+                &mut client_reader,
+                &mut client_writer,
+                &event_tx,
+                &cancel_flag,
+            )
+            .await
+        };
+
+        let server = async {
+            let _request =
+                read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                    .await
+                    .expect("read FileDownload")
+                    .expect("FileDownload message");
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileDownloadResponse {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                    size: Some(payload.len() as u64),
+                    file_count: Some(1),
+                    transfer_id: Some("test-xfer".to_string()),
+                },
+            )
+            .await
+            .expect("send FileDownloadResponse");
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileStart {
+                    path: "tiny.bin".to_string(),
+                    size: payload.len() as u64,
+                },
+            )
+            .await
+            .expect("send FileStart");
+
+            let response =
+                read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                    .await
+                    .expect("read FileStartResponse")
+                    .expect("FileStartResponse message")
+                    .message;
+            assert!(matches!(
+                response,
+                ClientMessage::FileStartResponse {
+                    size: 0,
+                    blake3: None
+                }
+            ));
+
+            send_file_data(&mut server_writer, payload)
+                .await
+                .expect("send FileData");
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileHash {
+                    blake3: hash_bytes(payload),
+                },
+            )
+            .await
+            .expect("send FileHash");
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::TransferComplete {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                },
+            )
+            .await
+            .expect("send TransferComplete");
+        };
+
+        let (client_result, _) = tokio::join!(client, server);
+        client_result.expect("download succeeds");
+
+        let final_file = tokio::fs::read(&local_path).await.expect("read final file");
+        assert_eq!(final_file, payload);
+        assert!(!part_path.exists());
+    }
+
+    #[tokio::test]
+    async fn download_file_data_length_mismatch_is_protocol_error() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let local_path = temp_dir.path().join("file.bin");
+        let partial = b"abc";
+        tokio::fs::write(
+            PathBuf::from(format!("{}{}", local_path.display(), PART_SUFFIX)),
+            partial,
+        )
+        .await
+        .expect("write partial");
+
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "file.bin".to_string(),
+            false,
+            false,
+            local_path,
+            None,
+            0,
+        );
+
+        let (client_io, server_io) = duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut server_reader = FrameReader::new(BufReader::new(server_read));
+        let mut server_writer = FrameWriter::new(server_write);
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let cancel_flag = Some(Arc::new(AtomicBool::new(false)));
+
+        let client = async {
+            execute_download(
+                &transfer,
+                &mut client_reader,
+                &mut client_writer,
+                &event_tx,
+                &cancel_flag,
+            )
+            .await
+        };
+
+        let server = async {
+            let _request =
+                read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                    .await
+                    .expect("read FileDownload")
+                    .expect("FileDownload message");
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileDownloadResponse {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                    size: Some(5),
+                    file_count: Some(1),
+                    transfer_id: Some("test-xfer".to_string()),
+                },
+            )
+            .await
+            .expect("send FileDownloadResponse");
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileStart {
+                    path: "file.bin".to_string(),
+                    size: 5,
+                },
+            )
+            .await
+            .expect("send FileStart");
+
+            let response =
+                read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                    .await
+                    .expect("read FileStartResponse")
+                    .expect("FileStartResponse message")
+                    .message;
+            assert!(matches!(
+                response,
+                ClientMessage::FileStartResponse {
+                    size,
+                    blake3: Some(hash),
+                } if size == partial.len() as u64 && hash == hash_bytes(partial)
+            ));
+
+            send_file_data(&mut server_writer, b"bad")
+                .await
+                .expect("send wrong-sized FileData");
+        };
+
+        let (client_result, _) = tokio::join!(client, server);
+        assert_eq!(
+            client_result.expect_err("download should fail"),
+            TransferError::ProtocolError
+        );
     }
 }
