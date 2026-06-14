@@ -14,6 +14,7 @@ pub mod theme;
 mod trackers;
 
 use crate::types::{ClientTracker, ServerBookmark};
+pub(crate) use bookmarks::canonical_bookmark_host;
 use settings::Settings;
 
 // =============================================================================

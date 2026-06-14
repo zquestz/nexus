@@ -1,5 +1,6 @@
 //! Bookmark management methods for Config
 
+use nexus_common::address::{normalize_ip_literal, resolve_host_for_connection};
 use nexus_common::names::fold_name;
 use uuid::Uuid;
 
@@ -58,12 +59,12 @@ impl Config {
         new_username: &str,
         is_shared: bool,
     ) -> Vec<Uuid> {
-        let address_lc = address.to_lowercase();
+        let address_canonical = canonical_bookmark_host(address);
         let old_folded = fold_name(old_username);
         let mut changed_ids = Vec::new();
 
         for bookmark in &mut self.bookmarks {
-            if bookmark.address.to_lowercase() != address_lc
+            if canonical_bookmark_host(&bookmark.address) != address_canonical
                 || bookmark.port != port
                 || fold_name(&bookmark.username) != old_folded
             {
@@ -127,11 +128,11 @@ impl Config {
         username: &str,
         nickname: &str,
     ) -> Option<&ServerBookmark> {
-        let address_lc = address.to_lowercase();
+        let address_canonical = canonical_bookmark_host(address);
         let username_lc = fold_name(username);
         let our_canonical_nick = canonical_nickname(nickname, username);
         self.bookmarks.iter().find(|b| {
-            b.address.to_lowercase() == address_lc
+            canonical_bookmark_host(&b.address) == address_canonical
                 && b.port == port
                 && fold_name(&b.username) == username_lc
                 && canonical_nickname(&b.nickname, &b.username) == our_canonical_nick
@@ -157,10 +158,10 @@ impl Config {
         port: u16,
         username: Option<&str>,
     ) -> Option<&ServerBookmark> {
-        let address_lc = address.to_lowercase();
+        let address_canonical = canonical_bookmark_host(address);
         let username_lc = username.map(fold_name);
         self.bookmarks.iter().find(|b| {
-            b.address.to_lowercase() == address_lc
+            canonical_bookmark_host(&b.address) == address_canonical
                 && b.port == port
                 && match &username_lc {
                     Some(u) => &fold_name(&b.username) == u,
@@ -168,6 +169,12 @@ impl Config {
                 }
         })
     }
+}
+
+pub(crate) fn canonical_bookmark_host(host: &str) -> String {
+    resolve_host_for_connection(host)
+        .unwrap_or_else(|_| normalize_ip_literal(host).to_string())
+        .to_lowercase()
 }
 
 /// Reduce a nickname to its canonical form for bookmark matching.
@@ -414,6 +421,29 @@ mod tests {
         assert_eq!(bookmark.nickname, "alice");
     }
 
+    #[test]
+    fn test_update_bookmark_usernames_for_server_rename_matches_canonical_host_variant() {
+        let mut config = Config::default();
+        let mut bm = bookmark_with_params("Test", "[::1]", 7500, "alice", "alice");
+        bm.certificate_fingerprint = Some("fp-current".to_string());
+        let id = bm.id;
+        config.add_bookmark(bm);
+
+        let changed_ids = config.update_bookmark_usernames_for_server_rename(
+            "::1",
+            7500,
+            "fp-current",
+            "alice",
+            "alicia",
+            false,
+        );
+
+        assert_eq!(changed_ids, vec![id]);
+        let bookmark = config.get_bookmark(id).unwrap();
+        assert_eq!(bookmark.username, "alicia");
+        assert_eq!(bookmark.nickname, "alicia");
+    }
+
     /// Helper to build a bookmark with full connection params for matching tests.
     fn bookmark_with_params(
         name: &str,
@@ -461,6 +491,32 @@ mod tests {
 
         // User typed mixed case — should still find the bookmark.
         let result = config.find_bookmark_matching("Server.Example", 7500, "alice", "Alice");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_ipv6_bracket_variants() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params("Test", "[::1]", 7500, "alice", ""));
+
+        let result = config.find_bookmark_matching("::1", 7500, "alice", "");
+
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_idn_unicode_punycode_variants() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "bücher.example",
+            7500,
+            "alice",
+            "",
+        ));
+
+        let result = config.find_bookmark_matching("xn--bcher-kva.example", 7500, "alice", "");
+
         assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
     }
 
@@ -771,6 +827,59 @@ mod tests {
 
         // Mixed case host AND username — both lowercased on match.
         let result = config.find_bookmark_matching_uri("Server.Example", 7500, Some("ALICE"));
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_ipv6_bracket_variants() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params("Test", "[::1]", 7500, "alice", ""));
+
+        let result = config.find_bookmark_matching_uri("::1", 7500, None);
+
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_ipv6_reverse_bracket_variants() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params("Test", "::1", 7500, "alice", ""));
+
+        let result = config.find_bookmark_matching_uri("[::1]", 7500, None);
+
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_idn_unicode_punycode_variants() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "bücher.example",
+            7500,
+            "alice",
+            "",
+        ));
+
+        let result =
+            config.find_bookmark_matching_uri("xn--bcher-kva.example", 7500, Some("ALICE"));
+
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_ipv6_zone_id_variants() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "[fe80::1%eth0]",
+            7500,
+            "alice",
+            "",
+        ));
+
+        let result = config.find_bookmark_matching_uri("fe80::1%eth0", 7500, None);
+
         assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
     }
 

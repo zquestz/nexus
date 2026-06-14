@@ -13,6 +13,14 @@ use crate::types::{
 };
 use crate::uri::{NexusPath, NexusUri};
 
+struct UriConnectionLookup {
+    username: String,
+    password: String,
+    nickname: Option<String>,
+    display_name: String,
+    expected_fingerprint: Option<String>,
+}
+
 impl NexusApp {
     /// Handle a nexus:// URI
     ///
@@ -51,9 +59,12 @@ impl NexusApp {
     /// - If URI has no credentials: match any connection to the same host:port
     /// - If URI has credentials: match connection with same host:port AND username
     fn find_connection_for_uri(&self, uri: &NexusUri) -> Option<usize> {
+        let uri_host = crate::config::canonical_bookmark_host(&uri.host);
         for (conn_id, conn) in &self.connections {
-            // Check host matches (case-insensitive)
-            if conn.connection_info.address.to_lowercase() != uri.host.to_lowercase() {
+            // Check host matches using the same connection-time normalization
+            // as bookmark lookup so bracketed IPv6 / IDN spelling variants
+            // reuse the existing connection.
+            if crate::config::canonical_bookmark_host(&conn.connection_info.address) != uri_host {
                 continue;
             }
 
@@ -82,73 +93,13 @@ impl NexusApp {
 
         let server_address = uri.host.clone();
         let port = uri.port;
-
-        // If URI has no credentials, look for a matching bookmark to use its credentials.
-        // If a bookmark is matched, also pull its stored fingerprint so the
-        // stage-1 TOFU check can run.
-        let (username, password, nickname, display_name, expected_fingerprint) =
-            if uri.user.is_none() {
-                // Find bookmark matching host:port
-                if let Some(bookmark) = self
-                    .config
-                    .find_bookmark_matching_uri(&uri.host, uri.port, None)
-                {
-                    (
-                        bookmark.username.clone(),
-                        bookmark.password.clone(),
-                        if bookmark.nickname.is_empty() {
-                            self.config.settings.nickname.clone()
-                        } else {
-                            Some(bookmark.nickname.clone())
-                        },
-                        bookmark.name.clone(),
-                        bookmark.certificate_fingerprint.clone(),
-                    )
-                } else {
-                    // No bookmark found - use guest login
-                    (
-                        String::new(),
-                        String::new(),
-                        self.config.settings.nickname.clone(),
-                        crate::uri::format_endpoint(&uri.host, uri.port),
-                        None,
-                    )
-                }
-            } else {
-                // URI has username - find matching bookmark for password and display name
-                let uri_user = uri.user.clone().unwrap_or_default();
-
-                if let Some(bookmark) =
-                    self.config
-                        .find_bookmark_matching_uri(&uri.host, uri.port, Some(&uri_user))
-                {
-                    // Use bookmark's password if URI didn't provide one
-                    let password = uri
-                        .password
-                        .clone()
-                        .unwrap_or_else(|| bookmark.password.clone());
-                    (
-                        uri_user,
-                        password,
-                        if bookmark.nickname.is_empty() {
-                            self.config.settings.nickname.clone()
-                        } else {
-                            Some(bookmark.nickname.clone())
-                        },
-                        bookmark.name.clone(),
-                        bookmark.certificate_fingerprint.clone(),
-                    )
-                } else {
-                    // No matching bookmark - use URI credentials as-is
-                    (
-                        uri_user,
-                        uri.password.clone().unwrap_or_default(),
-                        self.config.settings.nickname.clone(),
-                        crate::uri::format_endpoint(&uri.host, uri.port),
-                        None,
-                    )
-                }
-            };
+        let UriConnectionLookup {
+            username,
+            password,
+            nickname,
+            display_name,
+            expected_fingerprint,
+        } = self.resolve_uri_connection_lookup(&uri);
 
         let locale = get_locale().to_string();
         let avatar = self.config.settings.avatar.clone();
@@ -191,6 +142,68 @@ impl NexusApp {
                 path,
             },
         )
+    }
+
+    fn resolve_uri_connection_lookup(&self, uri: &NexusUri) -> UriConnectionLookup {
+        // If URI has no credentials, look for a matching bookmark to use its
+        // credentials and stored fingerprint for the stage-1 TOFU check.
+        if uri.user.is_none() {
+            if let Some(bookmark) = self
+                .config
+                .find_bookmark_matching_uri(&uri.host, uri.port, None)
+            {
+                return UriConnectionLookup {
+                    username: bookmark.username.clone(),
+                    password: bookmark.password.clone(),
+                    nickname: if bookmark.nickname.is_empty() {
+                        self.config.settings.nickname.clone()
+                    } else {
+                        Some(bookmark.nickname.clone())
+                    },
+                    display_name: bookmark.name.clone(),
+                    expected_fingerprint: bookmark.certificate_fingerprint.clone(),
+                };
+            }
+
+            return UriConnectionLookup {
+                username: String::new(),
+                password: String::new(),
+                nickname: self.config.settings.nickname.clone(),
+                display_name: crate::uri::format_endpoint(&uri.host, uri.port),
+                expected_fingerprint: None,
+            };
+        }
+
+        // URI has username - find matching bookmark for password, display name,
+        // nickname, and stored fingerprint.
+        let uri_user = uri.user.clone().unwrap_or_default();
+        if let Some(bookmark) =
+            self.config
+                .find_bookmark_matching_uri(&uri.host, uri.port, Some(&uri_user))
+        {
+            return UriConnectionLookup {
+                username: uri_user,
+                password: uri
+                    .password
+                    .clone()
+                    .unwrap_or_else(|| bookmark.password.clone()),
+                nickname: if bookmark.nickname.is_empty() {
+                    self.config.settings.nickname.clone()
+                } else {
+                    Some(bookmark.nickname.clone())
+                },
+                display_name: bookmark.name.clone(),
+                expected_fingerprint: bookmark.certificate_fingerprint.clone(),
+            };
+        }
+
+        UriConnectionLookup {
+            username: uri_user,
+            password: uri.password.clone().unwrap_or_default(),
+            nickname: self.config.settings.nickname.clone(),
+            display_name: crate::uri::format_endpoint(&uri.host, uri.port),
+            expected_fingerprint: None,
+        }
     }
 
     fn show_uri_connection_error(&mut self, host: &str, error: String) -> Task<Message> {
@@ -473,7 +486,7 @@ mod tests {
 
     use super::*;
     use crate::network::types::{ConnectError, ConnectionParams};
-    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+    use crate::types::{ConnectionInfo, ServerBookmark, ServerConnection, ServerConnectionParams};
 
     fn test_connection_with_receiver(
         connection_id: usize,
@@ -564,6 +577,61 @@ mod tests {
             "err-uri-connection-failed",
             &[("host", host), ("error", error)],
         )
+    }
+
+    #[test]
+    fn uri_connection_lookup_uses_bookmark_pin_for_ipv6_variant() {
+        let mut app = NexusApp::default();
+        app.config.add_bookmark(ServerBookmark {
+            name: "Local".to_string(),
+            address: "[::1]".to_string(),
+            port: 7500,
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            certificate_fingerprint: Some("fp-local".to_string()),
+            ..Default::default()
+        });
+        let uri = NexusUri {
+            user: None,
+            password: None,
+            host: "::1".to_string(),
+            port: 7500,
+            path: None,
+        };
+
+        let lookup = app.resolve_uri_connection_lookup(&uri);
+
+        assert_eq!(lookup.username, "alice");
+        assert_eq!(lookup.password, "secret");
+        assert_eq!(lookup.display_name, "Local");
+        assert_eq!(lookup.expected_fingerprint.as_deref(), Some("fp-local"));
+    }
+
+    #[test]
+    fn uri_existing_connection_lookup_uses_canonical_host() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            next_connection_id: 2,
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.connection_info.address = "[::1]".to_string();
+        conn.connection_info.port = 7500;
+        app.connections.insert(1, conn);
+        let uri = NexusUri {
+            user: None,
+            password: None,
+            host: "::1".to_string(),
+            port: 7500,
+            path: None,
+        };
+
+        let task = app.handle_nexus_uri(uri);
+
+        assert_eq!(app.active_connection, Some(1));
+        assert_eq!(app.next_connection_id, 2);
+        assert!(rx.try_recv().is_err());
+        drop(task);
     }
 
     #[test]
