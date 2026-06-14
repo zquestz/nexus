@@ -216,6 +216,10 @@ impl JitterBuffer {
     /// Returns true if the next expected packet is missing but we have
     /// later packets, indicating loss rather than buffer underrun.
     pub fn has_loss(&self) -> bool {
+        if self.packets.len() < self.target_frames {
+            return false;
+        }
+
         if let Some(next) = self.next_sequence {
             if self.packets.contains_key(&next) {
                 return false;
@@ -430,6 +434,43 @@ mod tests {
 
         // Now next_sequence is 2, which is missing but we have 3+
         assert!(buffer.has_loss());
+    }
+
+    #[test]
+    fn test_jitter_buffer_tail_loss_below_fill_is_underrun() {
+        let mut buffer = JitterBuffer::new();
+        buffer.next_sequence = Some(2);
+        buffer.target_frames = MIN_BUFFER_FRAMES;
+
+        // Packet 2 is missing and only packet 3 arrived before the talker stopped.
+        // That is below the fill target, so it is an underrun, not actionable loss.
+        buffer.packets.insert(
+            3,
+            BufferedPacket {
+                samples: make_samples(),
+            },
+        );
+
+        assert_eq!(buffer.packets.len(), buffer.target_frames - 1);
+        assert!(!buffer.has_loss());
+        assert!(buffer.pop().is_none());
+        assert_eq!(buffer.next_sequence, Some(2));
+        assert!(!buffer.has_loss());
+        assert!(buffer.pop().is_none());
+        assert_eq!(buffer.next_sequence, Some(2));
+
+        // Once enough future packets arrive, has_loss and pop agree again:
+        // has_loss reports actionable loss and pop advances past it.
+        buffer.packets.insert(
+            4,
+            BufferedPacket {
+                samples: make_samples(),
+            },
+        );
+        assert_eq!(buffer.packets.len(), buffer.target_frames);
+        assert!(buffer.has_loss());
+        assert!(buffer.pop().is_none());
+        assert!(buffer.pop().is_some());
     }
 
     #[test]
