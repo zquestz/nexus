@@ -320,6 +320,202 @@ pub enum VoiceCommand {
     Stop,
 }
 
+struct VoiceCommandRuntime<'a> {
+    input_device: &'a str,
+    mic_level: &'a AtomicU32,
+    event_tx: &'a mpsc::UnboundedSender<VoiceEvent>,
+    dtls_command_tx: &'a mpsc::UnboundedSender<VoiceDtlsCommand>,
+    current_quality: &'a mut VoiceQuality,
+    current_processor_settings: &'a mut AudioProcessorSettings,
+    transmit_allowed: &'a mut bool,
+    transmitting: &'a mut bool,
+    deafened: &'a mut bool,
+    capture: &'a mut Option<AudioCapture>,
+    encoder: &'a mut Option<VoiceEncoder>,
+    processor: &'a mut Option<AudioProcessor>,
+    participants: &'a mut VoiceParticipantState,
+    mixer: &'a mut AudioMixer,
+    jitter_pool: &'a mut JitterBufferPool,
+    decoder_pool: &'a mut DecoderPool,
+}
+
+fn handle_connect_wait_command(
+    cmd: Option<VoiceCommand>,
+    pending_commands: &mut Vec<VoiceCommand>,
+    dtls_command_tx: &mpsc::UnboundedSender<VoiceDtlsCommand>,
+) -> bool {
+    match cmd {
+        Some(VoiceCommand::Stop) | None => {
+            let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
+            false
+        }
+        Some(command) => {
+            pending_commands.push(command);
+            true
+        }
+    }
+}
+
+fn handle_voice_command(cmd: VoiceCommand, runtime: &mut VoiceCommandRuntime<'_>) -> bool {
+    match cmd {
+        VoiceCommand::EnableTransmit => {
+            if *runtime.transmit_allowed {
+                return true;
+            }
+
+            match initialize_transmit_resources(
+                runtime.input_device,
+                *runtime.current_quality,
+                *runtime.current_processor_settings,
+                runtime.event_tx,
+            ) {
+                Ok((new_capture, new_encoder, new_processor)) => {
+                    *runtime.capture = Some(new_capture);
+                    *runtime.encoder = Some(new_encoder);
+                    *runtime.processor = new_processor;
+                    *runtime.transmit_allowed = true;
+                }
+                Err(error) => {
+                    let _ = runtime
+                        .event_tx
+                        .send(VoiceEvent::TransmitEnableFailed(error));
+                }
+            }
+        }
+        VoiceCommand::StartTransmitting => {
+            if *runtime.transmit_allowed && !*runtime.transmitting {
+                *runtime.transmitting = true;
+                // Hint to transient suppressor that PTT key was pressed
+                if let Some(proc) = runtime.processor.as_ref() {
+                    proc.set_stream_key_pressed(true);
+                }
+                let Some(capture) = runtime.capture.as_ref() else {
+                    return true;
+                };
+                if let Err(e) = capture.start() {
+                    let _ = runtime
+                        .event_tx
+                        .send(VoiceEvent::AudioError(format!("Capture error: {}", e)));
+                } else {
+                    let _ = runtime
+                        .dtls_command_tx
+                        .send(VoiceDtlsCommand::SendSpeakingStarted);
+                    let _ = runtime
+                        .event_tx
+                        .send(VoiceEvent::LocalSpeakingChanged(true));
+                }
+            }
+        }
+        VoiceCommand::StopTransmitting => {
+            if *runtime.transmitting {
+                *runtime.transmitting = false;
+                // Hint to transient suppressor that PTT key was released
+                if let Some(proc) = runtime.processor.as_ref() {
+                    proc.set_stream_key_pressed(false);
+                }
+                if let Some(capture) = runtime.capture.as_ref() {
+                    capture.stop();
+                }
+                // Clear mic level when stopping
+                runtime.mic_level.store(0f32.to_bits(), Ordering::Relaxed);
+                let _ = runtime
+                    .dtls_command_tx
+                    .send(VoiceDtlsCommand::SendSpeakingStopped);
+                let _ = runtime
+                    .event_tx
+                    .send(VoiceEvent::LocalSpeakingChanged(false));
+            }
+        }
+        VoiceCommand::MuteUser(nickname) => {
+            // Stop any already queued or codec-buffered audio immediately.
+            if runtime.participants.set_muted(&nickname, true) {
+                runtime.mixer.mute_user_and_clear(&nickname);
+            } else {
+                runtime.mixer.remove_user_state(&nickname);
+            }
+            runtime.jitter_pool.remove(&nickname);
+            runtime.decoder_pool.remove(&nickname);
+        }
+        VoiceCommand::UnmuteUser(nickname) => {
+            runtime.participants.set_muted(&nickname, false);
+            runtime.mixer.unmute_user(&nickname);
+        }
+        VoiceCommand::UserJoined(nickname) => {
+            runtime.participants.add_user(&nickname);
+        }
+        VoiceCommand::UserLeft(nickname) => {
+            runtime.participants.remove_user(&nickname);
+            emit_speaking_stopped(runtime.participants, &nickname, runtime.event_tx);
+            // Clean up decoder, jitter, and queued mixer buffers for the user who left.
+            runtime.mixer.remove_user_state(&nickname);
+            runtime.jitter_pool.remove(&nickname);
+            runtime.decoder_pool.remove(&nickname);
+        }
+        VoiceCommand::UserRenamed { old, new, muted } => {
+            let old_was_known = runtime.participants.rename_user(&old, &new, muted);
+            emit_speaking_stopped(runtime.participants, &old, runtime.event_tx);
+            if old_was_known && fold_name(&old) != fold_name(&new) {
+                emit_speaking_stopped(runtime.participants, &new, runtime.event_tx);
+            }
+
+            if old_was_known {
+                runtime.decoder_pool.rename_user(&old, &new);
+                runtime.jitter_pool.rename_user(&old, &new);
+                runtime.mixer.rename_user(&old, &new, muted);
+            } else {
+                runtime.decoder_pool.remove(&old);
+                runtime.jitter_pool.remove(&old);
+                runtime.mixer.remove_user_state(&old);
+                let new_key = fold_name(&new);
+                if runtime.participants.is_known_key(&new_key)
+                    && runtime.participants.is_muted_key(&new_key)
+                {
+                    runtime.mixer.mute_user(&new);
+                } else {
+                    runtime.mixer.unmute_user(&new);
+                }
+            }
+        }
+        VoiceCommand::SetDeafened(is_deafened) => {
+            *runtime.deafened = is_deafened;
+            runtime.mixer.set_deafened(is_deafened);
+            // Hint to AEC/AGC: no speaker output when deafened, so no echo
+            if let Some(proc) = runtime.processor.as_ref() {
+                proc.set_output_will_be_muted(is_deafened);
+            }
+        }
+        VoiceCommand::SetQuality(quality) => {
+            *runtime.current_quality = quality;
+            if let Some(encoder) = runtime.encoder.as_mut()
+                && let Err(e) = encoder.set_quality(quality)
+            {
+                let _ = runtime.event_tx.send(VoiceEvent::QualityChangeFailed(e));
+            }
+        }
+        VoiceCommand::SetProcessorSettings(settings) => {
+            *runtime.current_processor_settings = settings;
+            if let Some(proc) = runtime.processor.as_mut() {
+                proc.update_settings(settings);
+            }
+        }
+        VoiceCommand::Stop => {
+            // Clean shutdown
+            if *runtime.transmitting {
+                if let Some(capture) = runtime.capture.as_ref() {
+                    capture.stop();
+                }
+                let _ = runtime
+                    .dtls_command_tx
+                    .send(VoiceDtlsCommand::SendSpeakingStopped);
+            }
+            let _ = runtime.dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
+            return false;
+        }
+    }
+
+    true
+}
+
 // =============================================================================
 // Voice Session Runner
 // =============================================================================
@@ -355,7 +551,9 @@ async fn run_voice_session(
         dtls_command_rx,
     ));
 
-    // Wait for DTLS connection
+    // Wait for DTLS connection. Commands can arrive while DTLS is handshaking;
+    // defer non-stop commands so the live session handles them after setup.
+    let mut pending_commands = Vec::new();
     let connected = loop {
         tokio::select! {
             event = dtls_event_rx.recv() => {
@@ -376,8 +574,7 @@ async fn run_voice_session(
                 }
             }
             cmd = command_rx.recv() => {
-                if matches!(cmd, Some(VoiceCommand::Stop) | None) {
-                    let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
+                if !handle_connect_wait_command(cmd, &mut pending_commands, &dtls_command_tx) {
                     break false;
                 }
             }
@@ -453,6 +650,34 @@ async fn run_voice_session(
     // skipping 10ms voice ticks creates tiny playback holes that sound like
     // crunchy dropouts when the manager thread is delayed.
     let mut audio_interval = time::interval(Duration::from_millis(AUDIO_PROCESS_INTERVAL_MS));
+
+    for command in pending_commands {
+        let mut runtime = VoiceCommandRuntime {
+            input_device: &config.input_device,
+            mic_level: config.mic_level.as_ref(),
+            event_tx: &event_tx,
+            dtls_command_tx: &dtls_command_tx,
+            current_quality: &mut current_quality,
+            current_processor_settings: &mut current_processor_settings,
+            transmit_allowed: &mut transmit_allowed,
+            transmitting: &mut transmitting,
+            deafened: &mut deafened,
+            capture: &mut capture,
+            encoder: &mut encoder,
+            processor: &mut processor,
+            participants: &mut participants,
+            mixer: &mut mixer,
+            jitter_pool: &mut jitter_pool,
+            decoder_pool: &mut decoder_pool,
+        };
+
+        if !handle_voice_command(command, &mut runtime) {
+            mixer.stop();
+            dtls_handle.abort();
+            let _ = event_tx.send(VoiceEvent::Disconnected(None));
+            return;
+        }
+    }
 
     loop {
         tokio::select! {
@@ -611,146 +836,28 @@ async fn run_voice_session(
 
             // Handle commands
             cmd = command_rx.recv() => {
-                match cmd {
-                    Some(VoiceCommand::EnableTransmit) => {
-                        if transmit_allowed {
-                            continue;
-                        }
+                let command = cmd.unwrap_or(VoiceCommand::Stop);
+                let mut runtime = VoiceCommandRuntime {
+                    input_device: &config.input_device,
+                    mic_level: config.mic_level.as_ref(),
+                    event_tx: &event_tx,
+                    dtls_command_tx: &dtls_command_tx,
+                    current_quality: &mut current_quality,
+                    current_processor_settings: &mut current_processor_settings,
+                    transmit_allowed: &mut transmit_allowed,
+                    transmitting: &mut transmitting,
+                    deafened: &mut deafened,
+                    capture: &mut capture,
+                    encoder: &mut encoder,
+                    processor: &mut processor,
+                    participants: &mut participants,
+                    mixer: &mut mixer,
+                    jitter_pool: &mut jitter_pool,
+                    decoder_pool: &mut decoder_pool,
+                };
 
-                        match initialize_transmit_resources(
-                            &config.input_device,
-                            current_quality,
-                            current_processor_settings,
-                            &event_tx,
-                        ) {
-                            Ok((new_capture, new_encoder, new_processor)) => {
-                                capture = Some(new_capture);
-                                encoder = Some(new_encoder);
-                                processor = new_processor;
-                                transmit_allowed = true;
-                            }
-                            Err(error) => {
-                                let _ = event_tx.send(VoiceEvent::TransmitEnableFailed(error));
-                            }
-                        }
-                    }
-                    Some(VoiceCommand::StartTransmitting) => {
-                        if transmit_allowed && !transmitting {
-                            transmitting = true;
-                            // Hint to transient suppressor that PTT key was pressed
-                            if let Some(ref proc) = processor {
-                                proc.set_stream_key_pressed(true);
-                            }
-                            let Some(capture) = capture.as_ref() else {
-                                continue;
-                            };
-                            if let Err(e) = capture.start() {
-                                let _ = event_tx.send(VoiceEvent::AudioError(format!("Capture error: {}", e)));
-                            } else {
-                                let _ = dtls_command_tx.send(VoiceDtlsCommand::SendSpeakingStarted);
-                                let _ = event_tx.send(VoiceEvent::LocalSpeakingChanged(true));
-                            }
-                        }
-                    }
-                    Some(VoiceCommand::StopTransmitting) => {
-                        if transmitting {
-                            transmitting = false;
-                            // Hint to transient suppressor that PTT key was released
-                            if let Some(ref proc) = processor {
-                                proc.set_stream_key_pressed(false);
-                            }
-                            if let Some(capture) = capture.as_ref() {
-                                capture.stop();
-                            }
-                            // Clear mic level when stopping
-                            config.mic_level.store(0f32.to_bits(), Ordering::Relaxed);
-                            let _ = dtls_command_tx.send(VoiceDtlsCommand::SendSpeakingStopped);
-                            let _ = event_tx.send(VoiceEvent::LocalSpeakingChanged(false));
-                        }
-                    }
-                    Some(VoiceCommand::MuteUser(nickname)) => {
-                        // Stop any already queued or codec-buffered audio immediately.
-                        if participants.set_muted(&nickname, true) {
-                            mixer.mute_user_and_clear(&nickname);
-                        } else {
-                            mixer.remove_user_state(&nickname);
-                        }
-                        jitter_pool.remove(&nickname);
-                        decoder_pool.remove(&nickname);
-                    }
-                    Some(VoiceCommand::UnmuteUser(nickname)) => {
-                        participants.set_muted(&nickname, false);
-                        mixer.unmute_user(&nickname);
-                    }
-                    Some(VoiceCommand::UserJoined(nickname)) => {
-                        participants.add_user(&nickname);
-                    }
-                    Some(VoiceCommand::UserLeft(nickname)) => {
-                        participants.remove_user(&nickname);
-                        emit_speaking_stopped(&mut participants, &nickname, &event_tx);
-                        // Clean up decoder, jitter, and queued mixer buffers for the user who left.
-                        mixer.remove_user_state(&nickname);
-                        jitter_pool.remove(&nickname);
-                        decoder_pool.remove(&nickname);
-                    }
-                    Some(VoiceCommand::UserRenamed { old, new, muted }) => {
-                        let old_was_known = participants.rename_user(&old, &new, muted);
-                        emit_speaking_stopped(&mut participants, &old, &event_tx);
-                        if old_was_known && fold_name(&old) != fold_name(&new) {
-                            emit_speaking_stopped(&mut participants, &new, &event_tx);
-                        }
-
-                        if old_was_known {
-                            decoder_pool.rename_user(&old, &new);
-                            jitter_pool.rename_user(&old, &new);
-                            mixer.rename_user(&old, &new, muted);
-                        } else {
-                            decoder_pool.remove(&old);
-                            jitter_pool.remove(&old);
-                            mixer.remove_user_state(&old);
-                            let new_key = fold_name(&new);
-                            if participants.is_known_key(&new_key)
-                                && participants.is_muted_key(&new_key)
-                            {
-                                mixer.mute_user(&new);
-                            } else {
-                                mixer.unmute_user(&new);
-                            }
-                        }
-                    }
-                    Some(VoiceCommand::SetDeafened(is_deafened)) => {
-                        deafened = is_deafened;
-                        mixer.set_deafened(is_deafened);
-                        // Hint to AEC/AGC: no speaker output when deafened, so no echo
-                        if let Some(ref proc) = processor {
-                            proc.set_output_will_be_muted(is_deafened);
-                        }
-                    }
-                    Some(VoiceCommand::SetQuality(quality)) => {
-                        current_quality = quality;
-                        if let Some(encoder) = encoder.as_mut()
-                            && let Err(e) = encoder.set_quality(quality)
-                        {
-                            let _ = event_tx.send(VoiceEvent::QualityChangeFailed(e));
-                        }
-                    }
-                    Some(VoiceCommand::SetProcessorSettings(settings)) => {
-                        current_processor_settings = settings;
-                        if let Some(ref mut proc) = processor {
-                            proc.update_settings(settings);
-                        }
-                    }
-                    Some(VoiceCommand::Stop) | None => {
-                        // Clean shutdown
-                        if transmitting {
-                            if let Some(capture) = capture.as_ref() {
-                                capture.stop();
-                            }
-                            let _ = dtls_command_tx.send(VoiceDtlsCommand::SendSpeakingStopped);
-                        }
-                        let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
-                        break;
-                    }
+                if !handle_voice_command(command, &mut runtime) {
+                    break;
                 }
             }
         }
@@ -956,6 +1063,52 @@ mod tests {
             muted: false,
         };
         let _ = VoiceCommand::Stop;
+    }
+
+    #[test]
+    fn connect_wait_command_queues_non_stop_commands() {
+        let (dtls_command_tx, mut dtls_command_rx) = mpsc::unbounded_channel();
+        let mut pending_commands = Vec::new();
+
+        assert!(handle_connect_wait_command(
+            Some(VoiceCommand::EnableTransmit),
+            &mut pending_commands,
+            &dtls_command_tx,
+        ));
+        assert!(handle_connect_wait_command(
+            Some(VoiceCommand::MuteUser("Alice".to_string())),
+            &mut pending_commands,
+            &dtls_command_tx,
+        ));
+
+        assert_eq!(pending_commands.len(), 2);
+        assert!(matches!(
+            pending_commands.remove(0),
+            VoiceCommand::EnableTransmit
+        ));
+        assert!(matches!(
+            pending_commands.remove(0),
+            VoiceCommand::MuteUser(nickname) if nickname == "Alice"
+        ));
+        assert!(dtls_command_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn connect_wait_command_stop_disconnects_immediately() {
+        let (dtls_command_tx, mut dtls_command_rx) = mpsc::unbounded_channel();
+        let mut pending_commands = Vec::new();
+
+        assert!(!handle_connect_wait_command(
+            Some(VoiceCommand::Stop),
+            &mut pending_commands,
+            &dtls_command_tx,
+        ));
+
+        assert!(pending_commands.is_empty());
+        assert!(matches!(
+            dtls_command_rx.try_recv(),
+            Ok(VoiceDtlsCommand::Disconnect)
+        ));
     }
 
     #[test]
