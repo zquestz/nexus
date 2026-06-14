@@ -217,33 +217,38 @@ Client → Server packets:
 
 | Field        | Size     | Description                             |
 | ------------ | -------- | --------------------------------------- |
-| Token        | 16 bytes | UUID from VoiceJoinResponse             |
 | Message Type | 1 byte   | Packet type (see below)                 |
+| Token        | 16 bytes | UUID from VoiceJoinResponse             |
 | Sequence     | 4 bytes  | Packet sequence number (big-endian)     |
 | Timestamp    | 4 bytes  | Audio timestamp in samples (big-endian) |
 | Payload      | variable | Opus-encoded audio (for VoiceData)      |
 
+All multi-byte integers are big-endian. The header is a fixed 25 bytes; the
+payload is present only for VoiceData.
+
 **Message Types:**
 
-| Value | Type            | Description                        |
-| ----- | --------------- | ---------------------------------- |
-| 0     | VoiceData       | Opus-encoded audio frame           |
-| 1     | Keepalive       | Maintain session when not speaking |
-| 2     | SpeakingStarted | User began transmitting            |
-| 3     | SpeakingStopped | User stopped transmitting          |
+| Value  | Type            | Description                        |
+| ------ | --------------- | ---------------------------------- |
+| `0x01` | VoiceData       | Opus-encoded audio frame           |
+| `0x02` | Keepalive       | Maintain session when not speaking |
+| `0x03` | SpeakingStarted | User began transmitting            |
+| `0x04` | SpeakingStopped | User stopped transmitting          |
+
+`0x00` and values above `0x04` are invalid and discarded.
 
 ### Relayed Packet Format
 
-Server → Client packets include the sender's identity:
+Server → Client packets replace the 16-byte token with the sender's nickname:
 
-| Field         | Size     | Description                        |
-| ------------- | -------- | ---------------------------------- |
-| Sender Length | 1 byte   | Length of sender nickname          |
-| Sender        | variable | Sender's nickname (UTF-8)          |
-| Message Type  | 1 byte   | Packet type                        |
-| Sequence      | 4 bytes  | Packet sequence number             |
-| Timestamp     | 4 bytes  | Audio timestamp in samples         |
-| Payload       | variable | Opus-encoded audio (for VoiceData) |
+| Field         | Size     | Description                             |
+| ------------- | -------- | --------------------------------------- |
+| Message Type  | 1 byte   | Packet type (same values as above)      |
+| Sender Length | 1 byte   | Length of sender nickname in bytes      |
+| Sender        | variable | Sender's nickname (UTF-8)               |
+| Sequence      | 4 bytes  | Packet sequence number (big-endian)     |
+| Timestamp     | 4 bytes  | Audio timestamp in samples (big-endian) |
+| Payload       | variable | Opus-encoded audio (for VoiceData)      |
 
 ### Audio Parameters
 
@@ -266,9 +271,11 @@ Server → Client packets include the sender's identity:
 
 ### Keepalive
 
-- Clients send keepalive packets every 15 seconds when in voice but not speaking
-- Server times out voice sessions after 60 seconds of no packets
-- Keepalive packets contain only the token, message type, and sequence number
+- Clients send keepalive packets every 15 seconds when in voice but not speaking.
+- Server times out voice sessions after 60 seconds of no packets.
+- A keepalive uses the standard client → server layout: Message Type (`0x02`),
+  Token, Sequence, Timestamp. It carries no Opus payload and its Timestamp is `0`.
+  There is no shortened keepalive form — the full 25-byte header is always sent.
 
 ### Speaking Indicators
 

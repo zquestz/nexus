@@ -102,9 +102,9 @@ fn build_options(trackers: &[ClientTracker]) -> Vec<TrackerOption> {
 // Lazy server table
 // =============================================================================
 
-/// Dependencies the lazy-cached table hashes against. Step 2 always
-/// passes an empty `entries` vec because no fetch path exists yet,
-/// but the dependency shape is the one step 5+ will reuse.
+/// Dependencies the lazy-cached table hashes against. The row actions
+/// capture endpoint and fingerprint fields, so the hash must cover the
+/// complete entry data, not only visibly rendered columns.
 #[derive(Clone)]
 struct ServerTableDeps {
     entries: Vec<ServerEntry>,
@@ -114,13 +114,11 @@ struct ServerTableDeps {
 
 impl Hash for ServerTableDeps {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.entries.len().hash(state);
-        for e in &self.entries {
-            e.name.hash(state);
-            e.description.hash(state);
-            e.user_count.hash(state);
-            e.allows_guest.hash(state);
-        }
+        // Hash every entry whole: the row's click and context-menu closures
+        // capture all of `ServerEntry` (address, port, fingerprint, …), so an
+        // endpoint or cert change with an unchanged name/user_count must still
+        // invalidate the lazy cache.
+        self.entries.hash(state);
         self.sort_column.hash(state);
         self.sort_ascending.hash(state);
     }
@@ -1303,12 +1301,63 @@ fn accept_fingerprint_modal<'a>(state: &'a TrackerBrowserState) -> Element<'a, M
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::hash_map::DefaultHasher;
+
     use crate::types::ClientTracker;
 
     fn make_tracker(name: &str) -> ClientTracker {
         ClientTracker {
             name: name.to_string(),
             ..Default::default()
+        }
+    }
+
+    fn sample_entry() -> ServerEntry {
+        ServerEntry {
+            name: "Nexus".to_string(),
+            description: Some("A board".to_string()),
+            address: "bbs.example".to_string(),
+            port: 7500,
+            websocket_port: Some(7502),
+            version: "0.9.2".to_string(),
+            fingerprint: "AA:BB".to_string(),
+            user_count: 3,
+            allows_guest: true,
+        }
+    }
+
+    fn deps_hash(entries: Vec<ServerEntry>) -> u64 {
+        let deps = ServerTableDeps {
+            entries,
+            sort_column: TrackerBrowserSortColumn::Name,
+            sort_ascending: true,
+        };
+        let mut hasher = DefaultHasher::new();
+        deps.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn server_table_deps_hash_stable_when_unchanged() {
+        assert_eq!(
+            deps_hash(vec![sample_entry()]),
+            deps_hash(vec![sample_entry()])
+        );
+    }
+
+    #[test]
+    fn server_table_deps_hash_changes_on_action_affecting_fields() {
+        let base = deps_hash(vec![sample_entry()]);
+        for mutate in [
+            (|e: &mut ServerEntry| e.fingerprint = "CC:DD".to_string()) as fn(&mut ServerEntry),
+            |e| e.address = "other.example".to_string(),
+            |e| e.port = 7600,
+            |e| e.websocket_port = Some(8502),
+            |e| e.version = "0.9.3".to_string(),
+        ] {
+            let mut entry = sample_entry();
+            mutate(&mut entry);
+            assert_ne!(deps_hash(vec![entry]), base);
         }
     }
 

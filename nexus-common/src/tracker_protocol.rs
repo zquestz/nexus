@@ -28,7 +28,7 @@ fn default_locale() -> String {
 /// Returned to clients as elements of [`TrackerServerMessage::TrackerServerListResponse::servers`].
 /// The tracker resolves the connecting-IP fallback before listing, so
 /// `address` is always populated even when the registering server omitted it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ServerEntry {
     /// Server display name.
     pub name: String,

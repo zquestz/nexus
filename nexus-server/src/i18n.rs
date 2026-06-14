@@ -72,14 +72,15 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
 /// (RefCell, TypeMap) that can't be cached across threads, and errors are
 /// infrequent enough on a BBS server that the cost is acceptable.
 fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
-    let lang: LanguageIdentifier = locale
+    let canonical_locale = canonical_locale(locale);
+    let lang: LanguageIdentifier = canonical_locale
         .parse()
         .unwrap_or_else(|_| DEFAULT_LOCALE.parse().expect(ERR_DEFAULT_LOCALE_INVALID));
 
     let mut bundle = FluentBundle::new(vec![lang]);
 
     // Generic locales (pt, zh) map to their default regional variants.
-    let normalized_locale = match locale {
+    let normalized_locale = match canonical_locale.as_str() {
         LOCALE_PORTUGUESE => LOCALE_PORTUGUESE_BR, // "pt" -> "pt-BR"
         LOCALE_CHINESE => LOCALE_CHINESE_CN,       // "zh" -> "zh-CN"
         other => other,
@@ -107,6 +108,31 @@ fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
     bundle.add_resource(resource).expect(ERR_I18N_ADD_RESOURCE);
 
     bundle
+}
+
+fn canonical_locale(locale: &str) -> String {
+    let parts: Vec<&str> = locale.split('-').collect();
+    let lang = parts.first().copied().unwrap_or_default().to_lowercase();
+    if lang != LOCALE_CHINESE {
+        return locale.to_string();
+    }
+
+    for subtag in &parts[1..] {
+        match subtag.to_ascii_lowercase().as_str() {
+            "hans" => return LOCALE_CHINESE_CN.to_string(),
+            "hant" => return LOCALE_CHINESE_TW.to_string(),
+            _ => {}
+        }
+    }
+
+    for subtag in &parts[1..] {
+        match subtag.to_ascii_uppercase().as_str() {
+            "TW" | "HK" | "MO" => return LOCALE_CHINESE_TW.to_string(),
+            _ => {}
+        }
+    }
+
+    LOCALE_CHINESE_CN.to_string()
 }
 
 #[cfg(test)]
@@ -322,6 +348,15 @@ mod tests {
     fn test_translation_chinese_cn() {
         let result = t("zh-CN", "err-not-logged-in");
         assert_eq!(result, "未登录");
+    }
+
+    #[test]
+    fn test_translation_chinese_script_tags() {
+        assert_eq!(t("zh-Hans-CN", "err-not-logged-in"), "未登录");
+        assert_eq!(t("zh-Hant-TW", "err-not-logged-in"), "未登入");
+        assert_eq!(t("zh-Hant-HK", "err-not-logged-in"), "未登入");
+        assert_eq!(t("zh-HK", "err-not-logged-in"), "未登入");
+        assert_eq!(t("zh-MO", "err-not-logged-in"), "未登入");
     }
 
     #[test]
