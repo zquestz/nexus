@@ -1404,8 +1404,8 @@ tracker response). The tracker daemon never produces these.
 
 | Kind                              | Recoverable | Meaning                                                                            |
 | --------------------------------- | :---------: | ---------------------------------------------------------------------------------- |
-| `tracker_address_invalid`         |     No      | Row's address can't be resolved (IDNA failure, malformed)                          |
-| `tracker_connection_failed`       |     Yes     | TCP connect failed                                                                 |
+| `tracker_address_invalid`         |     No      | Row's configured address is malformed and must be edited                           |
+| `tracker_connection_failed`       |     Yes     | DNS lookup or TCP connect to tracker failed                                        |
 | `tracker_tls_failed`              |     Yes     | TLS handshake failed                                                               |
 | `tracker_handshake_failed`        |     Yes     | BBS-style handshake exchange failed                                                |
 | `tracker_connection_lost`         |     Yes     | Connection dropped mid-session                                                     |

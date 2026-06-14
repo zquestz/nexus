@@ -181,7 +181,7 @@ Error Kinds](09-admin.md#tracker-error-kinds).
 | `rate_limited`                    | Per-IP rate cap exceeded                                 |
 | `capacity`                        | Tracker at its configured entry limit                    |
 | `invalid`                         | Field validation failed (address, fingerprint, etc.)     |
-| `tracker_connection_failed`       | TCP connect to tracker failed                            |
+| `tracker_connection_failed`       | DNS lookup or TCP connect to tracker failed              |
 | `tracker_tls_failed`              | TLS handshake with tracker failed                        |
 | `tracker_handshake_failed`        | Protocol handshake with tracker failed                   |
 | `tracker_connection_lost`         | Connection to tracker lost mid-session                   |
@@ -189,7 +189,7 @@ Error Kinds](09-admin.md#tracker-error-kinds).
 | `tracker_fingerprint_mismatch`    | Stage 1: TLS cert disagrees with pinned fingerprint      |
 | `tracker_fingerprint_intercepted` | Stage 2: TLS cert disagrees with tracker's self-reported |
 | `tracker_protocol_error`          | Tracker sent a malformed `error_kind`                    |
-| `tracker_address_invalid`         | Tracker address can't be resolved (admin must edit)      |
+| `tracker_address_invalid`         | Tracker address is malformed (admin must edit)           |
 
 ## Connection Behavior
 

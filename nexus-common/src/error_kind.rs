@@ -91,7 +91,7 @@ pub const ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED: &str = "tracker_fingerprin
 /// the tracker is broken or malicious.
 pub const ERROR_KIND_TRACKER_PROTOCOL_ERROR: &str = "tracker_protocol_error";
 
-/// Tracker row's `address` field can't be resolved into a form the
+/// Tracker row's `address` field can't be normalized into a form the
 /// system resolver / rustls accept (IDNA failure or empty string).
 /// The validator at `TrackerAdd`/`TrackerUpdate` should have
 /// already rejected this, so reaching this kind means the row is
@@ -145,7 +145,7 @@ pub fn is_unrecoverable_error_kind(kind: &str) -> bool {
         // Tracker shipped a malformed kind — the daemon is broken
         // or hostile; retrying isn't going to help.
         | ERROR_KIND_TRACKER_PROTOCOL_ERROR
-        // The tracker row's address can't be resolved; admin must edit.
+        // The tracker row's configured address is malformed; admin must edit.
         | ERROR_KIND_TRACKER_ADDRESS_INVALID
     )
 }
@@ -269,7 +269,7 @@ pub enum ErrorKind {
     /// tracker rather than to a generic protocol mismatch.
     TrackerProtocolError,
 
-    /// Tracker row's `address` field can't be resolved into a form the
+    /// Tracker row's `address` field can't be normalized into a form the
     /// system resolver / rustls accept (IDNA failure or empty string).
     /// Reaching this kind means the row is structurally broken — admin
     /// must edit it.
