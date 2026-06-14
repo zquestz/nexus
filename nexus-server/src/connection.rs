@@ -1,12 +1,14 @@
 //! Client connection handling
 
+use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time;
@@ -16,8 +18,8 @@ use tracing::{debug, error, warn};
 use nexus_common::address::is_private_network;
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{
-    read_client_handshake_message_with_full_timeout, read_client_login_message_with_full_timeout,
-    read_client_message_with_timeout,
+    ReceivedClientMessage, read_client_handshake_message_with_full_timeout,
+    read_client_login_message_with_full_timeout, read_client_message_with_timeout,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::rate_limiter::RateLimiter;
@@ -87,6 +89,73 @@ impl ConnectionState {
             locale: DEFAULT_LOCALE.to_string(),
             flood_tracker: FloodTracker::new(),
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ClientReadPhase {
+    Handshake,
+    Login,
+    Authenticated,
+}
+
+type PendingClientRead<R> = Pin<
+    Box<
+        dyn Future<
+                Output = (
+                    FrameReader<R>,
+                    Result<Option<ReceivedClientMessage>, FrameError>,
+                ),
+            > + Send,
+    >,
+>;
+
+fn client_read_phase(conn_state: &ConnectionState) -> ClientReadPhase {
+    if conn_state.session_id.is_some() {
+        ClientReadPhase::Authenticated
+    } else if conn_state.handshake_complete {
+        ClientReadPhase::Login
+    } else {
+        ClientReadPhase::Handshake
+    }
+}
+
+fn start_client_read<R>(
+    mut frame_reader: FrameReader<R>,
+    phase: ClientReadPhase,
+) -> PendingClientRead<R>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    Box::pin(async move {
+        let result = match phase {
+            ClientReadPhase::Authenticated => {
+                read_client_message_with_timeout(&mut frame_reader).await
+            }
+            ClientReadPhase::Login => {
+                read_client_login_message_with_full_timeout(&mut frame_reader, None, None).await
+            }
+            ClientReadPhase::Handshake => {
+                read_client_handshake_message_with_full_timeout(&mut frame_reader, None, None).await
+            }
+        };
+
+        (frame_reader, result)
+    })
+}
+
+async fn recv_client_read<R>(
+    pending_read: &mut Option<PendingClientRead<R>>,
+) -> (
+    FrameReader<R>,
+    Result<Option<ReceivedClientMessage>, FrameError>,
+)
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    match pending_read {
+        Some(read) => read.await,
+        None => std::future::pending().await,
     }
 }
 
@@ -370,7 +439,7 @@ where
 
     let (reader, writer) = tokio::io::split(socket);
     let buf_reader = BufReader::new(reader);
-    let mut frame_reader = FrameReader::new(buf_reader);
+    let mut frame_reader = Some(FrameReader::new(buf_reader));
     let mut frame_writer = FrameWriter::new(writer);
 
     // Channel for server messages destined to this client.
@@ -378,6 +447,7 @@ where
 
     let mut conn_state = ConnectionState::new();
     let mut pending_session_event: Option<SessionEvent> = None;
+    let mut pending_client_read = None;
     let mut egress_frame_in_progress = false;
     let mut egress_staged_frames = 0usize;
     let mut disconnect_after_egress_drain = false;
@@ -390,7 +460,19 @@ where
             break;
         }
 
-        let is_authenticated = conn_state.session_id.is_some();
+        let read_enabled = !egress_frame_in_progress
+            && pending_session_event.is_none()
+            && !disconnect_after_egress_drain;
+
+        if read_enabled && pending_client_read.is_none() {
+            let phase = client_read_phase(&conn_state);
+            let reader = frame_reader
+                .take()
+                .expect("frame reader must be available when no read is pending");
+            pending_client_read = Some(start_client_read(reader, phase));
+        }
+
+        let poll_client_read = read_enabled && pending_client_read.is_some();
 
         tokio::select! {
             biased;
@@ -484,15 +566,11 @@ where
                 }
             }
 
-            result = async {
-                if is_authenticated {
-                    read_client_message_with_timeout(&mut frame_reader).await
-                } else if conn_state.handshake_complete {
-                    read_client_login_message_with_full_timeout(&mut frame_reader, None, None).await
-                } else {
-                    read_client_handshake_message_with_full_timeout(&mut frame_reader, None, None).await
-                }
-            }, if !egress_frame_in_progress && pending_session_event.is_none() && !disconnect_after_egress_drain => {
+            read = recv_client_read(&mut pending_client_read), if poll_client_read => {
+                let (reader, result) = read;
+                pending_client_read = None;
+                frame_reader = Some(reader);
+
                 match result {
                     Ok(Some(received)) => {
                         // Clone locale to avoid borrow checker conflict with conn_state.
@@ -625,7 +703,7 @@ where
             }
 
             // Outgoing server messages/events.
-            event = rx.recv(), if !egress_frame_in_progress && pending_session_event.is_none() && !disconnect_after_egress_drain => {
+            event = rx.recv(), if read_enabled => {
                 match event {
                     Some(SessionEvent::Message(msg, msg_id)) => {
                         let id = msg_id.unwrap_or_else(MessageId::new);
@@ -1833,6 +1911,48 @@ mod tests {
 
         let frame = read_next_raw_frame(&mut connection).await;
         assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn partial_inbound_frame_survives_queued_egress() {
+        let mut connection = start_test_connection(32, 8192).await;
+        let session_id = login_test_connection(&mut connection).await;
+        let queued_id = message_id(b"000000000345");
+        let ping_id = message_id(b"000000000346");
+        let queued_message = chat_message(session_id, "egress while inbound waits");
+        let ping_payload = serde_json::to_vec(&ClientMessage::Ping).unwrap();
+        let ping_frame = RawFrame::new(ping_id, "Ping", ping_payload).to_bytes();
+        let split = ping_frame.len() - 1;
+
+        connection
+            .writer
+            .get_mut()
+            .write_all(&ping_frame[..split])
+            .await
+            .expect("partial ping frame should write");
+
+        // Let the connection task consume the incomplete frame and park inside
+        // the read before an outbound event wakes the same select loop.
+        time::sleep(Duration::from_millis(25)).await;
+        queue_session_message(&connection, session_id, queued_message.clone(), queued_id).await;
+
+        let queued = read_next_raw_frame(&mut connection).await;
+        let expected = server_message_to_frame_bytes(&queued_message, queued_id)
+            .expect("expected queued frame should serialize");
+        assert_eq!(queued.to_bytes().as_slice(), expected.as_ref());
+
+        connection
+            .writer
+            .get_mut()
+            .write_all(&ping_frame[split..])
+            .await
+            .expect("final ping byte should write");
+
+        let pong = read_next_server_message(&mut connection).await;
+        assert_eq!(pong.message_id, ping_id);
+        assert!(matches!(pong.message, ServerMessage::Pong));
 
         connection.shutdown().await;
     }
