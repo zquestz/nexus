@@ -738,6 +738,10 @@ const MAX_MIX_BUFFER_SAMPLES: usize = 2048;
 /// Maximum size for resampled output ring buffer (prevents unbounded growth)
 const MAX_RESAMPLED_OUTPUT_SAMPLES: usize = 4096;
 
+fn output_resampler_input_samples_needed(resampler_ratio: f64, max_samples: usize) -> usize {
+    (((VOICE_SAMPLES_PER_FRAME as f64) * resampler_ratio).ceil() as usize).min(max_samples)
+}
+
 /// Simple ring buffer for O(1) push and pop operations
 struct RingBuffer {
     /// Pre-allocated storage
@@ -1131,8 +1135,10 @@ where
                     };
 
                     // Use cached ratio from state (computed once at setup)
-                    let input_samples_needed =
-                        ((VOICE_SAMPLES_PER_FRAME as f64) * state.resampler_ratio).ceil() as usize;
+                    let input_samples_needed = output_resampler_input_samples_needed(
+                        state.resampler_ratio,
+                        state.mix_buffer.len(),
+                    );
 
                     // Feed more audio to resampler while ring buffer is low
                     while state.resampled_ring.len() < output_samples_needed {
@@ -1242,8 +1248,10 @@ where
                     };
 
                     // Use cached ratio from state (computed once at setup)
-                    let input_samples_needed =
-                        ((VOICE_SAMPLES_PER_FRAME as f64) * state.resampler_ratio).ceil() as usize;
+                    let input_samples_needed = output_resampler_input_samples_needed(
+                        state.resampler_ratio,
+                        state.mix_buffer.len(),
+                    );
 
                     // Feed more audio to resampler while ring buffer is low
                     while state.resampled_ring.len() < output_samples_needed {
@@ -1382,6 +1390,60 @@ mod tests {
         let output_neg = soft_clip(-2.0);
         assert!(output_neg > -1.5);
         assert!(output_neg < 0.0);
+    }
+
+    #[test]
+    fn test_output_resampler_input_samples_needed_clamps_low_rate() {
+        let low_rate_ratio = VOICE_SAMPLE_RATE as f64 / 8_000.0;
+        let unclamped = ((VOICE_SAMPLES_PER_FRAME as f64) * low_rate_ratio).ceil() as usize;
+
+        assert!(unclamped > MAX_MIX_BUFFER_SAMPLES);
+        assert_eq!(
+            output_resampler_input_samples_needed(low_rate_ratio, MAX_MIX_BUFFER_SAMPLES),
+            MAX_MIX_BUFFER_SAMPLES
+        );
+    }
+
+    fn process_low_rate_output_resampler(channels: usize) -> Vec<f32> {
+        let low_rate_ratio = VOICE_SAMPLE_RATE as f64 / 8_000.0;
+        let mut state = MixerState::new(low_rate_ratio);
+        let mut buffer = UserAudioBuffer::new();
+        buffer
+            .samples
+            .extend((0..MAX_MIX_BUFFER_SAMPLES * 2).map(|i| {
+                let phase = i as f32 * 0.01;
+                phase.sin() * 0.25
+            }));
+        state.user_buffers.insert(fold_name("Alice"), buffer);
+
+        let input_samples_needed =
+            output_resampler_input_samples_needed(state.resampler_ratio, state.mix_buffer.len());
+        assert_eq!(input_samples_needed, MAX_MIX_BUFFER_SAMPLES);
+
+        assert!(state.mix_and_drain(input_samples_needed));
+        for sample in &mut state.mix_buffer[..input_samples_needed] {
+            *sample = soft_clip(*sample);
+        }
+
+        let mut resampler = OutputResampler::new(8_000, channels).expect("create resampler");
+        resampler
+            .process(&state.mix_buffer[..input_samples_needed])
+            .expect("process low-rate resampler")
+    }
+
+    #[test]
+    fn test_low_rate_mono_output_resampler_uses_clamped_mix_slice() {
+        let output = process_low_rate_output_resampler(MONO as usize);
+
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_low_rate_stereo_output_resampler_uses_clamped_mix_slice() {
+        let output = process_low_rate_output_resampler(STEREO as usize);
+
+        assert!(!output.is_empty());
+        assert_eq!(output.len() % STEREO as usize, 0);
     }
 
     #[test]
