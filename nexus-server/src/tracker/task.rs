@@ -167,8 +167,9 @@ async fn run_inner(
         )
         .await
         {
-            CycleOutcome::Transient => {
+            CycleOutcome::Transient { connected } => {
                 // Already logged + status-updated. Backoff and retry.
+                reset_backoff_after_transient_cycle(&mut backoff, connected);
             }
             CycleOutcome::Unrecoverable => {
                 // Already logged + status-updated. Exit; recovery needs
@@ -199,7 +200,11 @@ async fn run_inner(
 enum CycleOutcome {
     /// Transient error (network blip, DNS miss, TLS hiccup, or a
     /// retryable tracker error like `rate_limited`). Backoff and retry.
-    Transient,
+    Transient {
+        /// Whether this cycle completed at least one successful tracker
+        /// registration before the transient failure.
+        connected: bool,
+    },
     /// Permanent error (fingerprint mismatch, wrong password, malformed
     /// config). Exit the task; admin needs to fix the row.
     Unrecoverable,
@@ -257,7 +262,7 @@ async fn attempt_connection_cycle(
             );
             if *has_resolved_once {
                 set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient { connected: false };
             }
             set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
             return CycleOutcome::Unrecoverable;
@@ -272,7 +277,7 @@ async fn attempt_connection_cycle(
             );
             if *has_resolved_once {
                 set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient { connected: false };
             }
             set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
             return CycleOutcome::Unrecoverable;
@@ -287,7 +292,7 @@ async fn attempt_connection_cycle(
         );
         if *has_resolved_once {
             set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
         set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
         return CycleOutcome::Unrecoverable;
@@ -306,7 +311,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_TCP_FAILED
             );
             set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
         Err(_) => {
             warn!(
@@ -316,7 +321,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_TCP_FAILED
             );
             set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
     };
 
@@ -338,7 +343,7 @@ async fn attempt_connection_cycle(
                     "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient { connected: false };
             }
             Err(_) => {
                 warn!(
@@ -348,7 +353,7 @@ async fn attempt_connection_cycle(
                     "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient { connected: false };
             }
         };
 
@@ -362,7 +367,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_NO_PEER_CERTS
             );
             set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
     };
 
@@ -406,7 +411,7 @@ async fn attempt_connection_cycle(
             "{}", LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED
         );
         set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
-        return CycleOutcome::Transient;
+        return CycleOutcome::Transient { connected: false };
     }
 
     // Wrap the read in a deadline so a wedged tracker that completes
@@ -426,7 +431,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
         Ok(Err(HandshakeReadError::Closed)) => {
             warn!(
@@ -435,7 +440,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
         Ok(Err(HandshakeReadError::Rejected { error })) => {
             warn!(
@@ -445,7 +450,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
         Ok(Err(HandshakeReadError::Unexpected { received })) => {
             warn!(
@@ -455,7 +460,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_UNEXPECTED
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
         Err(_elapsed) => {
             warn!(
@@ -464,7 +469,7 @@ async fn attempt_connection_cycle(
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient { connected: false };
         }
     };
 
@@ -521,7 +526,7 @@ async fn attempt_connection_cycle(
                     "{}", LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient { connected: false };
             }
             Err(e) => {
                 error!(
@@ -569,6 +574,7 @@ where
     W: AsyncWriteExt + Unpin,
 {
     let mut sleep_for = Duration::ZERO;
+    let mut connected_once = false;
 
     loop {
         // Wait to refresh, OR for any inbound frame — unexpected, since
@@ -593,7 +599,9 @@ where
                             "{}", LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME
                         );
                         set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-                        return CycleOutcome::Transient;
+                        return CycleOutcome::Transient {
+                            connected: connected_once,
+                        };
                     }
                     Ok(None) => {
                         debug!(
@@ -602,7 +610,9 @@ where
                             "{}", LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE
                         );
                         set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-                        return CycleOutcome::Transient;
+                        return CycleOutcome::Transient {
+                            connected: connected_once,
+                        };
                     }
                     Err(e) => {
                         warn!(
@@ -612,7 +622,9 @@ where
                             "{}", LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE
                         );
                         set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-                        return CycleOutcome::Transient;
+                        return CycleOutcome::Transient {
+                            connected: connected_once,
+                        };
                     }
                 }
             }
@@ -628,7 +640,9 @@ where
                     "{}", LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient {
+                    connected: connected_once,
+                };
             }
         };
 
@@ -640,7 +654,9 @@ where
                 "{}", LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED
             );
             set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-            return CycleOutcome::Transient;
+            return CycleOutcome::Transient {
+                connected: connected_once,
+            };
         }
 
         // Read the response with a tight per-refresh timeout.
@@ -658,7 +674,9 @@ where
                     "{}", LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient {
+                    connected: connected_once,
+                };
             }
             Ok(Err(e)) => {
                 warn!(
@@ -668,7 +686,9 @@ where
                     "{}", LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient {
+                    connected: connected_once,
+                };
             }
             Err(_elapsed) => {
                 warn!(
@@ -677,7 +697,9 @@ where
                     "{}", LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-                return CycleOutcome::Transient;
+                return CycleOutcome::Transient {
+                    connected: connected_once,
+                };
             }
         };
 
@@ -704,6 +726,7 @@ where
                     s.last_error_kind = None;
                     s.refresh_interval = Some(interval);
                 }
+                connected_once = true;
                 // First refresh after start/reconnect logs at info so an
                 // operator sees per-tracker confirmation; steady-state
                 // refreshes stay at debug to keep log volume down.
@@ -754,7 +777,9 @@ where
                 // transient so a tracker can't permanently take us out.
                 let outcome = match error_kind.as_deref() {
                     Some(k) if is_unrecoverable_error_kind(k) => CycleOutcome::Unrecoverable,
-                    _ => CycleOutcome::Transient,
+                    _ => CycleOutcome::Transient {
+                        connected: connected_once,
+                    },
                 };
                 // When the tracker omits a kind, default to "connection
                 // lost" (the wire ate the response) rather than
@@ -942,6 +967,12 @@ fn jitter(base: Duration) -> Duration {
     Duration::from_millis(millis.max(0.0) as u64)
 }
 
+fn reset_backoff_after_transient_cycle(backoff: &mut Duration, connected: bool) {
+    if connected {
+        *backoff = BACKOFF_BASE;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1009,6 +1040,17 @@ mod tests {
             backoff = (backoff * 2).min(BACKOFF_CAP);
         }
         assert_eq!(backoff, BACKOFF_CAP);
+    }
+
+    #[test]
+    fn connected_transient_resets_backoff_to_base() {
+        let mut backoff = BACKOFF_CAP;
+
+        reset_backoff_after_transient_cycle(&mut backoff, false);
+        assert_eq!(backoff, BACKOFF_CAP);
+
+        reset_backoff_after_transient_cycle(&mut backoff, true);
+        assert_eq!(backoff, BACKOFF_BASE);
     }
 
     /// Build a `TrackerContext` over a fresh in-memory DB with distinct
@@ -1398,6 +1440,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn successful_registration_then_disconnect_reports_connected_transient() {
+        let mock = MockTracker::start(MockBehavior {
+            register_response: RegisterPolicy::Success {
+                refresh_interval: 1,
+            },
+            ..Default::default()
+        })
+        .await;
+        let addr = mock.addr;
+        let fingerprint = mock.fingerprint.clone();
+        let (db, context) = setup_context().await;
+        let mut record = seed_tracker(&db, addr, Some(&fingerprint), None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let status_for_stop = Arc::clone(&status);
+        let stop_task = tokio::spawn(async move {
+            wait_for_status(&status_for_stop, Duration::from_secs(5), |s| s.connected)
+                .await
+                .expect("expected connected status before stopping mock");
+            mock.stop().await;
+        });
+        let mut has_resolved_once = false;
+
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            attempt_connection_cycle(&mut record, &status, &context, None, &mut has_resolved_once),
+        )
+        .await
+        .expect("cycle should return after mock tracker stops");
+
+        stop_task.await.expect("stop task should complete");
+        assert!(matches!(
+            outcome,
+            CycleOutcome::Transient { connected: true }
+        ));
+    }
+
+    #[tokio::test]
     async fn floor_clamps_low_refresh_interval() {
         // Tracker asks for `Some(0)` — must clamp to
         // `MIN_REFRESH_INTERVAL_SECS` rather than hot-loop at 0s sleep.
@@ -1625,7 +1705,7 @@ mod tests {
         .expect("DNS lookup of an .invalid hostname must fail fast — the resolver hung");
 
         assert!(
-            matches!(outcome, CycleOutcome::Transient),
+            matches!(outcome, CycleOutcome::Transient { connected: false }),
             "DNS failure after a prior success should be transient"
         );
         assert!(
