@@ -305,12 +305,22 @@ impl<'de> Deserialize<'de> for EventSettings {
     {
         #[derive(Deserialize)]
         struct RawEventSettings {
-            #[serde(default = "default_event_configs")]
-            events: HashMap<EventType, EventConfig>,
+            #[serde(default)]
+            events: HashMap<String, EventConfig>,
         }
 
         let raw = RawEventSettings::deserialize(deserializer)?;
-        let mut settings = Self { events: raw.events };
+        let events = raw
+            .events
+            .into_iter()
+            .filter_map(|(event_type, config)| {
+                serde_json::from_value(serde_json::Value::String(event_type))
+                    .ok()
+                    .map(|event_type| (event_type, config))
+            })
+            .collect();
+
+        let mut settings = Self { events };
         settings.fill_missing_defaults();
         Ok(settings)
     }
@@ -561,6 +571,40 @@ mod tests {
         assert!(!missing_disabled.show_notification);
         assert!(!missing_disabled.show_toast);
         assert!(!missing_disabled.play_sound);
+    }
+
+    #[test]
+    fn test_event_settings_deserialize_ignores_unknown_event_keys() {
+        let json = r#"{
+            "events": {
+                "future_event": {
+                    "show_notification": true,
+                    "show_toast": true,
+                    "play_sound": true
+                },
+                "user_message": {
+                    "show_notification": false,
+                    "show_toast": true,
+                    "play_sound": true,
+                    "sound": "bell"
+                }
+            }
+        }"#;
+
+        let settings: EventSettings = serde_json::from_str(json).expect("deserialize");
+
+        assert_eq!(settings.events.len(), EventType::all().len());
+        assert!(
+            !settings.events.values().any(|config| {
+                config.show_notification && config.show_toast && config.play_sound
+            })
+        );
+
+        let user_message = settings.get(EventType::UserMessage);
+        assert!(!user_message.show_notification);
+        assert!(user_message.show_toast);
+        assert!(user_message.play_sound);
+        assert_eq!(user_message.sound, SoundChoice::Bell);
     }
 
     #[test]

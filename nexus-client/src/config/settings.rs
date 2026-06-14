@@ -1,5 +1,7 @@
 //! User preference settings
 
+use serde::Deserialize;
+
 use crate::style::{WINDOW_HEIGHT, WINDOW_WIDTH};
 
 use super::audio::AudioSettings;
@@ -444,7 +446,7 @@ pub struct Settings {
     pub event_settings: EventSettings,
 
     /// Last selected event type in Settings > Events tab
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_event_type_or_default")]
     pub selected_event_type: EventType,
 
     /// Maximum scrollback lines per chat tab (0 = unlimited)
@@ -606,6 +608,14 @@ fn default_auto_away_message() -> String {
     DEFAULT_AUTO_AWAY_MESSAGE.to_string()
 }
 
+fn deserialize_event_type_or_default<'de, D>(deserializer: D) -> Result<EventType, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -677,5 +687,16 @@ mod tests {
         let deserialized: Settings = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(settings.avatar, deserialized.avatar);
+    }
+
+    #[test]
+    fn test_unknown_selected_event_type_defaults() {
+        let json = r#"{
+            "selected_event_type": "future_event"
+        }"#;
+
+        let settings: Settings = serde_json::from_str(json).expect("deserialize");
+
+        assert_eq!(settings.selected_event_type, EventType::Broadcast);
     }
 }
