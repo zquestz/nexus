@@ -9,6 +9,7 @@ use sqlx::sqlite::SqlitePool;
 
 use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_VALID_IP_PREFIX};
 use crate::db::sql;
+use crate::db::util::begin_immediate;
 use crate::ip_rule_cache::assert_canonical_target;
 
 #[derive(Debug, Clone)]
@@ -181,7 +182,7 @@ impl BanDb {
     /// Cascades a CIDR unban to the single IPs and smaller ranges nested
     /// inside it. Returns the IP/CIDR strings that were deleted.
     pub async fn delete_bans_in_range(&self, range: &IpNet) -> Result<Vec<String>, sqlx::Error> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = begin_immediate(&self.pool).await?;
         let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_ALL_BAN_TARGETS)
             .fetch_all(&mut *tx)
             .await?;

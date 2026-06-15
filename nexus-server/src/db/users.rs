@@ -6,7 +6,7 @@ use nexus_common::validators::{DEFAULT_BANDWIDTH_WEIGHT, resolve_bandwidth_weigh
 use sqlx::{SqliteConnection, SqlitePool};
 
 use super::permissions::{Permission, Permissions};
-use super::util::{clamp_db_bandwidth_weight, is_unique_violation};
+use super::util::{begin_immediate, clamp_db_bandwidth_weight, is_unique_violation};
 use crate::db::sql;
 
 pub struct CreateUserParams<'a> {
@@ -645,7 +645,7 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = begin_immediate(&self.pool).await?;
 
         // Guest account excluded so the first real user becomes admin.
         let count: (i64,) = sqlx::query_as(sql::SQL_COUNT_NON_GUEST_USERS)
