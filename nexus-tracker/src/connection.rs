@@ -25,7 +25,6 @@ use nexus_common::io::{
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tls::accept_tls_with_timeout;
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
-use nexus_common::validators::MAX_LOCALE_LENGTH;
 
 use crate::connection_io::{
     send_server_message_with_write_timeout, send_tracker_server_message_with_write_timeout,
@@ -353,14 +352,10 @@ where
                 }
             }
             TrackerClientMessage::TrackerServerList { locale, .. } => {
-                // Role violation: surface and close. Fall back to DEFAULT_LOCALE on empty/oversized
-                // locale rather than threading an untrusted string into `LanguageIdentifier::parse`.
+                // Role violation: surface and close. Fall back to DEFAULT_LOCALE
+                // when the request locale itself is suspect.
                 warn!(ip = %peer_addr.ip(), command = "TrackerServerList", "{}", LOG_ROLE_VIOLATION);
-                let translation_locale = if locale.is_empty() || locale.len() > MAX_LOCALE_LENGTH {
-                    DEFAULT_LOCALE
-                } else {
-                    &locale
-                };
+                let translation_locale = role_violation_locale(&locale);
                 send_tracker_error(
                     writer,
                     Some("TrackerServerList".to_string()),
@@ -377,6 +372,14 @@ where
                 return Ok(());
             }
         }
+    }
+}
+
+fn role_violation_locale(locale: &str) -> &str {
+    if locale.is_empty() || handlers::validate_locale(locale).is_some() {
+        DEFAULT_LOCALE
+    } else {
+        locale
     }
 }
 
@@ -425,5 +428,22 @@ fn frame_error_command(err: &FrameError) -> Option<String> {
     match err {
         FrameError::UnexpectedMessageType(message_type) => Some(message_type.clone()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn role_violation_locale_keeps_valid_locale() {
+        assert_eq!(role_violation_locale("pt-BR"), "pt-BR");
+    }
+
+    #[test]
+    fn role_violation_locale_falls_back_for_suspect_locale() {
+        assert_eq!(role_violation_locale(""), DEFAULT_LOCALE);
+        assert_eq!(role_violation_locale("en\nUS"), DEFAULT_LOCALE);
+        assert_eq!(role_violation_locale(&"a".repeat(64)), DEFAULT_LOCALE);
     }
 }

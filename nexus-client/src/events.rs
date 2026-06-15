@@ -244,14 +244,19 @@ pub fn build_test_event_content(
 fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventContext) -> bool {
     match event_type {
         EventType::UserMessage => {
-            // Don't notify if window is focused AND this connection is active AND we're viewing that user's message tab
+            // Don't notify if window is focused AND this connection is active AND
+            // the relevant DM tab is visible.
             if app.window_focused
                 && let Some(event_conn_id) = context.connection_id
                 && let Some(active_conn_id) = app.active_connection
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
                 && let Some(ref username) = context.username
-                && conn.is_active_user_message_tab(username)
+                && focused_user_message_is_visible(
+                    &conn.active_chat_tab,
+                    conn.active_panel,
+                    username,
+                )
             {
                 return false;
             }
@@ -387,6 +392,18 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
             true
         }
     }
+}
+
+fn focused_user_message_is_visible(
+    active_chat_tab: &ChatTab,
+    active_panel: ActivePanel,
+    username: &str,
+) -> bool {
+    active_panel == ActivePanel::None
+        && matches!(
+            active_chat_tab,
+            ChatTab::UserMessage(nickname) if fold_name(nickname) == fold_name(username)
+        )
 }
 
 fn focused_voice_event_is_visible(
@@ -1079,6 +1096,33 @@ mod tests {
                 &[("username", "Alice"), ("target", "#general")]
             )
         );
+    }
+
+    #[test]
+    fn focused_user_message_suppresses_matching_visible_dm() {
+        assert!(focused_user_message_is_visible(
+            &ChatTab::UserMessage("Bob".to_string()),
+            ActivePanel::None,
+            "bob",
+        ));
+    }
+
+    #[test]
+    fn focused_user_message_does_not_suppress_different_dm() {
+        assert!(!focused_user_message_is_visible(
+            &ChatTab::UserMessage("Alice".to_string()),
+            ActivePanel::None,
+            "bob",
+        ));
+    }
+
+    #[test]
+    fn focused_user_message_does_not_suppress_tab_behind_panel() {
+        assert!(!focused_user_message_is_visible(
+            &ChatTab::UserMessage("Bob".to_string()),
+            ActivePanel::Settings,
+            "bob",
+        ));
     }
 
     #[test]

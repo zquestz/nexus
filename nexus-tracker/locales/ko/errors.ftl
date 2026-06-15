@@ -28,6 +28,7 @@ err-tracker-websocket-port-zero = WebSocket 포트는 0일 수 없습니다
 
 # 속도 / 용량
 err-tracker-rate-limited = 속도 제한을 초과했습니다; 나중에 다시 시도하세요
+err-tracker-refresh-unknown = 등록이 더 이상 활성 상태가 아닙니다. 다시 등록하려면 재연결하세요
 err-tracker-capacity = 트래커가 용량에 도달했습니다; 나중에 다시 시도하세요
 err-tracker-per-ip-capacity = 이 트래커에 귀하의 IP에서 너무 많은 항목이 있습니다
 

@@ -29,6 +29,7 @@ err-tracker-websocket-port-zero = La porta WebSocket non può essere zero
 
 # Velocità / capacità
 err-tracker-rate-limited = Limite di velocità superato; riprova più tardi
+err-tracker-refresh-unknown = La registrazione non è più attiva; riconnettiti per registrarti di nuovo
 err-tracker-capacity = Il tracker ha raggiunto la capacità; riprova più tardi
 err-tracker-per-ip-capacity = Troppe voci dal tuo IP su questo tracker
 

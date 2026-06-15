@@ -129,7 +129,7 @@ impl Registry {
     #[must_use]
     pub fn list(&self) -> Vec<ServerEntry> {
         let mut out: Vec<ServerEntry> = self.entries.values().map(|r| r.entry.clone()).collect();
-        out.sort_by_key(|e| e.name.to_lowercase());
+        out.sort_by_cached_key(|e| e.name.to_lowercase());
         out
     }
 

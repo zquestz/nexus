@@ -126,6 +126,11 @@ pub fn err_tracker_rate_limited(locale: &str) -> String {
     t(locale, "err-tracker-rate-limited")
 }
 
+/// Refresh targeted a registration that is no longer live.
+pub fn err_tracker_refresh_unknown(locale: &str) -> String {
+    t(locale, "err-tracker-refresh-unknown")
+}
+
 /// Tracker is at `--max-entries`.
 pub fn err_tracker_capacity(locale: &str) -> String {
     t(locale, "err-tracker-capacity")
@@ -217,6 +222,7 @@ mod tests {
             err_tracker_port_zero("en"),
             err_tracker_websocket_port_zero("en"),
             err_tracker_rate_limited("en"),
+            err_tracker_refresh_unknown("en"),
             err_tracker_capacity("en"),
             err_tracker_per_ip_capacity("en"),
             err_tracker_malformed_message("en"),

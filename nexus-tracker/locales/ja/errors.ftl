@@ -29,6 +29,7 @@ err-tracker-websocket-port-zero = WebSocketポートを0にすることはでき
 
 # レート / 容量
 err-tracker-rate-limited = レート制限を超えました。後でもう一度お試しください
+err-tracker-refresh-unknown = 登録はもう有効ではありません。再登録するには再接続してください
 err-tracker-capacity = トラッカーが容量に達しました。後でもう一度お試しください
 err-tracker-per-ip-capacity = このトラッカーへのあなたのIPからのエントリが多すぎます
 

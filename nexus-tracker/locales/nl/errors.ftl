@@ -29,6 +29,7 @@ err-tracker-websocket-port-zero = De WebSocket-poort mag niet nul zijn
 
 # Snelheid / capaciteit
 err-tracker-rate-limited = Snelheidslimiet overschreden; probeer het later opnieuw
+err-tracker-refresh-unknown = Registratie is niet meer actief; maak opnieuw verbinding om opnieuw te registreren
 err-tracker-capacity = Tracker heeft zijn capaciteit bereikt; probeer het later opnieuw
 err-tracker-per-ip-capacity = Te veel vermeldingen vanaf uw IP op deze tracker
 

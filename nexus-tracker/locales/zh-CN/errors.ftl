@@ -28,6 +28,7 @@ err-tracker-websocket-port-zero = WebSocket 端口不能为零
 
 # 速率 / 容量
 err-tracker-rate-limited = 超出速率限制；请稍后再试
+err-tracker-refresh-unknown = 注册已不再有效；请重新连接以再次注册
 err-tracker-capacity = 跟踪器已达到容量上限；请稍后再试
 err-tracker-per-ip-capacity = 来自您 IP 的条目在此跟踪器上过多
 

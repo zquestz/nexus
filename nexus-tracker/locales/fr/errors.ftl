@@ -28,6 +28,7 @@ err-tracker-websocket-port-zero = Le port WebSocket ne peut pas être zéro
 
 # Débit / capacité
 err-tracker-rate-limited = Limite de débit dépassée ; réessayez plus tard
+err-tracker-refresh-unknown = L'inscription n'est plus active ; reconnectez-vous pour vous inscrire à nouveau
 err-tracker-capacity = Le tracker a atteint sa capacité ; réessayez plus tard
 err-tracker-per-ip-capacity = Trop d'entrées depuis votre IP sur ce tracker
 

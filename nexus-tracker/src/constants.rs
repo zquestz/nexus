@@ -203,6 +203,9 @@ pub const REASON_PER_IP_CAPACITY: &str = "per_ip_capacity";
 /// a compromised tracker asking for floods).
 pub const REASON_REFRESH_TOO_SOON: &str = "refresh_too_soon";
 
+/// Refresh targeted an entry id that is no longer live.
+pub const REASON_REFRESH_GHOST_ID: &str = "refresh_unknown_id";
+
 pub const REASON_LOCALE_TOO_LONG: &str = "locale_too_long";
 pub const REASON_LOCALE_INVALID: &str = "locale_invalid";
 pub const REASON_PASSWORD_TOO_LONG: &str = "password_too_long";

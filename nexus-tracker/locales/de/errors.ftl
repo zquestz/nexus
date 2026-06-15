@@ -29,6 +29,7 @@ err-tracker-websocket-port-zero = WebSocket-Port darf nicht null sein
 
 # Rate / Kapazität
 err-tracker-rate-limited = Ratenlimit überschritten; bitte später erneut versuchen
+err-tracker-refresh-unknown = Registrierung ist nicht mehr aktiv; zum erneuten Registrieren neu verbinden
 err-tracker-capacity = Tracker hat seine Kapazität erreicht; bitte später erneut versuchen
 err-tracker-per-ip-capacity = Zu viele Einträge von Ihrer IP auf diesem Tracker
 

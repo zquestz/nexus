@@ -28,6 +28,7 @@ err-tracker-websocket-port-zero = Порт WebSocket не может быть н
 
 # Скорость / ёмкость
 err-tracker-rate-limited = Превышен лимит скорости; повторите попытку позже
+err-tracker-refresh-unknown = Регистрация больше не активна; подключитесь заново, чтобы зарегистрироваться снова
 err-tracker-capacity = Трекер достиг максимальной ёмкости; повторите попытку позже
 err-tracker-per-ip-capacity = Слишком много записей с вашего IP на этом трекере
 

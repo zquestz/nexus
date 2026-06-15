@@ -42,8 +42,8 @@ use crate::constants::{
     REASON_DESCRIPTION_TOO_LONG, REASON_FINGERPRINT_INVALID, REASON_NAME_CONTAINS_NEWLINES,
     REASON_NAME_EMPTY, REASON_NAME_INVALID_CHARACTERS, REASON_NAME_TOO_LONG,
     REASON_PASSWORD_TOO_LONG, REASON_PER_IP_CAPACITY, REASON_PORT_ZERO, REASON_RATE_LIMITED,
-    REASON_REFRESH_TOO_SOON, REASON_UNAUTHORIZED, REASON_VERSION_INVALID, REASON_VERSION_TOO_LONG,
-    REASON_WEBSOCKET_PORT_ZERO,
+    REASON_REFRESH_GHOST_ID, REASON_REFRESH_TOO_SOON, REASON_UNAUTHORIZED, REASON_VERSION_INVALID,
+    REASON_VERSION_TOO_LONG, REASON_WEBSOCKET_PORT_ZERO,
 };
 use crate::errors::{
     err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_capacity,
@@ -52,8 +52,8 @@ use crate::errors::{
     err_tracker_name_contains_newlines, err_tracker_name_empty,
     err_tracker_name_invalid_characters, err_tracker_name_too_long, err_tracker_password_too_long,
     err_tracker_per_ip_capacity, err_tracker_port_zero, err_tracker_rate_limited,
-    err_tracker_unauthorized, err_tracker_version_invalid, err_tracker_version_too_long,
-    err_tracker_websocket_port_zero,
+    err_tracker_refresh_unknown, err_tracker_unauthorized, err_tracker_version_invalid,
+    err_tracker_version_too_long, err_tracker_websocket_port_zero,
 };
 use crate::registry::{ConnectionId, RegisterError};
 use crate::resolver::Resolver;
@@ -233,7 +233,7 @@ where
         }
     }
 
-    let Validated { entry, locale: _ } =
+    let Validated { entry, locale } =
         match validate_and_authenticate(params, state, writer, peer_addr, RegisterMode::Refresh)
             .await?
         {
@@ -252,6 +252,14 @@ where
         // gone, something out-of-band evicted it. Close gracefully rather
         // than panic — the guard's own unregister is idempotent.
         warn!(ip = %peer_addr.ip(), id = id, "{}", LOG_REFRESH_GHOST_ID);
+        reject(
+            writer,
+            peer_addr,
+            REASON_REFRESH_GHOST_ID,
+            ERROR_KIND_INVALID,
+            err_tracker_refresh_unknown(&locale),
+        )
+        .await?;
         return Ok(RefreshOutcome::Rejected);
     }
     debug!(id = id, user_count = user_count, "{}", LOG_REGISTER_REFRESH);
@@ -810,6 +818,61 @@ mod tests {
         assert_eq!(state.registry.lock().expect("registry mutex").len(), 1);
         drop(guard);
         assert_eq!(state.registry.lock().expect("registry mutex").len(), 0);
+    }
+
+    #[tokio::test]
+    async fn refresh_unknown_id_sends_failure_response() {
+        use nexus_common::framing::FrameReader;
+        use nexus_common::io::read_tracker_server_message_with_full_timeout;
+
+        let state = TrackerState::new(
+            Registry::new(0, 0),
+            None,
+            None,
+            300,
+            0,
+            0,
+            std::time::Duration::ZERO,
+        );
+        let peer_addr: SocketAddr = "8.8.8.8:12345".parse().expect("peer addr");
+        let (client, server) = tokio::io::duplex(8192);
+        let mut writer = FrameWriter::new(server);
+
+        let outcome = handle_refresh(
+            valid_register_params("Ghost"),
+            42,
+            &state,
+            &mut writer,
+            peer_addr,
+        )
+        .await
+        .expect("refresh should send response");
+
+        assert_eq!(outcome, RefreshOutcome::Rejected);
+
+        let mut reader = FrameReader::new(client);
+        let received = read_tracker_server_message_with_full_timeout(&mut reader, None, None)
+            .await
+            .expect("read response")
+            .expect("response should be present");
+
+        match received.message {
+            TrackerServerMessage::TrackerServerRegisterResponse {
+                success,
+                refresh_interval,
+                error,
+                error_kind,
+            } => {
+                assert!(!success);
+                assert_eq!(refresh_interval, None);
+                assert_eq!(error_kind.as_deref(), Some(ERROR_KIND_INVALID));
+                assert_eq!(
+                    error.as_deref(),
+                    Some("Registration is no longer active; reconnect to register again")
+                );
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
     }
 
     #[tokio::test]

@@ -29,6 +29,7 @@ err-tracker-websocket-port-zero = A porta WebSocket não pode ser zero
 
 # Taxa / capacidade
 err-tracker-rate-limited = Limite de taxa excedido; tente novamente mais tarde
+err-tracker-refresh-unknown = O registro não está mais ativo; reconecte para registrar novamente
 err-tracker-capacity = Rastreador atingiu a capacidade; tente novamente mais tarde
 err-tracker-per-ip-capacity = Muitas entradas a partir do seu IP neste rastreador
 
