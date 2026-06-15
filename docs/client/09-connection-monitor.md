@@ -133,7 +133,8 @@ You need the `connection_monitor` permission. Contact the server admin.
 
 ### IP addresses show IPv6 format
 
-IPv4 addresses are displayed in IPv4-mapped IPv6 format (e.g., `::ffff:192.168.1.1`). This is normal behavior.
+IPv6 clients are displayed as IPv6 addresses. IPv4-mapped IPv6 addresses are
+folded to IPv4, so IPv4 clients normally appear as `192.168.1.1`.
 
 ## Next Steps
 

@@ -5,12 +5,11 @@
 //!   - `Add` → [`add_tracker_view`]
 //!   - `Edit` → [`edit_tracker_view`]
 //!   - `ConfirmRemove` → [`remove_tracker_modal`]
-//!   - `AcceptFingerprint` → falls through to the list view; the
-//!     dedicated dialog lands with the network layer.
+//!   - `AcceptFingerprint` → fingerprint acceptance dialog
 //!
 //! In list mode the toolbar's `[+]` Add button is always enabled,
 //! Edit and Remove are conditionally enabled when a tracker is
-//! selected, and Refresh is disabled until the network layer lands.
+//! selected, and Refresh is enabled when a selected tracker is not already fetching.
 //! Sort, dropdown selection, and search input are fully wired.
 
 use std::hash::{Hash, Hasher};
@@ -520,8 +519,7 @@ fn list_body<'a>(
         .into();
     }
 
-    // None + !is_fetching — initial / never fetched. Step 2 has no
-    // fetch path so this is the dominant case. Render an empty space;
+    // None + !is_fetching — initial / never fetched. Render an empty space;
     // the toolbar status text already communicates "nothing yet".
     Space::new().into()
 }

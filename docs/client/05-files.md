@@ -370,7 +370,7 @@ Your available actions depend on server permissions:
 | `file_delete`          | Delete files and directories           |
 | `file_root`            | Access entire file root (admin)        |
 | `file_search`          | Search files across your area          |
-| `file_reindex`         | Trigger file index rebuild (admin)     |
+| `file_reindex`         | Trigger file index rebuild             |
 
 Admins automatically have all permissions.
 

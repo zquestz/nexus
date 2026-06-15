@@ -783,7 +783,7 @@ Admins can configure channels via `ServerInfoUpdate`:
 | `chat_burst_limit`    | Max messages in a burst before rate limiting (default: 5, 0 = capacity of 1) |
 | `chat_rate_limit`     | Messages per minute rate limit (default: 20, 0 = disabled)                   |
 
-Both settings are independent—persistent channels don't have to be auto-joined, and auto-join channels don't have to be persistent.
+Both settings are independent—persistent channels don't have to be auto-joined, and auto-join channels don't have to be persistent. `persistent_channels` is visible only to admins. `auto_join_channels` is visible to admins and to sessions that activated `chat` and have `chat_join` permission.
 
 ## Next Step
 

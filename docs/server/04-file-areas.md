@@ -211,7 +211,7 @@ File operations require specific permissions:
 | `file_delete`          | Delete files/directories               |
 | `file_root`            | Access entire file root (admin)        |
 | `file_search`          | Search files by name                   |
-| `file_reindex`         | Trigger index rebuild (admin)          |
+| `file_reindex`         | Trigger index rebuild                  |
 
 Admins have all permissions automatically.
 
@@ -282,7 +282,7 @@ Configure the reindex interval via the Server Info panel (admin only) or program
 
 ### Manual Rebuild
 
-Admins with `file_reindex` permission can force a rebuild:
+Users with `file_reindex` permission can force a rebuild:
 
 - Use the `/reindex` command in chat
 - Useful after adding files directly to the filesystem

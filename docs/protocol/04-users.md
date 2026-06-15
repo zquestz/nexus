@@ -284,7 +284,9 @@ Response containing detailed user information.
 }
 ```
 
-Note: `addresses` are only included when an admin is requesting information. Secret channels are only visible to admins.
+Note: `addresses` are only included when an admin is requesting information.
+They contain the remote socket address string, including the source port.
+Secret channels are only visible to admins.
 
 **Failure example:**
 
@@ -468,7 +470,7 @@ Extended user information for individual queries.
 | `is_away`          | boolean | Whether user is away                                                                               |
 | `status`           | string  | User's status message (null if none)                                                               |
 | `is_admin`         | boolean | Whether user has admin privileges                                                                  |
-| `addresses`        | array   | IP addresses (only visible to admins)                                                              |
+| `addresses`        | array   | Remote socket addresses, including source ports (only visible to admins)                           |
 | `channels`         | array   | Channels the user is in (secret channels only visible to admins)                                   |
 | `group_id`         | integer | User's group ID (null if no group). Always null when `is_admin: true` — admin XOR group invariant. |
 | `group_name`       | string  | User's group name (null if no group)                                                               |

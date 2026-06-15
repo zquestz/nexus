@@ -123,30 +123,31 @@ _Coming soon_
 
 ### Linux
 
-Voice chat requires ALSA and WebRTC audio processing build tools:
+Voice chat requires ALSA and WebRTC audio processing build tools, including
+Meson and Ninja for the bundled WebRTC audio processing build:
 
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install build-essential autoconf automake libtool pkg-config clang libasound2-dev
+sudo apt install build-essential autoconf automake libtool pkg-config clang libasound2-dev meson ninja-build
 ```
 
 **Arch Linux:**
 
 ```bash
-sudo pacman -S base-devel autoconf automake libtool pkg-config clang alsa-lib
+sudo pacman -S base-devel autoconf automake libtool pkg-config clang alsa-lib meson ninja
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install @development-tools autoconf automake libtool pkg-config clang alsa-lib-devel
+sudo dnf install @development-tools autoconf automake libtool pkg-config clang alsa-lib-devel meson ninja-build
 ```
 
 ### macOS
 
 ```bash
-brew install autoconf automake libtool pkg-config
+brew install autoconf automake libtool pkg-config meson ninja
 ```
 
 ### Windows

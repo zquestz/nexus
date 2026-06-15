@@ -223,13 +223,13 @@ Only admins can manage other admins.
 
 Editable when editing self: username, bandwidth weight, and the Inherit checkbox. Group assignment is not editable for admin self-edit; admins cannot belong to groups, and the server rejects `group_id` on self-edit. These restrictions are enforced on both the client UI and the server handler.
 
-## Permission Merging
+## Permission Delegation
 
 When a non-admin creates or edits a user, they can only grant permissions they possess themselves.
 
 Example: A moderator with `[chat_send, user_kick, news_edit]` tries to grant `[chat_send, file_upload]`:
 
-- Result: Only `chat_send` is granted (they don't have `file_upload`)
+- Result: The request is rejected because they don't have `file_upload`
 
 Admins bypass this restriction.
 
@@ -239,7 +239,7 @@ Admins bypass this restriction.
 
 Each user has a `bandwidth_weight` integer (range `1..=65535`) controlling their share of the server's outbound bandwidth cap when flows contend. Higher weight = larger share. Weights are advisory for fairness — they don't allocate dedicated bandwidth, they bias the scheduler. When only one user is transferring, that user gets the full cap; weights only matter under contention.
 
-**Shared accounts share one weight.** A `bandwidth_weight` is per *account*: every session of an account shares a single scheduler flow, so all logins of a shared account — the guest account included — draw from **one** combined share, not one per session or per nickname. N people on the guest account collectively get a single user's share, and a heavy transfer by one starves the others. This is intentional — it stops anyone from multiplying their bandwidth by opening more sessions under different nicknames. To give a busy shared or guest login more aggregate bandwidth, raise that account's (or its group's) weight.
+**Shared accounts share one weight.** A `bandwidth_weight` is per _account_: every session of an account shares a single scheduler flow, so all logins of a shared account — the guest account included — draw from **one** combined share, not one per session or per nickname. N people on the guest account collectively get a single user's share, and a heavy transfer by one starves the others. This is intentional — it stops anyone from multiplying their bandwidth by opening more sessions under different nicknames. To give a busy shared or guest login more aggregate bandwidth, raise that account's (or its group's) weight.
 
 The server cap itself is configured separately by the operator — see [Configuration → Bandwidth](02-configuration.md#bandwidth).
 

@@ -733,10 +733,11 @@ Other numeric fields (`max_connections_per_ip`, `max_transfers_per_ip`,
 `chat_rate_limit`) are bounded only by their integer type.
 `ServerInfoUpdate` is a partial update — omitted fields are unchanged.
 
-**Admin-only fields.** `scheduler_chunk_size` is admin-only — it is
-only included in `ServerInfo` responses to admin clients, and only
-admins may change it via `ServerInfoUpdate`. The other fields follow
-the existing per-field visibility rules (admin or all).
+**Admin-only fields.** `scheduler_chunk_size` and `persistent_channels`
+are only included in `ServerInfo` responses to admin clients. The
+`auto_join_channels` field is included for admins and for sessions that
+activated `chat` and have `chat_join` permission. Only admins may change
+these values via `ServerInfoUpdate`.
 
 Only include fields you want to change.
 
@@ -1480,11 +1481,11 @@ Non-admin users with relevant permissions **cannot** operate on admin accounts:
 When a non-admin creates or updates a user:
 
 - They can only grant permissions they themselves possess
-- Requested permissions are intersected with their own
+- Requests containing permissions they do not possess are rejected
 
 Example: If user with `[chat_send, chat_receive, news_list]` tries to grant `[chat_send, file_download]`:
 
-- Result: Only `[chat_send]` is granted
+- Result: The request is rejected because they do not possess `file_download`
 
 Admins bypass this restriction and can grant any permissions.
 

@@ -38,7 +38,8 @@ No fields. Sent immediately by the server in response to `Ping`.
 ### Server
 
 - Responds to `Ping` with `Pong` immediately
-- No authentication required (can be sent before login)
+- Only accepted after the normal BBS handshake/login frame phases; pre-handshake
+  and pre-login readers reject `Ping` as an unexpected message type
 - No rate limiting (clients only send every 5 minutes)
 
 ## Why Client Pings

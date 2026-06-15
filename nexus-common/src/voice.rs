@@ -1,7 +1,7 @@
 //! Voice packet format for UDP voice communication
 //!
 //! This module defines the packet format used for voice data over DTLS/UDP.
-//! Voice packets are sent at ~50 packets/second with Opus-encoded audio.
+//! Voice packets are sent at ~100 packets/second with 10ms Opus frames.
 
 use std::fmt;
 

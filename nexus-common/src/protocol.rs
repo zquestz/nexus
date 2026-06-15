@@ -1348,7 +1348,7 @@ pub struct ServerInfo {
     /// Persistent channels (space-separated, admin only)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persistent_channels: Option<String>,
-    /// Auto-join channels (space-separated, admin only)
+    /// Auto-join channels (space-separated; visible to admins or chat+chat_join sessions)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_join_channels: Option<String>,
     /// Chat burst limit (max messages in a burst, 0 = no burst allowance)

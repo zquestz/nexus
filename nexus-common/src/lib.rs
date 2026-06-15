@@ -220,6 +220,7 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `chat_topic`: View the server topic
 /// - `chat_topic_edit`: Edit the server topic
 /// - `chat_unlimited`: Bypass chat rate limiting (flood protection)
+/// - `connection_monitor`: View active connections and transfers
 /// - `file_copy`: Copy files and directories
 /// - `file_create_dir`: Create directories anywhere in file area
 /// - `file_delete`: Delete files and empty directories
@@ -227,8 +228,10 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories in user's area
 /// - `file_move`: Move files and directories
+/// - `file_reindex`: Trigger a file index rebuild
 /// - `file_rename`: Rename files and directories
 /// - `file_root`: Browse entire file area from root (for admins/file managers)
+/// - `file_search`: Search files in the file area
 /// - `file_upload`: Upload files to upload/dropbox folders
 /// - `file_upload_anywhere`: Upload files to any directory, bypassing upload/dropbox folder restriction
 /// - `group_create`: Create new account groups

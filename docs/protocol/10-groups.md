@@ -473,15 +473,15 @@ Similarly, non-admin users with `user_edit` can only assign a user to a group if
 
 Shared groups are restricted to shared accounts and can only contain shared account permissions.
 
-| Scenario                                  | Allowed | Notes                                                   |
-| ----------------------------------------- | ------- | ------------------------------------------------------- |
-| Create shared group                       | ✅      | `is_shared = true` at creation                          |
-| Assign shared account to shared group     | ✅      | Expected usage                                          |
-| Assign regular account to shared group    | ❌      | Error: shared mismatch                                  |
-| Assign shared account to non-shared group | ❌      | Error: shared mismatch                                  |
-| Shared group with non-shared permissions  | ❌      | Validated: only shared account permissions allowed      |
-| Toggle `is_shared` with no members        | ✅      | Non-shared permissions stripped when toggling to shared |
-| Toggle `is_shared` with members           | ❌      | Error: must remove all users first                      |
+| Scenario                                  | Allowed | Notes                                                                                                                  |
+| ----------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Create shared group                       | ✅      | `is_shared = true` at creation                                                                                         |
+| Assign shared account to shared group     | ✅      | Expected usage                                                                                                         |
+| Assign regular account to shared group    | ❌      | Error: shared mismatch                                                                                                 |
+| Assign shared account to non-shared group | ❌      | Error: shared mismatch                                                                                                 |
+| Shared group with non-shared permissions  | ❌      | Validated: only shared account permissions allowed                                                                     |
+| Toggle `is_shared` with no members        | ✅/❌   | Allowed only when the resulting permissions are valid for the target shared state; non-shared permissions are rejected |
+| Toggle `is_shared` with members           | ❌      | Error: must remove all users first                                                                                     |
 
 ## Override System
 
@@ -561,7 +561,7 @@ When a user's group assignment changes, the server cleans up overrides:
 - One group per user — no multi-group membership
 - No group hierarchy or inheritance between groups
 - Deleting a group requires removing all members first (server rejects if `member_count > 0`)
-- Group rename broadcasts `UserUpdated` to all clients so user lists reflect the change immediately
+- Group rename broadcasts `UserUpdated` to sessions that can view the user list so user lists reflect the change immediately
 - Renaming a group does not affect existing membership (group membership is identity-based, not name-based)
 
 ## Next Step

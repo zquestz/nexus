@@ -51,7 +51,7 @@ Response containing all active connections.
     {
       "nickname": "alice",
       "username": "alice",
-      "ip": "::ffff:127.0.0.1",
+      "ip": "127.0.0.1",
       "port": 54321,
       "login_time": 1704067200,
       "is_admin": false,
@@ -60,7 +60,7 @@ Response containing all active connections.
     {
       "nickname": "bob",
       "username": "bob",
-      "ip": "::ffff:192.168.1.100",
+      "ip": "192.168.1.100",
       "port": 54322,
       "login_time": 1704067500,
       "is_admin": false,
@@ -71,7 +71,7 @@ Response containing all active connections.
     {
       "nickname": "alice",
       "username": "alice",
-      "ip": "::ffff:127.0.0.1",
+      "ip": "127.0.0.1",
       "port": 54400,
       "is_admin": false,
       "is_shared": false,
@@ -144,7 +144,7 @@ Example with a shared account "guests" having two sessions:
     {
       "nickname": "visitor1",
       "username": "guests",
-      "ip": "::ffff:192.168.1.50",
+      "ip": "192.168.1.50",
       "port": 54500,
       "login_time": 1704067200,
       "is_admin": false,
@@ -153,7 +153,7 @@ Example with a shared account "guests" having two sessions:
     {
       "nickname": "visitor2",
       "username": "guests",
-      "ip": "::ffff:192.168.1.51",
+      "ip": "192.168.1.51",
       "port": 54501,
       "login_time": 1704067300,
       "is_admin": false,
@@ -174,7 +174,8 @@ Example with a shared account "guests" having two sessions:
 
 - Admin users automatically have all permissions, including `connection_monitor`
 - The requesting user's own session is included in the results
-- IP addresses are shown in their canonical form (IPv4-mapped IPv6 for IPv4 addresses)
+- IP addresses are shown in canonical form. IPv4-mapped IPv6 addresses are
+  folded to IPv4 before display.
 - The `login_time` and `started_at` fields can be used to calculate duration
 - Transfers are tracked separately from BBS connections (different ports)
 - A user may have a BBS connection without any active transfers, or transfers without a BBS connection
