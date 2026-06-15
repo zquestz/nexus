@@ -1,5 +1,6 @@
 //! Shared helper functions for view rendering
 
+use chrono::{DateTime, Local, TimeZone, Utc};
 use iced::widget::{Space, Text, button, container, tooltip};
 use iced::{Element, alignment};
 
@@ -21,14 +22,19 @@ const BYTES_PER_MB: u64 = BYTES_PER_KB * 1024;
 /// Bytes per gigabyte.
 const BYTES_PER_GB: u64 = BYTES_PER_MB * 1024;
 
+/// Bytes per terabyte.
+const BYTES_PER_TB: u64 = BYTES_PER_GB * 1024;
+
 /// Convenience wrapper for `crate::i18n::t_args` to avoid verbose imports in view modules
 pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
     crate::i18n::t_args(key, args)
 }
 
-/// Format bytes as a human-readable string with B/KB/MB/GB units.
+/// Format bytes as a human-readable string with B/KB/MB/GB/TB units.
 pub fn format_bytes(bytes: u64) -> String {
-    if bytes >= BYTES_PER_GB {
+    if bytes >= BYTES_PER_TB {
+        format!("{:.1} TB", bytes as f64 / BYTES_PER_TB as f64)
+    } else if bytes >= BYTES_PER_GB {
         format!("{:.1} GB", bytes as f64 / BYTES_PER_GB as f64)
     } else if bytes >= BYTES_PER_MB {
         format!("{:.1} MB", bytes as f64 / BYTES_PER_MB as f64)
@@ -37,6 +43,22 @@ pub fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+/// Format a Unix epoch timestamp in the user's local timezone.
+///
+/// Returns an empty string for unset or invalid timestamps.
+pub fn format_local_timestamp(timestamp: i64) -> String {
+    if timestamp == 0 {
+        return String::new();
+    }
+
+    Utc.timestamp_opt(timestamp, 0)
+        .single()
+        .map_or_else(String::new, |utc_time| {
+            let local_time: DateTime<Local> = utc_time.with_timezone(&Local);
+            local_time.format("%b %d, %Y %H:%M").to_string()
+        })
 }
 
 /// Build a sidebar-sized icon button with a tooltip, with an enabled/disabled state.
@@ -139,5 +161,35 @@ mod tests {
             "1.5 GB"
         );
         assert_eq!(format_bytes(10 * 1024 * 1024 * 1024), "10.0 GB");
+    }
+
+    #[test]
+    fn format_bytes_terabytes() {
+        assert_eq!(format_bytes(1024 * 1024 * 1024 * 1024), "1.0 TB");
+        assert_eq!(
+            format_bytes(1024 * 1024 * 1024 * 1024 + 512 * 1024 * 1024 * 1024),
+            "1.5 TB"
+        );
+    }
+
+    #[test]
+    fn format_local_timestamp_valid() {
+        // 2025-01-15 10:30:00 UTC = 1736937000
+        let result = format_local_timestamp(1736937000);
+        assert!(!result.is_empty());
+        assert!(result.contains("2025"));
+    }
+
+    #[test]
+    fn format_local_timestamp_negative() {
+        // Negative timestamps are valid; -1 = Dec 31, 1969 23:59:59 UTC.
+        let result = format_local_timestamp(-1);
+        assert!(!result.is_empty());
+        assert!(result.contains("1969"));
+    }
+
+    #[test]
+    fn format_local_timestamp_handles_unset() {
+        assert_eq!(format_local_timestamp(0), "");
     }
 }

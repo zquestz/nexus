@@ -674,7 +674,10 @@ user-info-nickname = Apelido:
 user-info-account = Conta: { $username }
 user-info-connected = Conectado:
 user-info-connected-value = há { $duration }
-user-info-connected-value-sessions = há { $duration } ({ $count } sessões)
+user-info-connected-value-sessions = há { $duration } ({ $count } { $count ->
+    [one] sessão
+   *[other] sessões
+})
 user-info-features = Recursos:
 user-info-features-value = { $features }
 user-info-features-none = Nenhum

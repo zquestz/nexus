@@ -680,7 +680,11 @@ user-info-nickname = Псевдоним:
 user-info-account = Аккаунт: { $username }
 user-info-connected = Подключён:
 user-info-connected-value = { $duration } назад
-user-info-connected-value-sessions = { $duration } назад ({ $count } сеансов)
+user-info-connected-value-sessions = { $duration } назад ({ $count } { $count ->
+    [one] сеанс
+    [few] сеанса
+   *[other] сеансов
+})
 user-info-features = Возможности:
 user-info-features-value = { $features }
 user-info-features-none = Нет

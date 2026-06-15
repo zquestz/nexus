@@ -1,7 +1,5 @@
 //! Helper functions for the files view (icons, formatting, breadcrumb parsing)
 
-use chrono::{DateTime, Local, TimeZone, Utc};
-
 use crate::icon;
 
 // =============================================================================
@@ -51,46 +49,6 @@ pub(super) fn file_icon_for_extension(filename: &str) -> iced::widget::Text<'sta
 
         // Default
         _ => icon::file(),
-    }
-}
-
-// =============================================================================
-// Formatting Helpers
-// =============================================================================
-
-/// Format a Unix timestamp for display
-pub(super) fn format_timestamp(timestamp: i64) -> String {
-    if timestamp == 0 {
-        return String::new();
-    }
-
-    // Convert Unix timestamp to local time
-    if let Some(utc_time) = Utc.timestamp_opt(timestamp, 0).single() {
-        let local_time: DateTime<Local> = utc_time.with_timezone(&Local);
-        // Format as "Jan 15, 2025 10:30"
-        local_time.format("%b %d, %Y %H:%M").to_string()
-    } else {
-        String::new()
-    }
-}
-
-/// Format a file size for display (human-readable)
-pub(super) fn format_size(size: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    const TB: u64 = GB * 1024;
-
-    if size >= TB {
-        format!("{:.1} TB", size as f64 / TB as f64)
-    } else if size >= GB {
-        format!("{:.1} GB", size as f64 / GB as f64)
-    } else if size >= MB {
-        format!("{:.1} MB", size as f64 / MB as f64)
-    } else if size >= KB {
-        format!("{:.1} KB", size as f64 / KB as f64)
-    } else {
-        format!("{size} B")
     }
 }
 
@@ -148,77 +106,6 @@ pub(super) fn parse_breadcrumbs(path: &str) -> Vec<(&str, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // =========================================================================
-    // format_timestamp Tests
-    // =========================================================================
-
-    #[test]
-    fn test_format_timestamp_zero() {
-        assert_eq!(format_timestamp(0), "");
-    }
-
-    #[test]
-    fn test_format_timestamp_valid() {
-        // 2025-01-15 10:30:00 UTC = 1736935800
-        let result = format_timestamp(1736935800);
-        // Just check it's non-empty and contains expected parts
-        assert!(!result.is_empty());
-        assert!(result.contains("2025"));
-    }
-
-    #[test]
-    fn test_format_timestamp_negative() {
-        // Negative timestamps (before 1970) are valid - they represent dates before Unix epoch
-        // -1 = Dec 31, 1969 23:59:59 UTC
-        let result = format_timestamp(-1);
-        assert!(!result.is_empty());
-        assert!(result.contains("1969"));
-    }
-
-    // =========================================================================
-    // format_size Tests
-    // =========================================================================
-
-    #[test]
-    fn test_format_size_bytes() {
-        assert_eq!(format_size(0), "0 B");
-        assert_eq!(format_size(1), "1 B");
-        assert_eq!(format_size(512), "512 B");
-        assert_eq!(format_size(1023), "1023 B");
-    }
-
-    #[test]
-    fn test_format_size_kilobytes() {
-        assert_eq!(format_size(1024), "1.0 KB");
-        assert_eq!(format_size(1536), "1.5 KB");
-        assert_eq!(format_size(10240), "10.0 KB");
-        assert_eq!(format_size(1048575), "1024.0 KB"); // Just under 1 MB
-    }
-
-    #[test]
-    fn test_format_size_megabytes() {
-        assert_eq!(format_size(1048576), "1.0 MB"); // Exactly 1 MB
-        assert_eq!(format_size(1572864), "1.5 MB");
-        assert_eq!(format_size(104857600), "100.0 MB");
-    }
-
-    #[test]
-    fn test_format_size_gigabytes() {
-        assert_eq!(format_size(1073741824), "1.0 GB"); // Exactly 1 GB
-        assert_eq!(format_size(1610612736), "1.5 GB");
-        assert_eq!(format_size(107374182400), "100.0 GB");
-    }
-
-    #[test]
-    fn test_format_size_terabytes() {
-        assert_eq!(format_size(1099511627776), "1.0 TB"); // Exactly 1 TB
-        assert_eq!(format_size(1649267441664), "1.5 TB");
-    }
-
-    // =========================================================================
-    // parse_breadcrumbs Tests
-    // =========================================================================
 
     #[test]
     fn test_parse_breadcrumbs_empty() {

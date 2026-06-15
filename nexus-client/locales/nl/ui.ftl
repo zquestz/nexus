@@ -669,7 +669,10 @@ user-info-nickname = Bijnaam:
 user-info-account = Account: { $username }
 user-info-connected = Verbonden:
 user-info-connected-value = { $duration } geleden
-user-info-connected-value-sessions = { $duration } geleden ({ $count } sessies)
+user-info-connected-value-sessions = { $duration } geleden ({ $count } { $count ->
+    [one] sessie
+   *[other] sessies
+})
 user-info-features = Functies:
 user-info-features-value = { $features }
 user-info-features-none = Geen

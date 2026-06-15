@@ -6,8 +6,10 @@ use iced::{Center, Element, Fill, Length};
 use iced_aw::ContextMenu;
 use nexus_common::protocol::FileSearchResult;
 
-use super::super::helpers::sort_icon_or_placeholder;
-use super::helpers::{file_icon_for_extension, format_size, format_timestamp};
+use super::super::helpers::{
+    format_bytes as format_size, format_local_timestamp, sort_icon_or_placeholder,
+};
+use super::helpers::file_icon_for_extension;
 use super::{FilePermissions, SearchResultsDeps};
 use crate::i18n::t;
 use crate::icon;
@@ -246,7 +248,7 @@ pub(super) fn lazy_search_results_table(deps: SearchResultsDeps) -> Element<'sta
         let modified_column = table::column(
             modified_header,
             |result: FileSearchResult| -> Element<'static, Message> {
-                let date_text = format_timestamp(result.modified);
+                let date_text = format_local_timestamp(result.modified);
                 row![
                     shaped_text(date_text)
                         .size(TEXT_SIZE)

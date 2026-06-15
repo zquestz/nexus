@@ -981,7 +981,7 @@ pub fn accept_fingerprint_modal(state: &TrackerManagementState) -> Element<'_, M
 
     let title = panel_title(t("title-fingerprint-accept"));
 
-    let server_line_text = format!("{} - {}:{}", name, address, port);
+    let server_line_text = format!("{} - {}", name, crate::uri::format_endpoint(address, *port));
     let server_line = shaped_text(server_line_text).size(TEXT_SIZE);
 
     let warning = shaped_text_wrapped(t("tracker-fingerprint-warning")).size(TEXT_SIZE);

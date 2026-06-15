@@ -16,7 +16,9 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::{GroupInfo, UserInfo};
 use nexus_common::validators::{MIN_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
 
-use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
+use super::constants::{
+    GUEST_USERNAME, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT,
+};
 use super::groups::{group_form_view, group_list_content};
 use super::helpers::{sort_icon_or_placeholder, t_args, tab_toolbar_icon_button};
 use super::layout::scrollable_panel;
@@ -43,9 +45,6 @@ use crate::widgets::MenuButton;
 // ============================================================================
 // Edit User Context
 // ============================================================================
-
-/// Guest account username (case-insensitive comparison)
-const GUEST_USERNAME: &str = "guest";
 
 fn hash_color<H: Hasher>(color: iced::Color, state: &mut H) {
     color.r.to_bits().hash(state);

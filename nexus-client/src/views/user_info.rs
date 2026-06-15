@@ -9,11 +9,10 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::UserInfoDetailed;
 use nexus_common::validators::PasswordStrength;
 
-use super::constants::PERMISSION_USER_EDIT;
+use super::constants::{GUEST_USERNAME, PERMISSION_USER_EDIT};
 use super::layout::scrollable_panel;
 use super::password_strength::password_strength_bar;
 use crate::avatar::{avatar_cache_key, generate_identicon};
-use crate::constants::ERR_SYSTEM_TIME_AFTER_EPOCH;
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::format_duration;
 use crate::i18n::{t, t_args};
@@ -308,7 +307,7 @@ fn build_user_info_content<'a>(
         ));
     }
 
-    let is_guest = fold_name(&user.username) == "guest";
+    let is_guest = fold_name(&user.username) == GUEST_USERNAME;
     let role_value = if is_admin {
         t("user-info-role-admin")
     } else if is_guest {
@@ -341,9 +340,9 @@ fn build_user_info_content<'a>(
     // Session duration
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect(ERR_SYSTEM_TIME_AFTER_EPOCH)
-        .as_secs() as i64;
-    let session_duration_secs = now.saturating_sub(user.login_time) as u64;
+        .map(|duration| i64::try_from(duration.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0);
+    let session_duration_secs = now.saturating_sub(user.login_time).max(0) as u64;
     let duration_str = format_duration(session_duration_secs);
 
     let session_count = user.session_ids.len();

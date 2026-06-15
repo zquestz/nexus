@@ -6,6 +6,9 @@
 //! This file contains only non-localizable constants like permission names
 //! that must match server-side values exactly.
 
+/// Guest account username (case-insensitive comparison).
+pub(crate) const GUEST_USERNAME: &str = "guest";
+
 // =============================================================================
 // Permission String Constants
 // =============================================================================

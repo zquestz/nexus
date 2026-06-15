@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Local};
 use iced::widget::Id;
 use iced::widget::button as btn;
 use iced::widget::markdown;
@@ -15,6 +14,7 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::NewsItem;
 
 use super::constants::{PERMISSION_NEWS_CREATE, PERMISSION_NEWS_DELETE, PERMISSION_NEWS_EDIT};
+use super::helpers::format_local_timestamp;
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::icon;
@@ -54,16 +54,6 @@ fn news_delete_button(
         .width(NEWS_ACTION_BUTTON_SIZE)
         .height(NEWS_ACTION_BUTTON_SIZE)
         .style(danger_icon_button_style)
-}
-
-/// Format a Unix epoch timestamp for display.
-fn format_timestamp(timestamp: i64) -> String {
-    DateTime::from_timestamp(timestamp, 0)
-        .map(|utc_time| {
-            let local_time: DateTime<Local> = utc_time.with_timezone(&Local);
-            local_time.format("%b %d, %Y %H:%M").to_string()
-        })
-        .unwrap_or_else(|| timestamp.to_string())
 }
 
 /// Check if the current user can edit this news item
@@ -342,7 +332,7 @@ fn build_news_item_row<'a>(
     .align_y(alignment::Vertical::Center);
 
     // Timestamp on its own line (with optional update tooltip)
-    let timestamp_text = shaped_text(format_timestamp(item.created_at))
+    let timestamp_text = shaped_text(format_local_timestamp(item.created_at))
         .size(TEXT_SIZE)
         .style(muted_text_style);
 
@@ -350,7 +340,7 @@ fn build_news_item_row<'a>(
         let tooltip_text = format!(
             "{}: {}",
             t("news-updated"),
-            format_timestamp(item.updated_at)
+            format_local_timestamp(item.updated_at)
         );
         tooltip(
             timestamp_text,

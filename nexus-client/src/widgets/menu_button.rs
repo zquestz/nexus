@@ -233,6 +233,7 @@ where
                 if state.is_pressed =>
             {
                 state.is_pressed = false;
+                shell.capture_event();
                 if is_over && let Some(on_press) = self.on_press.clone() {
                     shell.publish(on_press);
                 }

@@ -5,8 +5,10 @@ use iced::widget::{Space, button, container, lazy, row, table};
 use iced::{Center, Element, Fill, Length};
 use iced_aw::ContextMenu;
 
-use super::super::helpers::sort_icon_or_placeholder;
-use super::helpers::{file_icon_for_extension, format_size, format_timestamp};
+use super::super::helpers::{
+    format_bytes as format_size, format_local_timestamp, sort_icon_or_placeholder,
+};
+use super::helpers::file_icon_for_extension;
 use super::{FilePermissions, FileRowData, FileTableDeps};
 use crate::i18n::t;
 use crate::icon;
@@ -105,33 +107,21 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
                 name_content
             };
 
-            // Context menu
-            let can_delete = row.perms.file_delete || row.bypass_via_ownership;
-            let can_rename = row.perms.file_rename || row.bypass_via_ownership;
-            let has_any_permission = row.perms.file_info
-                || can_delete
-                || can_rename
-                || row.perms.file_move
-                || row.perms.file_copy
-                || row.perms.file_download
-                || row.perms.file_upload;
-
-            if has_any_permission {
-                ContextMenu::new(row_element, move || {
-                    build_lazy_context_menu(
-                        &row.path,
-                        &row.entry.name,
-                        is_directory,
-                        row.entry.can_upload,
-                        row.perms,
-                        row.has_clipboard,
-                        row.bypass_via_ownership,
-                    )
-                })
-                .into()
-            } else {
-                row_element
-            }
+            // Share is always available for visible entries, so every row gets
+            // a menu; the remaining actions are permission-gated inside it.
+            let menu: Element<'static, Message> = ContextMenu::new(row_element, move || {
+                build_lazy_context_menu(
+                    &row.path,
+                    &row.entry.name,
+                    is_directory,
+                    row.entry.can_upload,
+                    row.perms,
+                    row.has_clipboard,
+                    row.bypass_via_ownership,
+                )
+            })
+            .into();
+            menu
         })
         .width(Fill);
 
@@ -202,7 +192,7 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
         // Modified column. The trailing Space matches the header so the
         // rightmost column doesn't abut the scrollbar.
         let modified_column = table::column(modified_header, |row: FileRowData| {
-            let date_text = format_timestamp(row.entry.modified);
+            let date_text = format_local_timestamp(row.entry.modified);
             row![
                 shaped_text(date_text)
                     .size(TEXT_SIZE)

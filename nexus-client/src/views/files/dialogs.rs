@@ -6,8 +6,9 @@ use iced::widget::{Space, button, column, row, text_input};
 use iced::{Center, Element, Fill};
 use nexus_common::protocol::FileInfoDetails;
 
+use super::super::helpers::{format_bytes as format_size, format_local_timestamp};
 use super::super::layout::scrollable_panel;
-use super::helpers::{file_icon_for_extension, format_size, format_timestamp};
+use super::helpers::file_icon_for_extension;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -201,7 +202,7 @@ pub(super) fn file_info_dialog(info: &FileInfoDetails) -> Element<'_, Message> {
     // Created (show N/A if not available)
     let created_value = match info.created {
         Some(ts) => {
-            let s = format_timestamp(ts);
+            let s = format_local_timestamp(ts);
             if s.is_empty() { t("files-info-na") } else { s }
         }
         None => t("files-info-na"),
@@ -209,7 +210,7 @@ pub(super) fn file_info_dialog(info: &FileInfoDetails) -> Element<'_, Message> {
     content = content.push(info_row(t("files-info-created"), created_value));
 
     // Modified (always available)
-    let modified_value = format_timestamp(info.modified);
+    let modified_value = format_local_timestamp(info.modified);
     let modified_value = if modified_value.is_empty() {
         t("files-info-na")
     } else {

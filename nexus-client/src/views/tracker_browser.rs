@@ -455,6 +455,55 @@ fn toolbar_status<'a>(
 // List-area body
 // =============================================================================
 
+enum TrackerListBody {
+    NoSelectionOrCache,
+    Entries {
+        filtered: Vec<ServerEntry>,
+        search_active: bool,
+    },
+    Loading,
+    Empty,
+}
+
+impl TrackerListBody {
+    fn filtered_count(&self) -> Option<usize> {
+        match self {
+            Self::Entries { filtered, .. } => Some(filtered.len()),
+            Self::NoSelectionOrCache | Self::Loading | Self::Empty => None,
+        }
+    }
+}
+
+fn build_list_body_state(
+    state: &TrackerBrowserState,
+    selected_cache: Option<&TrackerCacheEntry>,
+) -> TrackerListBody {
+    let Some(cache) = selected_cache.filter(|_| state.selected_tracker.is_some()) else {
+        // No tracker selected, or no fetch has ever occurred for the selected
+        // tracker — render an empty area. The network layer populates the
+        // cache on selection change once it lands.
+        return TrackerListBody::NoSelectionOrCache;
+    };
+
+    if let Some(entries) = cache.entries.as_ref() {
+        return TrackerListBody::Entries {
+            filtered: filter_and_sort_entries(
+                entries,
+                &state.search_input,
+                state.sort_column,
+                state.sort_ascending,
+            ),
+            search_active: !state.search_input.trim().is_empty(),
+        };
+    }
+
+    if cache.is_fetching {
+        TrackerListBody::Loading
+    } else {
+        TrackerListBody::Empty
+    }
+}
+
 /// Decide what fills the list-area below the search row, per the
 /// cache-state matrix in the spec:
 ///
@@ -464,51 +513,42 @@ fn toolbar_status<'a>(
 /// | `None`     | `true`        | loading indicator                    |
 /// | `None`     | `false`       | empty state (initial / never fetched)|
 fn list_body<'a>(
-    state: &'a TrackerBrowserState,
-    selected_cache: Option<&'a TrackerCacheEntry>,
-    filtered: Option<Vec<ServerEntry>>,
+    body: TrackerListBody,
+    sort_column: TrackerBrowserSortColumn,
+    sort_ascending: bool,
 ) -> Element<'a, Message> {
-    if state.selected_tracker.is_none() || selected_cache.is_none() {
-        // No tracker selected, or no fetch has ever occurred for the
-        // selected tracker — render an empty area. The network layer
-        // populates the cache on selection change once it lands.
-        return Space::new().into();
-    }
-
-    // safe — guard above
-    let cache = selected_cache.expect("guarded above");
-
-    if cache.entries.is_some() {
-        // `filtered` is `Some` whenever `cache.entries` is `Some` —
-        // they're computed together in `list_view`.
-        let filtered = filtered.expect("filtered Some when cache.entries Some");
-        if filtered.is_empty() {
-            // Two distinct empty messages:
-            //   - listing has zero entries → "this tracker has no
-            //     registered servers"
-            //   - listing has entries but search filtered all of them
-            //     out → "no matches"
-            let key = if state.search_input.trim().is_empty() {
-                "empty-tracker-no-servers"
+    match body {
+        TrackerListBody::NoSelectionOrCache => Space::new().into(),
+        TrackerListBody::Entries {
+            filtered,
+            search_active,
+        } => {
+            if filtered.is_empty() {
+                // Two distinct empty messages:
+                //   - listing has zero entries -> "this tracker has no
+                //     registered servers"
+                //   - listing has entries but search filtered all of them
+                //     out -> "no matches"
+                let key = if search_active {
+                    "empty-tracker-no-matches"
+                } else {
+                    "empty-tracker-no-servers"
+                };
+                container(shaped_text(t(key)).size(TEXT_SIZE).style(muted_text_style))
+                    .width(Fill)
+                    .center_x(Fill)
+                    .padding(SPACER_SIZE_SMALL)
+                    .into()
             } else {
-                "empty-tracker-no-matches"
-            };
-            return container(shaped_text(t(key)).size(TEXT_SIZE).style(muted_text_style))
-                .width(Fill)
-                .center_x(Fill)
-                .padding(SPACER_SIZE_SMALL)
-                .into();
+                let deps = ServerTableDeps {
+                    entries: filtered,
+                    sort_column,
+                    sort_ascending,
+                };
+                scrollable(lazy_server_table(deps)).height(Fill).into()
+            }
         }
-        let deps = ServerTableDeps {
-            entries: filtered,
-            sort_column: state.sort_column,
-            sort_ascending: state.sort_ascending,
-        };
-        return scrollable(lazy_server_table(deps)).height(Fill).into();
-    }
-
-    if cache.is_fetching {
-        return container(
+        TrackerListBody::Loading => container(
             shaped_text(t("tracker-browser-status-loading"))
                 .size(TEXT_SIZE)
                 .style(muted_text_style),
@@ -516,12 +556,13 @@ fn list_body<'a>(
         .width(Fill)
         .center_x(Fill)
         .padding(SPACER_SIZE_SMALL)
-        .into();
+        .into(),
+        TrackerListBody::Empty => {
+            // None + !is_fetching — initial / never fetched. Render an empty
+            // space; the toolbar status text already communicates "nothing yet".
+            Space::new().into()
+        }
     }
-
-    // None + !is_fetching — initial / never fetched. Render an empty space;
-    // the toolbar status text already communicates "nothing yet".
-    Space::new().into()
 }
 
 // =============================================================================
@@ -555,19 +596,10 @@ fn list_view<'a>(
         .and_then(|id| options.iter().find(|o| o.id == id).cloned());
     let selected_cache = state.selected_tracker.and_then(|id| state.cache.get(&id));
 
-    // Compute the filtered + sorted view once and reuse it for both the
-    // toolbar count and the table body — keeps "Servers: N" honest
-    // against what the user actually sees.
-    let filtered: Option<Vec<ServerEntry>> =
-        selected_cache.and_then(|c| c.entries.as_ref()).map(|e| {
-            filter_and_sort_entries(
-                e,
-                &state.search_input,
-                state.sort_column,
-                state.sort_ascending,
-            )
-        });
-    let filtered_count = filtered.as_ref().map(|v| v.len());
+    // Compute the cache-derived body state once and reuse its count for the
+    // toolbar, so "Servers: N" matches what the user actually sees.
+    let body_state = build_list_body_state(state, selected_cache);
+    let filtered_count = body_state.filtered_count();
 
     // -- Title row: news-style centered title with a balanced [+]
     // button on the right. The invisible spacer on the left equals the
@@ -713,7 +745,7 @@ fn list_view<'a>(
     // Empty/loading text is top-aligned (mirrors users / groups
     // tab pattern) — no vertical centering.
     let body: Element<'a, Message> = if has_trackers {
-        list_body(state, selected_cache, filtered)
+        list_body(body_state, state.sort_column, state.sort_ascending)
     } else {
         container(
             shaped_text(t("empty-no-trackers-configured"))
