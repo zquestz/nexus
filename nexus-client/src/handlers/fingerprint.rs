@@ -52,7 +52,7 @@ impl NexusApp {
         // Replay the original connect attempt. Allocate a fresh connection_id
         // and refresh the expected_fingerprint so stage 1 passes on retry.
         let retry_task = match mismatch.retry_action {
-            ReconnectAction::Manual { mut params } => {
+            ReconnectAction::Manual { mut params, intent } => {
                 params.connection_id = self.next_connection_id;
                 self.next_connection_id += 1;
                 params.expected_fingerprint = Some(new_fingerprint.clone());
@@ -65,6 +65,7 @@ impl NexusApp {
                     move |result| Message::ConnectionResult {
                         result,
                         params: retry_params,
+                        intent,
                     },
                 )
             }

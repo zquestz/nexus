@@ -38,6 +38,9 @@ pub use panel::{
 };
 pub use pending::{PendingRequests, ResponseRouting};
 pub use tracker::ClientTracker;
-pub use ui::{ActivePanel, FingerprintMismatch, InputId, ReconnectAction, ScrollableId, UiState};
+pub use ui::{
+    ActivePanel, FingerprintMismatch, InputId, ManualConnectionIntent, ReconnectAction,
+    ScrollableId, UiState,
+};
 pub use view_config::{ToolbarState, ViewConfig};
 pub use voice::VoiceState;

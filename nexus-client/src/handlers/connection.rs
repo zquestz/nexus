@@ -228,6 +228,11 @@ impl NexusApp {
         let server_address = self.connection_form.server_address.clone();
         let username = self.connection_form.username.clone();
         let password = self.connection_form.password.clone();
+        let intent = crate::types::ManualConnectionIntent {
+            server_name: self.connection_form.server_name.clone(),
+            form_nickname: self.connection_form.nickname.clone(),
+            add_bookmark: self.connection_form.add_bookmark,
+        };
         // Use nickname from form, falling back to settings default
         let nickname = if self.connection_form.nickname.is_empty() {
             self.config.settings.nickname.clone()
@@ -292,6 +297,7 @@ impl NexusApp {
             move |result| Message::ConnectionResult {
                 result,
                 params: retry_params,
+                intent,
             },
         )
     }

@@ -47,6 +47,11 @@ impl ShutdownHandle {
         Self { tx }
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_for_test(tx: tokio::sync::oneshot::Sender<()>) -> Self {
+        Self::new(tx)
+    }
+
     /// Signal the network task to shut down
     pub fn shutdown(self) {
         let _ = self.tx.send(());

@@ -70,6 +70,7 @@ pub enum ReconnectAction {
     /// dialog because the form is only cleared on connection success.
     Manual {
         params: crate::network::types::ConnectionParams,
+        intent: ManualConnectionIntent,
     },
     /// Retry a bookmark connect.
     Bookmark {
@@ -83,6 +84,21 @@ pub enum ReconnectAction {
         display_name: String,
         path: Option<crate::uri::NexusPath>,
     },
+}
+
+/// Manual connection form values captured at submit time.
+///
+/// The network layer carries connection credentials in `ConnectionParams`.
+/// These fields are UI/bookmark intent that must not drift if the user edits
+/// the form while the connection attempt is in flight.
+#[derive(Debug, Clone)]
+pub struct ManualConnectionIntent {
+    /// Optional display name from the connection form.
+    pub server_name: String,
+    /// Raw nickname field from the form, before fallback to settings nickname.
+    pub form_nickname: String,
+    /// Whether to save the successful manual connection as a bookmark.
+    pub add_bookmark: bool,
 }
 
 /// Certificate fingerprint mismatch entry in the user-verification queue.

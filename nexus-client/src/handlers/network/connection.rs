@@ -16,8 +16,8 @@ use crate::network::types::{ConnectError, ConnectionParams};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::ChatMessage;
 use crate::types::{
-    ActivePanel, ChannelState, FingerprintMismatch, InputId, Message, NetworkConnection,
-    ReconnectAction, ServerBookmark, ServerConnection, ServerConnectionParams,
+    ActivePanel, ChannelState, FingerprintMismatch, InputId, ManualConnectionIntent, Message,
+    NetworkConnection, ReconnectAction, ServerBookmark, ServerConnection, ServerConnectionParams,
     normalize_certificate_fingerprint,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
@@ -42,10 +42,10 @@ pub struct ConnectionContext {
 }
 
 /// Source of the connection attempt
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum ConnectionSource {
     /// Manual connection from the connection form
-    Manual,
+    Manual { intent: ManualConnectionIntent },
     /// Connection from clicking a bookmark
     Bookmark,
     /// Connection from a nexus:// URI (startup arg, IPC, or clicked link)
@@ -62,6 +62,7 @@ impl NexusApp {
         &mut self,
         result: Result<NetworkConnection, ConnectError>,
         params: ConnectionParams,
+        intent: ManualConnectionIntent,
     ) -> Task<Message> {
         self.connection_form.is_connecting = false;
 
@@ -73,14 +74,19 @@ impl NexusApp {
                 let bookmark_id = self
                     .config
                     .find_bookmark_matching(
-                        &self.connection_form.server_address,
-                        self.connection_form.port,
-                        &self.connection_form.username,
-                        &self.connection_form.nickname,
+                        &params.server_address,
+                        params.port,
+                        &params.username,
+                        &intent.form_nickname,
                     )
                     .map(|b| b.id);
 
-                let display_name = self.get_display_name(bookmark_id);
+                let display_name = self.get_display_name(
+                    bookmark_id,
+                    &intent.server_name,
+                    &params.server_address,
+                    params.port,
+                );
 
                 let ctx = ConnectionContext {
                     bookmark_id,
@@ -89,16 +95,19 @@ impl NexusApp {
                     connection_id: conn.connection_id,
                 };
 
-                self.handle_successful_connection(conn, ctx, ConnectionSource::Manual)
+                self.handle_successful_connection(conn, ctx, ConnectionSource::Manual { intent })
             }
             Err(ConnectError::FingerprintMismatch(details)) => {
-                self.queue_fingerprint_mismatch(*details, ReconnectAction::Manual { params });
+                self.queue_fingerprint_mismatch(
+                    *details,
+                    ReconnectAction::Manual { params, intent },
+                );
                 Task::none()
             }
             Err(ConnectError::FingerprintInterception(mut details)) => {
                 // Use the user-typed name from the form if any; empty falls
                 // through to host:port in the dialog.
-                details.server_name = self.connection_form.server_name.trim().to_string();
+                details.server_name = intent.server_name;
                 self.fingerprint_interception_queue.push_back(*details);
                 Task::none()
             }
@@ -409,12 +418,15 @@ impl NexusApp {
         }
 
         // Save as bookmark if checkbox was enabled (form connections only, not already a bookmark)
-        if matches!(source, ConnectionSource::Manual)
-            && self.connection_form.add_bookmark
+        if let ConnectionSource::Manual { intent } = &source
+            && intent.add_bookmark
             && ctx.bookmark_id.is_none()
         {
-            background_tasks
-                .push(self.save_new_bookmark(ctx.connection_id, ctx.certificate_fingerprint));
+            background_tasks.push(self.save_new_bookmark(
+                ctx.connection_id,
+                ctx.certificate_fingerprint.clone(),
+                intent,
+            ));
         }
 
         // Connection succeeded — dismiss both layout-level overlays
@@ -443,7 +455,7 @@ impl NexusApp {
         error: String,
     ) {
         match source {
-            ConnectionSource::Manual => {
+            ConnectionSource::Manual { .. } => {
                 self.connection_form.error = Some(error);
             }
             ConnectionSource::Bookmark => {
@@ -615,20 +627,23 @@ impl NexusApp {
         })
     }
 
-    /// Get display name from connection form or bookmark
-    fn get_display_name(&self, bookmark_id: Option<Uuid>) -> String {
-        if !self.connection_form.server_name.trim().is_empty() {
-            self.connection_form.server_name.clone()
+    /// Get display name from the manual submit snapshot or matched bookmark.
+    fn get_display_name(
+        &self,
+        bookmark_id: Option<Uuid>,
+        server_name: &str,
+        server_address: &str,
+        port: u16,
+    ) -> String {
+        if !server_name.trim().is_empty() {
+            server_name.to_string()
         } else if let Some(name) = bookmark_id
             .and_then(|id| self.config.get_bookmark(id))
             .map(|b| b.name.clone())
         {
             name
         } else {
-            format!(
-                "{}:{}",
-                self.connection_form.server_address, self.connection_form.port
-            )
+            format!("{}:{}", server_address, port)
         }
     }
 
@@ -663,13 +678,13 @@ impl NexusApp {
         // so a match is expected — but if the bookmark was deleted between
         // initiating the connect and the mismatch firing, fall back to nil.
         let (bookmark_id, bookmark_name) = match &retry_action {
-            ReconnectAction::Manual { params } => self
+            ReconnectAction::Manual { params, intent } => self
                 .config
                 .find_bookmark_matching(
                     &params.server_address,
                     params.port,
                     &params.username,
-                    params.nickname.as_deref().unwrap_or_default(),
+                    &intent.form_nickname,
                 )
                 .map(|b| (b.id, b.name.clone()))
                 .unwrap_or((Uuid::nil(), String::new())),
@@ -712,15 +727,26 @@ impl NexusApp {
         &mut self,
         connection_id: usize,
         certificate_fingerprint: String,
+        intent: &ManualConnectionIntent,
     ) -> Task<Message> {
+        let Some(conn) = self.connections.get(&connection_id) else {
+            return Task::none();
+        };
+        let bookmark_nickname =
+            if fold_name(&conn.nickname) == fold_name(&conn.connection_info.username) {
+                String::new()
+            } else {
+                conn.nickname.clone()
+            };
+
         let new_bookmark = ServerBookmark {
             id: Uuid::new_v4(),
-            name: self.connection_form.server_name.clone(),
-            address: self.connection_form.server_address.clone(),
-            port: self.connection_form.port,
-            username: self.connection_form.username.clone(),
-            password: self.connection_form.password.clone(),
-            nickname: self.connection_form.nickname.clone(),
+            name: intent.server_name.clone(),
+            address: conn.connection_info.address.clone(),
+            port: conn.connection_info.port,
+            username: conn.connection_info.username.clone(),
+            password: conn.connection_info.password.clone(),
+            nickname: bookmark_nickname,
             auto_connect: false,
             certificate_fingerprint: normalize_certificate_fingerprint(Some(
                 certificate_fingerprint,
@@ -743,5 +769,252 @@ impl NexusApp {
         }
 
         task
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::config::Config;
+    use crate::network::ShutdownHandle;
+    use crate::network::types::ProxyConfig;
+    use crate::types::ConnectionInfo;
+
+    const TEST_FINGERPRINT: &str = "AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA";
+
+    fn manual_intent(
+        server_name: &str,
+        form_nickname: &str,
+        add_bookmark: bool,
+    ) -> ManualConnectionIntent {
+        ManualConnectionIntent {
+            server_name: server_name.to_string(),
+            form_nickname: form_nickname.to_string(),
+            add_bookmark,
+        }
+    }
+
+    fn connection_params(
+        connection_id: usize,
+        address: &str,
+        username: &str,
+        nickname: Option<&str>,
+    ) -> ConnectionParams {
+        ConnectionParams {
+            server_address: address.to_string(),
+            port: 7500,
+            username: username.to_string(),
+            password: "secret".to_string(),
+            nickname: nickname.map(str::to_string),
+            locale: "en".to_string(),
+            avatar: None,
+            connection_id,
+            proxy: Option::<ProxyConfig>::None,
+            expected_fingerprint: None,
+        }
+    }
+
+    fn network_connection(params: &ConnectionParams, server_nickname: &str) -> NetworkConnection {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
+        NetworkConnection {
+            tx,
+            connection_id: params.connection_id,
+            shutdown: Some(Arc::new(Mutex::new(Some(ShutdownHandle::new_for_test(
+                shutdown_tx,
+            ))))),
+            is_admin: false,
+            user_id: Some(1),
+            nickname: server_nickname.to_string(),
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            channels: Vec::<ChannelJoinInfo>::new(),
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            connection_info: ConnectionInfo {
+                server_name: params.server_address.clone(),
+                address: params.server_address.clone(),
+                port: params.port,
+                transfer_port: 7501,
+                certificate_fingerprint: TEST_FINGERPRINT.to_string(),
+                username: params.username.clone(),
+                password: params.password.clone(),
+                nickname: params.nickname.clone().unwrap_or_default(),
+            },
+        }
+    }
+
+    #[test]
+    fn manual_success_uses_submit_snapshot_for_bookmark_match_and_display() {
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+        let bookmark_id = Uuid::new_v4();
+        app.config.bookmarks.push(ServerBookmark {
+            id: bookmark_id,
+            name: "Original Bookmark".to_string(),
+            address: "bbs.example".to_string(),
+            port: 7500,
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            nickname: String::new(),
+            auto_connect: false,
+            certificate_fingerprint: None,
+        });
+        app.connection_form.server_name = "Edited Name".to_string();
+        app.connection_form.server_address = "other.example".to_string();
+        app.connection_form.port = 7600;
+        app.connection_form.username = "mallory".to_string();
+        app.connection_form.nickname = "MalloryNick".to_string();
+
+        let params = connection_params(1, "bbs.example", "alice", Some("DefaultNick"));
+        let conn = network_connection(&params, "alice");
+        let task = app.handle_connection_result(Ok(conn), params, manual_intent("", "", false));
+        drop(task);
+
+        let conn = app.connections.get(&1).expect("connection registered");
+        assert_eq!(conn.bookmark_id, Some(bookmark_id));
+        assert_eq!(conn.display_name, "Original Bookmark");
+    }
+
+    #[test]
+    fn manual_success_uses_submit_snapshot_for_shared_bookmark_match() {
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+        let bookmark_id = Uuid::new_v4();
+        app.config.bookmarks.push(ServerBookmark {
+            id: bookmark_id,
+            name: "Shared Bookmark".to_string(),
+            address: "bbs.example".to_string(),
+            port: 7500,
+            username: "shared".to_string(),
+            password: "secret".to_string(),
+            nickname: "Bob".to_string(),
+            auto_connect: false,
+            certificate_fingerprint: None,
+        });
+        app.connection_form.server_name = "Edited Name".to_string();
+        app.connection_form.server_address = "other.example".to_string();
+        app.connection_form.port = 7600;
+        app.connection_form.username = "mallory".to_string();
+        app.connection_form.nickname = "MalloryNick".to_string();
+
+        let params = connection_params(1, "bbs.example", "shared", Some("WrongEffectiveNick"));
+        let conn = network_connection(&params, "Bob");
+        let task = app.handle_connection_result(Ok(conn), params, manual_intent("", "Bob", false));
+        drop(task);
+
+        let conn = app.connections.get(&1).expect("connection registered");
+        assert_eq!(conn.bookmark_id, Some(bookmark_id));
+        assert_eq!(conn.display_name, "Shared Bookmark");
+    }
+
+    #[test]
+    fn manual_fingerprint_retry_preserves_submit_snapshot() {
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+        let bookmark_id = Uuid::new_v4();
+        app.config.bookmarks.push(ServerBookmark {
+            id: bookmark_id,
+            name: "Shared Bookmark".to_string(),
+            address: "bbs.example".to_string(),
+            port: 7500,
+            username: "shared".to_string(),
+            password: "secret".to_string(),
+            nickname: "Bob".to_string(),
+            auto_connect: false,
+            certificate_fingerprint: Some("AA:AA".to_string()),
+        });
+
+        let params = connection_params(1, "bbs.example", "shared", Some("WrongEffectiveNick"));
+        let intent = manual_intent("Original Name", "Bob", false);
+        app.queue_fingerprint_mismatch(
+            crate::network::FingerprintMismatchDetails {
+                expected: "AA:AA".to_string(),
+                received: "BB:BB".to_string(),
+                server_address: "bbs.example".to_string(),
+                server_port: 7500,
+            },
+            ReconnectAction::Manual { params, intent },
+        );
+
+        let mismatch = app
+            .fingerprint_mismatch_queue
+            .pop_back()
+            .expect("fingerprint mismatch queued");
+        assert_eq!(mismatch.bookmark_id, bookmark_id);
+        assert_eq!(mismatch.bookmark_name, "Shared Bookmark");
+        match mismatch.retry_action {
+            ReconnectAction::Manual { params, intent } => {
+                assert_eq!(params.nickname.as_deref(), Some("WrongEffectiveNick"));
+                assert_eq!(intent.server_name, "Original Name");
+                assert_eq!(intent.form_nickname, "Bob");
+            }
+            _ => panic!("expected manual reconnect action"),
+        }
+    }
+
+    #[test]
+    fn manual_bookmark_save_uses_empty_nickname_for_regular_account() {
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+        let params = connection_params(1, "bbs.example", "alice", Some("DefaultNick"));
+        let conn = network_connection(&params, "alice");
+        let task =
+            app.handle_connection_result(Ok(conn), params, manual_intent("Saved Server", "", true));
+        drop(task);
+
+        let bookmark = app.config.bookmarks.first().expect("bookmark saved");
+        assert_eq!(bookmark.name, "Saved Server");
+        assert_eq!(bookmark.address, "bbs.example");
+        assert_eq!(bookmark.username, "alice");
+        assert_eq!(bookmark.nickname, "");
+        assert_eq!(app.connections[&1].bookmark_id, Some(bookmark.id));
+    }
+
+    #[test]
+    fn manual_bookmark_save_uses_server_confirmed_shared_nickname() {
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+        let params = connection_params(1, "bbs.example", "shared", Some("SharedNick"));
+        let conn = network_connection(&params, "ServerNick");
+        let task = app.handle_connection_result(
+            Ok(conn),
+            params,
+            manual_intent("Shared Server", "SharedNick", true),
+        );
+        drop(task);
+
+        let bookmark = app.config.bookmarks.first().expect("bookmark saved");
+        assert_eq!(bookmark.username, "shared");
+        assert_eq!(bookmark.nickname, "ServerNick");
     }
 }

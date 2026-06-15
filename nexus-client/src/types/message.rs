@@ -183,6 +183,7 @@ pub enum Message {
     ConnectionResult {
         result: Result<NetworkConnection, crate::network::types::ConnectError>,
         params: crate::network::types::ConnectionParams,
+        intent: super::ManualConnectionIntent,
     },
     /// Bookmark editor: Confirm delete after confirmation modal
     ConfirmDeleteBookmark(Uuid),

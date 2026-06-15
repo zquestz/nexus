@@ -1196,9 +1196,11 @@ impl NexusApp {
                 bookmark_id,
                 display_name,
             } => self.handle_bookmark_connection_result(result, params, bookmark_id, display_name),
-            Message::ConnectionResult { result, params } => {
-                self.handle_connection_result(result, params)
-            }
+            Message::ConnectionResult {
+                result,
+                params,
+                intent,
+            } => self.handle_connection_result(result, params, intent),
             Message::NetworkError(connection_id, error) => {
                 self.handle_network_error(connection_id, error)
             }
