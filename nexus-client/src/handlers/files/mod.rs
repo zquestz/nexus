@@ -23,6 +23,8 @@ use crate::NexusApp;
 use crate::i18n::t;
 use crate::types::{FileSortColumn, Message, PendingRequests, ResponseRouting, TabId};
 
+pub(crate) use navigation::FilesOpenIntent;
+
 /// Strip leading slash from a path
 ///
 /// Search results have paths with leading slashes (e.g., "/Documents/file.txt"),

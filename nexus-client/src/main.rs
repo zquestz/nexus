@@ -1223,7 +1223,7 @@ impl NexusApp {
             Message::NewsSubmitPressed => self.handle_news_submit_pressed(),
 
             // Files panel
-            Message::ToggleFiles => self.handle_toggle_files(),
+            Message::ToggleFiles => self.handle_toggle_files(handlers::FilesOpenIntent::Toolbar),
             Message::CancelFiles => self.handle_cancel_files(),
             Message::FileNavigate(path) => self.handle_file_navigate(path),
             Message::FileNavigateUp => self.handle_file_navigate_up(),

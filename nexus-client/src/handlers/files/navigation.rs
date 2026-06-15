@@ -5,13 +5,29 @@ use iced::Task;
 use crate::NexusApp;
 use crate::types::{ActivePanel, InputId, Message};
 
+/// How the Files panel should open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FilesOpenIntent {
+    /// Toolbar click: preserve the current tab path and no-op when already open.
+    Toolbar,
+    /// URI deep link: open the panel and resolve this non-empty path through
+    /// the file-list response so it can become either navigation or download.
+    UriPath(String),
+}
+
 impl NexusApp {
     // ==================== Panel Toggle ====================
 
-    pub fn handle_toggle_files(&mut self) -> Task<Message> {
+    pub fn handle_toggle_files(&mut self, intent: FilesOpenIntent) -> Task<Message> {
         use crate::views::constants::PERMISSION_FILE_SEARCH;
 
-        if self.active_panel() == ActivePanel::Files {
+        let uri_path = match intent {
+            FilesOpenIntent::Toolbar => None,
+            FilesOpenIntent::UriPath(path) if path.is_empty() => None,
+            FilesOpenIntent::UriPath(path) => Some(path),
+        };
+
+        if uri_path.is_none() && self.active_panel() == ActivePanel::Files {
             return Task::none();
         }
 
@@ -30,8 +46,36 @@ impl NexusApp {
         // Initialize show_hidden from config on first open
         let show_hidden = self.config.settings.show_hidden_files;
 
-        // Remember the current path - don't reset it
         let tab = conn.files_management.active_tab_mut();
+
+        if let Some(path) = uri_path {
+            // Server resolves paths with folder type suffixes (e.g.,
+            // "uploads" -> "uploads [NEXUS-UL]"), so the response handler
+            // resolves the final segment after listing its parent.
+            let (parent_path, target_name) = if let Some(slash_idx) = path.rfind('/') {
+                (path[..slash_idx].to_string(), &path[slash_idx + 1..])
+            } else {
+                (String::new(), path.as_str())
+            };
+            let uri_target = (!target_name.is_empty()).then(|| target_name.to_string());
+
+            tab.navigate_to(parent_path.clone());
+            tab.viewing_root = false;
+            tab.entries = None;
+            tab.error = None;
+            let tab_id = tab.id;
+
+            return self.send_file_list_request_for_tab(
+                conn_id,
+                tab_id,
+                parent_path,
+                false,
+                show_hidden,
+                uri_target,
+            );
+        }
+
+        // Remember the current path - don't reset it
         let current_path = tab.current_path.clone();
         let viewing_root = tab.viewing_root;
 

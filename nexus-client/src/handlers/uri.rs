@@ -6,11 +6,10 @@ use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::validate_connection_address;
 
 use crate::NexusApp;
+use crate::handlers::FilesOpenIntent;
 use crate::i18n::{get_locale, t, t_args};
 use crate::network::{ConnectionParams, FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS, ProxyConfig};
-use crate::types::{
-    ActivePanel, ChatMessage, ChatTab, Message, NetworkConnection, PendingRequests, ResponseRouting,
-};
+use crate::types::{ChatMessage, ChatTab, Message, NetworkConnection};
 use crate::uri::{NexusPath, NexusUri};
 
 struct UriConnectionLookup {
@@ -219,33 +218,34 @@ impl NexusApp {
         Task::none()
     }
 
+    fn show_chat_uri_error(&mut self, connection_id: usize, error: String) -> Task<Message> {
+        let error_task = self.add_active_tab_message(connection_id, ChatMessage::error(error));
+        let show_task = self.handle_show_chat_view();
+        Task::batch([error_task, show_task])
+    }
+
     /// Navigate to a path intent within an existing connection
     pub fn navigate_to_path(&mut self, connection_id: usize, path: NexusPath) -> Task<Message> {
-        let Some(conn) = self.connections.get_mut(&connection_id) else {
-            return Task::none();
-        };
-
         match path {
             NexusPath::Chat { target, is_channel } => {
+                let Some(conn) = self.connections.get(&connection_id) else {
+                    return Task::none();
+                };
+
                 if !conn.has_feature(FEATURE_CHAT) {
-                    conn.active_panel = ActivePanel::None;
-                    return self.add_active_tab_message(
-                        connection_id,
-                        ChatMessage::error(t("err-chat-feature-not-enabled")),
-                    );
+                    return self
+                        .show_chat_uri_error(connection_id, t("err-chat-feature-not-enabled"));
                 }
 
-                if let Some(target) = target {
+                if let Some(target) = target
+                    && let Some(conn) = self.connections.get_mut(&connection_id)
+                {
                     if is_channel {
-                        // Join or focus channel
                         let channel_lower = fold_name(&target);
-
-                        // Check if we're already in this channel
                         let already_joined =
                             conn.channels.keys().any(|c| fold_name(c) == channel_lower);
 
                         if already_joined {
-                            // Just switch to the tab
                             conn.active_chat_tab = ChatTab::Channel(target);
                         } else {
                             let _ = conn.send(ClientMessage::ChatJoin {
@@ -253,125 +253,61 @@ impl NexusApp {
                             });
                         }
                     } else {
-                        // Open PM tab with user
-                        // First check if the user exists (case-insensitive match)
                         let user_lower = fold_name(&target);
-                        let actual_nickname = conn
-                            .online_users
-                            .iter()
-                            .find(|u| fold_name(&u.nickname) == user_lower)
-                            .map(|u| u.nickname.clone());
+                        let tab_name =
+                            if let Some(existing_key) = conn.user_message_tab_key(&target) {
+                                existing_key
+                            } else if let Some(online_nickname) = conn
+                                .online_users
+                                .iter()
+                                .find(|u| fold_name(&u.nickname) == user_lower)
+                                .map(|u| u.nickname.clone())
+                            {
+                                online_nickname
+                            } else {
+                                let error_msg =
+                                    t_args("cmd-focus-not-found", &[("name", target.as_str())]);
+                                return self.show_chat_uri_error(connection_id, error_msg);
+                            };
 
-                        let tab_name = actual_nickname
-                            .or_else(|| conn.user_message_tab_key(&target))
-                            .unwrap_or(target);
-
-                        // Create or focus the PM tab (resolved by folded identity).
                         let key = conn.resolve_user_message_tab(&tab_name);
                         conn.active_chat_tab = ChatTab::UserMessage(key);
                     }
                 }
-                // If target is None, just show chat panel (don't change active tab)
 
-                // Make sure chat is visible (not hidden by another panel)
-                conn.active_panel = ActivePanel::None;
-
-                self.scroll_chat_if_visible(true)
+                self.handle_show_chat_view()
             }
 
             NexusPath::Files { path } => {
+                let Some(conn) = self.connections.get(&connection_id) else {
+                    return Task::none();
+                };
+
                 if !conn.has_feature(FEATURE_FILES) {
-                    conn.active_panel = ActivePanel::None;
-                    return self.add_active_tab_message(
-                        connection_id,
-                        ChatMessage::error(t("err-files-feature-not-enabled")),
-                    );
+                    return self
+                        .show_chat_uri_error(connection_id, t("err-files-feature-not-enabled"));
                 }
 
-                // Open Files panel and navigate to path
-                conn.active_panel = ActivePanel::Files;
-
-                // Get show_hidden from config
-                let show_hidden = self.config.settings.show_hidden_files;
-
-                if !path.is_empty() {
-                    // Extract parent directory and target name
-                    // Server resolves paths with folder type suffixes (e.g., "uploads" -> "uploads [NEXUS-UL]")
-                    let (parent_path, target_name) = if let Some(slash_idx) = path.rfind('/') {
-                        (path[..slash_idx].to_string(), &path[slash_idx + 1..])
-                    } else {
-                        (String::new(), path.as_str())
-                    };
-
-                    // Build uri_target if we have a target name
-                    let uri_target = if !target_name.is_empty() {
-                        Some(target_name.to_string())
-                    } else {
-                        None
-                    };
-
-                    // Get the active file tab and navigate to parent directory
-                    let active_tab = conn.files_management.active_tab_mut();
-                    active_tab.navigate_to(parent_path.clone());
-
-                    // Request file list for the parent path, passing uri_target through routing
-                    // URIs always use viewing_root: false - they're for users sharing files,
-                    // not for admin root browsing
-                    let tab_id = active_tab.id;
-                    return self.send_file_list_request_for_tab(
-                        connection_id,
-                        tab_id,
-                        parent_path,
-                        false, // URIs always navigate within user's area, not root
-                        show_hidden,
-                        uri_target,
-                    );
+                if path.is_empty() {
+                    self.handle_toggle_files(FilesOpenIntent::Toolbar)
                 } else {
-                    // Empty path - just open files panel at current location
-                    // Request file list if not already loaded
-                    if conn.files_management.active_tab().entries.is_none() {
-                        let path_str = conn.files_management.active_tab().current_path.clone();
-                        return self.send_file_list_request(
-                            connection_id,
-                            path_str,
-                            false, // URIs always navigate within user's area, not root
-                            show_hidden,
-                        );
-                    }
+                    self.handle_toggle_files(FilesOpenIntent::UriPath(path))
                 }
-
-                Task::none()
             }
 
             NexusPath::News => {
+                let Some(conn) = self.connections.get(&connection_id) else {
+                    return Task::none();
+                };
+
                 if !conn.has_feature(FEATURE_NEWS) {
-                    conn.active_panel = ActivePanel::None;
-                    return self.add_active_tab_message(
-                        connection_id,
-                        ChatMessage::error(t("err-news-feature-not-enabled")),
-                    );
+                    return self
+                        .show_chat_uri_error(connection_id, t("err-news-feature-not-enabled"));
                 }
 
-                conn.active_panel = ActivePanel::News;
-
-                // Reset to list mode
-                conn.news_management.reset_to_list();
-
-                // Request news list if not already loaded
-                if conn.news_management.news_items.is_none()
-                    && let Ok(message_id) = conn.send(ClientMessage::NewsList)
-                {
-                    conn.pending_requests
-                        .track(message_id, ResponseRouting::PopulateNewsList);
-                }
-
-                Task::none()
+                self.handle_toggle_news()
             }
-
-            NexusPath::Info => {
-                conn.active_panel = ActivePanel::ServerInfo;
-                Task::none()
-            }
+            NexusPath::Info => self.handle_show_server_info(),
         }
     }
 
@@ -486,7 +422,10 @@ mod tests {
 
     use super::*;
     use crate::network::types::{ConnectError, ConnectionParams};
-    use crate::types::{ConnectionInfo, ServerBookmark, ServerConnection, ServerConnectionParams};
+    use crate::types::{
+        ActivePanel, ConnectionInfo, NewsManagementMode, ResponseRouting, ServerBookmark,
+        ServerConnection, ServerConnectionParams, UserInfo,
+    };
 
     fn test_connection_with_receiver(
         connection_id: usize,
@@ -559,6 +498,20 @@ mod tests {
             connection_id: 2,
             proxy: None,
             expected_fingerprint: None,
+        }
+    }
+
+    fn test_user(nickname: &str) -> UserInfo {
+        UserInfo {
+            id: 1,
+            username: nickname.to_string(),
+            nickname: nickname.to_string(),
+            is_admin: false,
+            is_shared: false,
+            session_ids: vec![1],
+            avatar_hash: None,
+            is_away: false,
+            status: None,
         }
     }
 
@@ -702,6 +655,288 @@ mod tests {
             messages[0].message,
             uri_error_message("example.com", "boom")
         );
+    }
+
+    #[test]
+    fn uri_files_path_uses_single_parent_request_and_dismisses_overlay() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connection_form.connect_origin = Some(ActivePanel::Settings);
+        let (mut conn, mut rx) = test_connection_with_receiver_and_features(
+            1,
+            vec![FEATURE_CHAT.to_string(), FEATURE_FILES.to_string()],
+        );
+        conn.active_panel = ActivePanel::News;
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Files {
+                path: "Music/song.mp3".to_string(),
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::Files);
+        assert!(app.connection_form.connect_origin.is_none());
+        assert_eq!(conn.files_management.active_tab().current_path, "Music");
+
+        let (message_id, message) = rx.try_recv().expect("expected FileList request");
+        match message {
+            ClientMessage::FileList {
+                path,
+                root,
+                show_hidden,
+            } => {
+                assert_eq!(path, "Music");
+                assert!(!root);
+                assert_eq!(show_hidden, app.config.settings.show_hidden_files);
+            }
+            other => panic!("expected FileList, got {other:?}"),
+        }
+        assert!(rx.try_recv().is_err());
+        assert!(matches!(
+            conn.pending_requests.get(&message_id),
+            Some(ResponseRouting::PopulateFileList {
+                uri_target: Some(target),
+                ..
+            }) if target == "song.mp3"
+        ));
+    }
+
+    #[test]
+    fn uri_files_empty_path_uses_toolbar_noop_when_already_open() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connection_form.connect_origin = Some(ActivePanel::Settings);
+        let (mut conn, mut rx) = test_connection_with_receiver_and_features(
+            1,
+            vec![FEATURE_CHAT.to_string(), FEATURE_FILES.to_string()],
+        );
+        conn.active_panel = ActivePanel::Files;
+        conn.files_management
+            .active_tab_mut()
+            .navigate_to("Documents".to_string());
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Files {
+                path: String::new(),
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::Files);
+        assert_eq!(conn.files_management.active_tab().current_path, "Documents");
+        assert!(app.connection_form.connect_origin.is_some());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_news_uses_toolbar_open_behavior() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connection_form.connect_origin = Some(ActivePanel::Settings);
+        app.news_body_content.insert(1, Default::default());
+        let (mut conn, mut rx) = test_connection_with_receiver_and_features(
+            1,
+            vec![FEATURE_CHAT.to_string(), FEATURE_NEWS.to_string()],
+        );
+        conn.active_panel = ActivePanel::Files;
+        conn.news_management.mode = NewsManagementMode::Create;
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(1, NexusPath::News);
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::News);
+        assert!(matches!(
+            conn.news_management.mode,
+            NewsManagementMode::List
+        ));
+        assert!(!app.news_body_content.contains_key(&1));
+        assert!(app.connection_form.connect_origin.is_none());
+
+        let (message_id, message) = rx.try_recv().expect("expected NewsList request");
+        assert!(matches!(message, ClientMessage::NewsList));
+        assert!(rx.try_recv().is_err());
+        assert!(matches!(
+            conn.pending_requests.get(&message_id),
+            Some(ResponseRouting::PopulateNewsList)
+        ));
+    }
+
+    #[test]
+    fn uri_news_already_active_matches_toolbar_noop() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connection_form.connect_origin = Some(ActivePanel::Settings);
+        app.news_body_content.insert(1, Default::default());
+        let (mut conn, mut rx) = test_connection_with_receiver_and_features(
+            1,
+            vec![FEATURE_CHAT.to_string(), FEATURE_NEWS.to_string()],
+        );
+        conn.active_panel = ActivePanel::News;
+        conn.news_management.mode = NewsManagementMode::Create;
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(1, NexusPath::News);
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::News);
+        assert!(matches!(
+            conn.news_management.mode,
+            NewsManagementMode::Create
+        ));
+        assert!(app.news_body_content.contains_key(&1));
+        assert!(app.connection_form.connect_origin.is_some());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_info_uses_server_info_helper_and_prefetches_trackers() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connection_form.connect_origin = Some(ActivePanel::Settings);
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.active_panel = ActivePanel::Files;
+        conn.permissions
+            .push(crate::views::constants::PERMISSION_TRACKER_LIST.to_string());
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(1, NexusPath::Info);
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::ServerInfo);
+        assert!(app.connection_form.connect_origin.is_none());
+
+        let (message_id, message) = rx.try_recv().expect("expected TrackerList request");
+        assert!(matches!(message, ClientMessage::TrackerList));
+        assert!(rx.try_recv().is_err());
+        assert!(matches!(
+            conn.pending_requests.get(&message_id),
+            Some(ResponseRouting::PopulateTrackerManagementList)
+        ));
+    }
+
+    #[test]
+    fn uri_chat_user_dismisses_overlay_and_focuses_dm_tab() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connection_form.connect_origin = Some(ActivePanel::Settings);
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.active_panel = ActivePanel::Files;
+        conn.online_users.push(test_user("alice"));
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Chat {
+                target: Some("alice".to_string()),
+                is_channel: false,
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::None);
+        assert!(matches!(&conn.active_chat_tab, ChatTab::UserMessage(name) if name == "alice"));
+        assert!(app.connection_form.connect_origin.is_none());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_chat_user_uses_online_user_casing() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.online_users.push(test_user("Alice"));
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Chat {
+                target: Some("alice".to_string()),
+                is_channel: false,
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert!(matches!(&conn.active_chat_tab, ChatTab::UserMessage(name) if name == "Alice"));
+        assert!(conn.user_messages.contains_key("Alice"));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_chat_user_focuses_existing_tab_when_offline() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        let key = conn.resolve_user_message_tab("Alice");
+        conn.active_chat_tab = ChatTab::Console;
+        assert_eq!(key, "Alice");
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Chat {
+                target: Some("alice".to_string()),
+                is_channel: false,
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert!(matches!(&conn.active_chat_tab, ChatTab::UserMessage(name) if name == "Alice"));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_chat_user_missing_reports_not_found_without_opening_tab() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connection_form.connect_origin = Some(ActivePanel::Settings);
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.active_panel = ActivePanel::Files;
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Chat {
+                target: Some("missing".to_string()),
+                is_channel: false,
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::None);
+        assert_eq!(conn.active_chat_tab, ChatTab::Console);
+        assert!(conn.user_message_tabs.is_empty());
+        assert!(conn.user_messages.is_empty());
+        assert_eq!(conn.console_messages.len(), 1);
+        assert_eq!(
+            conn.console_messages[0].message,
+            t_args("cmd-focus-not-found", &[("name", "missing")])
+        );
+        assert!(app.connection_form.connect_origin.is_none());
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]

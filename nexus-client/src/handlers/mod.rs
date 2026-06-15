@@ -24,3 +24,5 @@ mod ui;
 mod uri;
 mod user_management;
 mod voice;
+
+pub(crate) use files::FilesOpenIntent;
