@@ -21,6 +21,14 @@ use nexus_common::voice::{
     RelayedVoicePacket, VOICE_KEEPALIVE_INTERVAL_SECS, VoiceMessageType, VoicePacket,
 };
 
+use crate::constants::{
+    ERR_VOICE_CERT_FINGERPRINT_MISMATCH, ERR_VOICE_DTLS_BIND_UDP_SOCKET,
+    ERR_VOICE_DTLS_CLOSE_CONNECTION, ERR_VOICE_DTLS_CONNECT_UDP_SOCKET,
+    ERR_VOICE_DTLS_HANDSHAKE_FAILED, ERR_VOICE_DTLS_HANDSHAKE_TIMEOUT,
+    ERR_VOICE_DTLS_INVALID_RELAYED_PACKET, ERR_VOICE_DTLS_RECEIVE_PACKET,
+    ERR_VOICE_DTLS_SEND_PACKET,
+};
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -33,10 +41,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Receive poll timeout in milliseconds (allows select! to check other branches)
 const RECV_POLL_TIMEOUT_MS: u64 = 100;
-
-/// Error when the DTLS peer certificate doesn't match the TLS-verified fingerprint.
-const ERR_VOICE_CERT_FINGERPRINT_MISMATCH: &str =
-    "voice server certificate does not match the verified TLS certificate";
 
 // =============================================================================
 // Certificate pinning
@@ -59,6 +63,40 @@ fn peer_fingerprint_matches(peer_certs: &[Vec<u8>], expected: &str) -> bool {
         && peer_certs
             .first()
             .is_some_and(|leaf| format_certificate_fingerprint(leaf) == expected)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum VoiceDtlsRecvError {
+    Closed,
+    Error(String),
+}
+
+fn classify_recv_error(error: webrtc_util::Error) -> VoiceDtlsRecvError {
+    if is_expected_dtls_close(&error) {
+        VoiceDtlsRecvError::Closed
+    } else {
+        VoiceDtlsRecvError::Error(format!("{ERR_VOICE_DTLS_RECEIVE_PACKET}: {error}"))
+    }
+}
+
+fn is_expected_dtls_close(error: &webrtc_util::Error) -> bool {
+    if matches!(
+        error,
+        webrtc_util::Error::ErrBufferClosed
+            | webrtc_util::Error::ErrUseClosedNetworkConn
+            | webrtc_util::Error::ErrAlreadyClosed
+    ) {
+        return true;
+    }
+
+    error.downcast_ref::<DtlsError>().is_some_and(|error| {
+        matches!(
+            error,
+            DtlsError::ErrAlertFatalOrClose
+                | DtlsError::ErrConnClosed
+                | DtlsError::ErrContextCanceled
+        )
+    })
 }
 
 // =============================================================================
@@ -108,13 +146,13 @@ impl VoiceDtlsClient {
         };
         let socket = UdpSocket::bind(bind_addr)
             .await
-            .map_err(|e| format!("Failed to bind UDP socket: {}", e))?;
+            .map_err(|e| format!("{ERR_VOICE_DTLS_BIND_UDP_SOCKET}: {e}"))?;
 
         // Connect UDP socket to server address
         socket
             .connect(server_addr)
             .await
-            .map_err(|e| format!("Failed to connect UDP socket: {}", e))?;
+            .map_err(|e| format!("{ERR_VOICE_DTLS_CONNECT_UDP_SOCKET}: {e}"))?;
 
         let socket = Arc::new(socket);
 
@@ -150,8 +188,8 @@ impl VoiceDtlsClient {
         let dtls_conn =
             tokio::time::timeout(CONNECT_TIMEOUT, DTLSConn::new(udp_conn, config, true, None))
                 .await
-                .map_err(|_| "DTLS handshake timeout".to_string())?
-                .map_err(|e| format!("DTLS handshake failed: {}", e))?;
+                .map_err(|_| ERR_VOICE_DTLS_HANDSHAKE_TIMEOUT.to_string())?
+                .map_err(|e| format!("{ERR_VOICE_DTLS_HANDSHAKE_FAILED}: {e}"))?;
 
         // Store as trait object to use Conn methods
         let conn: Arc<dyn Conn + Send + Sync> = Arc::new(dtls_conn);
@@ -213,7 +251,7 @@ impl VoiceDtlsClient {
         self.conn
             .send(&bytes)
             .await
-            .map_err(|e| format!("Failed to send voice packet: {}", e))?;
+            .map_err(|e| format!("{ERR_VOICE_DTLS_SEND_PACKET}: {e}"))?;
         Ok(())
     }
 
@@ -227,19 +265,20 @@ impl VoiceDtlsClient {
     /// * `Ok(Some(packet))` - Received a packet
     /// * `Ok(None)` - Connection closed
     /// * `Err(String)` - Error receiving
-    pub async fn recv(&mut self) -> Result<Option<RelayedVoicePacket>, String> {
+    async fn recv(&mut self) -> Result<Option<RelayedVoicePacket>, VoiceDtlsRecvError> {
         let len = self
             .conn
             .recv(&mut self.recv_buf)
             .await
-            .map_err(|e| format!("Failed to receive: {}", e))?;
+            .map_err(classify_recv_error)?;
 
         if len == 0 {
             return Ok(None);
         }
 
-        let packet = RelayedVoicePacket::from_bytes(&self.recv_buf[..len])
-            .ok_or_else(|| "Invalid relayed packet".to_string())?;
+        let packet = RelayedVoicePacket::from_bytes(&self.recv_buf[..len]).ok_or_else(|| {
+            VoiceDtlsRecvError::Error(ERR_VOICE_DTLS_INVALID_RELAYED_PACKET.to_string())
+        })?;
 
         Ok(Some(packet))
     }
@@ -253,10 +292,10 @@ impl VoiceDtlsClient {
     /// * `Ok(Some(packet))` - Received a packet
     /// * `Ok(None)` - Timeout or connection closed
     /// * `Err(String)` - Error receiving
-    pub async fn recv_timeout(
+    async fn recv_timeout(
         &mut self,
         timeout: Duration,
-    ) -> Result<Option<RelayedVoicePacket>, String> {
+    ) -> Result<Option<RelayedVoicePacket>, VoiceDtlsRecvError> {
         match tokio::time::timeout(timeout, self.recv()).await {
             Ok(result) => result,
             Err(_) => Ok(None), // Timeout
@@ -268,7 +307,7 @@ impl VoiceDtlsClient {
         self.conn
             .close()
             .await
-            .map_err(|e| format!("Failed to close connection: {}", e))
+            .map_err(|e| format!("{ERR_VOICE_DTLS_CLOSE_CONNECTION}: {e}"))
     }
 }
 
@@ -468,11 +507,12 @@ pub async fn run_voice_client(
                     Ok(None) => {
                         // Timeout or closed, continue
                     }
-                    Err(e) => {
-                        // DTLS Alert messages are normal during disconnect, not errors
-                        if !e.contains("Alert") {
-                            let _ = event_tx.send(VoiceDtlsEvent::Error(e));
-                        }
+                    Err(VoiceDtlsRecvError::Closed) => {
+                        let _ = event_tx.send(VoiceDtlsEvent::Disconnected);
+                        return;
+                    }
+                    Err(VoiceDtlsRecvError::Error(e)) => {
+                        let _ = event_tx.send(VoiceDtlsEvent::Error(e));
                         let _ = event_tx.send(VoiceDtlsEvent::Disconnected);
                         return;
                     }
@@ -544,5 +584,29 @@ mod tests {
         assert!(!peer_fingerprint_matches(&[], &fp));
         // Empty expected fingerprint -> rejected (fail closed).
         assert!(!peer_fingerprint_matches(&[cert], ""));
+    }
+
+    #[test]
+    fn classify_recv_error_treats_dtls_alert_as_close() {
+        let error = webrtc_util::Error::from_std(DtlsError::ErrAlertFatalOrClose);
+
+        assert_eq!(classify_recv_error(error), VoiceDtlsRecvError::Closed);
+    }
+
+    #[test]
+    fn classify_recv_error_treats_closed_conn_as_close() {
+        let error = webrtc_util::Error::ErrAlreadyClosed;
+
+        assert_eq!(classify_recv_error(error), VoiceDtlsRecvError::Closed);
+    }
+
+    #[test]
+    fn classify_recv_error_preserves_real_errors() {
+        let error = webrtc_util::Error::Other("packet decode failed".to_string());
+
+        let VoiceDtlsRecvError::Error(message) = classify_recv_error(error) else {
+            panic!("expected real error");
+        };
+        assert!(message.contains("packet decode failed"));
     }
 }

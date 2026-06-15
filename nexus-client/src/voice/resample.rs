@@ -9,6 +9,11 @@ use rubato::{Fft, FixedSync, Resampler};
 
 use nexus_common::voice::{MONO_CHANNELS, VOICE_SAMPLE_RATE, VOICE_SAMPLES_PER_FRAME};
 
+use crate::constants::{
+    ERR_INPUT_ADAPTER, ERR_INPUT_RESAMPLER_CREATE, ERR_OUTPUT_ADAPTER, ERR_OUTPUT_RESAMPLER_CREATE,
+    ERR_RESAMPLER_PROCESS,
+};
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -48,8 +53,6 @@ pub struct InputResampler {
     resampler: Fft<f32>,
     /// Input buffer for accumulating samples
     input_buffer: Vec<f32>,
-    /// Output buffer for accumulating resampled samples
-    output_buffer: Vec<f32>,
     /// Working buffer for resampler input (single channel)
     work_in: Vec<Vec<f32>>,
     /// Working buffer for resampler output (single channel)
@@ -80,7 +83,7 @@ impl InputResampler {
             MONO,
             FixedSync::Output,
         )
-        .map_err(|e| format!("Failed to create input resampler: {}", e))?;
+        .map_err(|e| format!("{ERR_INPUT_RESAMPLER_CREATE}: {e}"))?;
 
         let input_frames_max = resampler.input_frames_max();
         let output_frames_max = resampler.output_frames_max();
@@ -88,7 +91,6 @@ impl InputResampler {
         Ok(Self {
             resampler,
             input_buffer: Vec::new(),
-            output_buffer: Vec::new(),
             work_in: vec![vec![0.0; input_frames_max]],
             work_out: vec![vec![0.0; output_frames_max]],
         })
@@ -105,7 +107,19 @@ impl InputResampler {
     /// # Returns
     /// * `Ok(Vec<f32>)` - Mono samples at 48kHz
     /// * `Err(String)` - If resampling failed
+    #[cfg(test)]
     pub fn process(&mut self, samples: &[f32]) -> Result<Vec<f32>, String> {
+        let mut output = Vec::new();
+        self.process_into(samples, &mut output)?;
+        Ok(output)
+    }
+
+    /// Process mono input samples into a caller-owned output buffer.
+    ///
+    /// This avoids allocating a fresh output `Vec` from real-time capture
+    /// callbacks while preserving the convenience `process()` wrapper for
+    /// tests and non-callback callers.
+    pub fn process_into(&mut self, samples: &[f32], output: &mut Vec<f32>) -> Result<(), String> {
         // Accumulate input samples
         self.input_buffer.extend_from_slice(samples);
 
@@ -121,26 +135,24 @@ impl InputResampler {
 
             // Create adapters for rubato
             let input_adapter = SequentialSliceOfVecs::new(&self.work_in[..], MONO, frames_needed)
-                .map_err(|e| format!("Input adapter error: {}", e))?;
+                .map_err(|e| format!("{ERR_INPUT_ADAPTER}: {e}"))?;
 
             let output_frames = self.resampler.output_frames_next();
             let mut output_adapter =
                 SequentialSliceOfVecs::new_mut(&mut self.work_out[..], MONO, output_frames)
-                    .map_err(|e| format!("Output adapter error: {}", e))?;
+                    .map_err(|e| format!("{ERR_OUTPUT_ADAPTER}: {e}"))?;
 
             // Process through resampler
             let (_, frames_written) = self
                 .resampler
                 .process_into_buffer(&input_adapter, &mut output_adapter, None)
-                .map_err(|e| format!("Resampler error: {}", e))?;
+                .map_err(|e| format!("{ERR_RESAMPLER_PROCESS}: {e}"))?;
 
             // Accumulate output
-            self.output_buffer
-                .extend_from_slice(&self.work_out[0][..frames_written]);
+            output.extend_from_slice(&self.work_out[0][..frames_written]);
         }
 
-        // Return accumulated output and clear buffer
-        Ok(std::mem::take(&mut self.output_buffer))
+        Ok(())
     }
 }
 
@@ -187,7 +199,7 @@ impl OutputResampler {
             MONO, // we handle stereo upmix separately
             FixedSync::Input,
         )
-        .map_err(|e| format!("Failed to create output resampler: {}", e))?;
+        .map_err(|e| format!("{ERR_OUTPUT_RESAMPLER_CREATE}: {e}"))?;
 
         let input_frames_max = resampler.input_frames_max();
         let output_frames_max = resampler.output_frames_max();
@@ -229,18 +241,18 @@ impl OutputResampler {
 
             // Create adapters for rubato
             let input_adapter = SequentialSliceOfVecs::new(&self.work_in[..], MONO, frames_needed)
-                .map_err(|e| format!("Input adapter error: {}", e))?;
+                .map_err(|e| format!("{ERR_INPUT_ADAPTER}: {e}"))?;
 
             let output_frames = self.resampler.output_frames_next();
             let mut output_adapter =
                 SequentialSliceOfVecs::new_mut(&mut self.work_out[..], MONO, output_frames)
-                    .map_err(|e| format!("Output adapter error: {}", e))?;
+                    .map_err(|e| format!("{ERR_OUTPUT_ADAPTER}: {e}"))?;
 
             // Process through resampler
             let (_, frames_written) = self
                 .resampler
                 .process_into_buffer(&input_adapter, &mut output_adapter, None)
-                .map_err(|e| format!("Resampler error: {}", e))?;
+                .map_err(|e| format!("{ERR_RESAMPLER_PROCESS}: {e}"))?;
 
             // Accumulate output, converting to stereo if needed
             if self.channels == MONO {
@@ -336,6 +348,21 @@ mod tests {
             total_output > 0,
             "Should produce output after feeding enough samples"
         );
+    }
+
+    #[test]
+    fn test_input_resampler_process_into_matches_process() {
+        let mut process_resampler = InputResampler::new(44100).unwrap();
+        let mut into_resampler = InputResampler::new(44100).unwrap();
+        let input: Vec<f32> = (0..4410).map(|i| (i as f32 * 0.01).sin()).collect();
+
+        let process_output = process_resampler.process(&input).unwrap();
+        let mut into_output = Vec::new();
+        into_resampler
+            .process_into(&input, &mut into_output)
+            .unwrap();
+
+        assert_eq!(into_output, process_output);
     }
 
     #[test]

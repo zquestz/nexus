@@ -130,12 +130,13 @@ impl JitterBuffer {
 
         // Limit buffer size by removing old packets
         while self.packets.len() > self.target_frames * 3 {
-            if let Some((&oldest_seq, _)) = self.packets.first_key_value() {
-                if oldest_seq < next {
-                    self.packets.remove(&oldest_seq);
-                } else {
-                    break;
-                }
+            if let Some(stale_seq) = self
+                .packets
+                .keys()
+                .copied()
+                .find(|&seq| sequence_before(seq, next))
+            {
+                self.packets.remove(&stale_seq);
             } else {
                 break;
             }
@@ -493,6 +494,38 @@ mod tests {
         assert!(buffer.packets.len() <= buffer.target_frames * 3);
         assert!(!buffer.packets.contains_key(&0));
         assert!(buffer.packets.contains_key(&100));
+    }
+
+    #[test]
+    fn test_jitter_buffer_trim_preserves_wrapped_future_packets() {
+        let mut buffer = JitterBuffer::new();
+        let next = u32::MAX - 2;
+        buffer.next_sequence = Some(next);
+        buffer.target_frames = MIN_BUFFER_FRAMES;
+
+        for sequence in (u32::MAX - 20)..=(u32::MAX - 14) {
+            buffer.packets.insert(
+                sequence,
+                BufferedPacket {
+                    samples: make_samples(),
+                },
+            );
+        }
+        for sequence in [u32::MAX - 1, 0, 1] {
+            buffer.packets.insert(
+                sequence,
+                BufferedPacket {
+                    samples: make_samples(),
+                },
+            );
+        }
+
+        assert!(buffer.push(next, 0, make_samples()));
+
+        assert!(buffer.packets.len() <= buffer.target_frames * 3);
+        assert!(buffer.packets.contains_key(&0));
+        assert!(buffer.packets.contains_key(&1));
+        assert!(buffer.packets.contains_key(&next));
     }
 
     #[test]

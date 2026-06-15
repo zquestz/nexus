@@ -562,6 +562,9 @@ where
     f32: FromSample<T>,
 {
     let callback_error_tx = error_tx.clone();
+    let mut converted_samples =
+        Vec::with_capacity(VOICE_SAMPLES_PER_FRAME as usize * MONO as usize);
+    let mut resampled_samples = Vec::with_capacity(VOICE_SAMPLES_PER_FRAME as usize);
     device
         .build_input_stream(
             config,
@@ -570,38 +573,26 @@ where
                     return;
                 }
 
-                let Ok(mut buf) = buffer.lock() else {
-                    return;
-                };
-
-                // Convert samples to f32
-                let samples: Vec<f32> = data.iter().map(|s| f32::from_sample(*s)).collect();
+                converted_samples.clear();
+                converted_samples.extend(data.iter().map(|s| f32::from_sample(*s)));
 
                 // Resample if needed, otherwise use directly
                 let output_samples = if let Some(ref resampler) = resampler {
                     if let Ok(mut r) = resampler.lock() {
-                        match r.process(&samples) {
-                            Ok(resampled) => resampled,
-                            Err(e) => {
-                                let _ = callback_error_tx.send(e);
-                                return;
-                            }
+                        resampled_samples.clear();
+                        if let Err(e) = r.process_into(&converted_samples, &mut resampled_samples) {
+                            let _ = callback_error_tx.send(e);
+                            return;
                         }
+                        &resampled_samples
                     } else {
-                        samples
+                        &converted_samples
                     }
                 } else {
-                    samples
+                    &converted_samples
                 };
 
-                buf.extend_from_slice(&output_samples);
-
-                // Limit buffer size to prevent unbounded growth
-                let max_size = VOICE_SAMPLES_PER_FRAME as usize * MAX_CAPTURE_BUFFER_FRAMES;
-                if buf.len() > max_size {
-                    let drain_count = buf.len() - max_size;
-                    buf.drain(..drain_count);
-                }
+                append_capture_samples(&buffer, output_samples);
             },
             {
                 let error_tx = error_tx.clone();
@@ -632,6 +623,8 @@ where
     f32: FromSample<T>,
 {
     let callback_error_tx = error_tx.clone();
+    let mut mono_samples = Vec::with_capacity(VOICE_SAMPLES_PER_FRAME as usize);
+    let mut resampled_samples = Vec::with_capacity(VOICE_SAMPLES_PER_FRAME as usize);
     device
         .build_input_stream(
             config,
@@ -640,45 +633,31 @@ where
                     return;
                 }
 
-                let Ok(mut buf) = buffer.lock() else {
-                    return;
-                };
-
                 // Downmix stereo to mono by averaging L+R channels
-                let mono_samples: Vec<f32> = data
-                    .chunks_exact(STEREO as usize)
-                    .map(|chunk| {
-                        let left = f32::from_sample(chunk[0]);
-                        let right = f32::from_sample(chunk[1]);
-                        (left + right) * 0.5
-                    })
-                    .collect();
+                mono_samples.clear();
+                mono_samples.extend(data.chunks_exact(STEREO as usize).map(|chunk| {
+                    let left = f32::from_sample(chunk[0]);
+                    let right = f32::from_sample(chunk[1]);
+                    (left + right) * 0.5
+                }));
 
                 // Resample if needed, otherwise use directly
                 let output_samples = if let Some(ref resampler) = resampler {
                     if let Ok(mut r) = resampler.lock() {
-                        match r.process(&mono_samples) {
-                            Ok(resampled) => resampled,
-                            Err(e) => {
-                                let _ = callback_error_tx.send(e);
-                                return;
-                            }
+                        resampled_samples.clear();
+                        if let Err(e) = r.process_into(&mono_samples, &mut resampled_samples) {
+                            let _ = callback_error_tx.send(e);
+                            return;
                         }
+                        &resampled_samples
                     } else {
-                        mono_samples
+                        &mono_samples
                     }
                 } else {
-                    mono_samples
+                    &mono_samples
                 };
 
-                buf.extend_from_slice(&output_samples);
-
-                // Limit buffer size to prevent unbounded growth
-                let max_size = VOICE_SAMPLES_PER_FRAME as usize * MAX_CAPTURE_BUFFER_FRAMES;
-                if buf.len() > max_size {
-                    let drain_count = buf.len() - max_size;
-                    buf.drain(..drain_count);
-                }
+                append_capture_samples(&buffer, output_samples);
             },
             {
                 let error_tx = error_tx.clone();
@@ -693,6 +672,21 @@ where
             None,
         )
         .map_err(|e| format!("Failed to build stereo input stream: {}", e))
+}
+
+fn append_capture_samples(buffer: &Arc<Mutex<Vec<f32>>>, samples: &[f32]) {
+    let Ok(mut buf) = buffer.lock() else {
+        return;
+    };
+
+    buf.extend_from_slice(samples);
+
+    // Limit buffer size to prevent unbounded growth
+    let max_size = VOICE_SAMPLES_PER_FRAME as usize * MAX_CAPTURE_BUFFER_FRAMES;
+    if buf.len() > max_size {
+        let drain_count = buf.len() - max_size;
+        buf.drain(..drain_count);
+    }
 }
 
 // =============================================================================

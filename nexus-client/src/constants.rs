@@ -106,6 +106,70 @@ pub const ERR_VOICE_THREAD_TOKIO_RUNTIME: &str = "Failed to create tokio runtime
 pub const ERR_PATH_EMPTY: &str = "non-empty path";
 
 // =============================================================================
+// Runtime diagnostic details (wrapped by localized UI messages where shown)
+// =============================================================================
+
+/// Sound playback diagnostic: OGG container could not be opened.
+pub const ERR_SOUND_DECODE_OGG: &str = "Failed to decode OGG";
+/// Sound playback diagnostic: OGG packet decode failed.
+pub const ERR_SOUND_DECODE_PACKET: &str = "Decode error";
+/// Sound playback diagnostic: device default output config query failed.
+pub const ERR_SOUND_OUTPUT_CONFIG: &str = "Failed to query default output config";
+/// Sound playback diagnostic: stream playback failed to start.
+pub const ERR_SOUND_START_PLAYBACK: &str = "Failed to start playback";
+/// Sound playback diagnostic: CPAL reported a sample format we do not support.
+pub const ERR_SOUND_UNSUPPORTED_SAMPLE_FORMAT: &str = "Unsupported output sample format";
+/// Sound playback diagnostic: output stream construction failed.
+pub const ERR_SOUND_BUILD_OUTPUT_STREAM: &str = "Failed to build output stream";
+/// Sound playback diagnostic: source or output sample rate was invalid.
+pub const ERR_SOUND_INVALID_SAMPLE_RATE: &str = "Invalid sound sample rate";
+/// Sound playback diagnostic: source or output channel count was invalid.
+pub const ERR_SOUND_INVALID_CHANNEL_COUNT: &str = "Invalid sound channel count";
+/// Sound playback diagnostic: no usable output device was available.
+pub const ERR_SOUND_NO_DEFAULT_OUTPUT_DEVICE: &str = "No default output device available";
+/// Sound playback diagnostic: output device enumeration failed.
+pub const ERR_SOUND_ENUMERATE_DEVICES: &str = "Failed to enumerate devices";
+
+/// Voice DTLS diagnostic: UDP socket bind failed.
+pub const ERR_VOICE_DTLS_BIND_UDP_SOCKET: &str = "Failed to bind UDP socket";
+/// Voice DTLS diagnostic: UDP socket connect failed.
+pub const ERR_VOICE_DTLS_CONNECT_UDP_SOCKET: &str = "Failed to connect UDP socket";
+/// Voice DTLS diagnostic: handshake timed out.
+pub const ERR_VOICE_DTLS_HANDSHAKE_TIMEOUT: &str = "DTLS handshake timeout";
+/// Voice DTLS diagnostic: handshake failed.
+pub const ERR_VOICE_DTLS_HANDSHAKE_FAILED: &str = "DTLS handshake failed";
+/// Voice DTLS diagnostic: packet send failed.
+pub const ERR_VOICE_DTLS_SEND_PACKET: &str = "Failed to send voice packet";
+/// Voice DTLS diagnostic: packet receive failed.
+pub const ERR_VOICE_DTLS_RECEIVE_PACKET: &str = "Failed to receive";
+/// Voice DTLS diagnostic: relayed packet failed validation.
+pub const ERR_VOICE_DTLS_INVALID_RELAYED_PACKET: &str = "Invalid relayed packet";
+/// Voice DTLS diagnostic: connection close failed.
+pub const ERR_VOICE_DTLS_CLOSE_CONNECTION: &str = "Failed to close connection";
+/// Voice DTLS diagnostic: peer certificate did not match the TLS-verified fingerprint.
+pub const ERR_VOICE_CERT_FINGERPRINT_MISMATCH: &str =
+    "voice server certificate does not match the verified TLS certificate";
+/// Voice connection diagnostic: DTLS closed before setup completed.
+pub const ERR_VOICE_CONNECTION_CLOSED: &str = "Connection closed";
+/// Voice audio diagnostic: output device setup failed.
+pub const ERR_VOICE_OUTPUT_DEVICE: &str = "Output device error";
+/// Voice audio diagnostic: playback stream failed to start.
+pub const ERR_VOICE_PLAYBACK_START: &str = "Failed to start playback";
+/// Voice audio diagnostic: microphone capture failed.
+pub const ERR_VOICE_CAPTURE: &str = "Capture error";
+
+/// Voice resampler diagnostic: input resampler construction failed.
+pub const ERR_INPUT_RESAMPLER_CREATE: &str = "Failed to create input resampler";
+/// Voice resampler diagnostic: output resampler construction failed.
+pub const ERR_OUTPUT_RESAMPLER_CREATE: &str = "Failed to create output resampler";
+/// Voice resampler diagnostic: rubato input adapter construction failed.
+pub const ERR_INPUT_ADAPTER: &str = "Input adapter error";
+/// Voice resampler diagnostic: rubato output adapter construction failed.
+pub const ERR_OUTPUT_ADAPTER: &str = "Output adapter error";
+/// Voice resampler diagnostic: rubato processing failed.
+pub const ERR_RESAMPLER_PROCESS: &str = "Resampler error";
+
+// =============================================================================
 // Operator-visible runtime warnings (eprintln! sites)
 // =============================================================================
 //

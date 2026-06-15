@@ -7,13 +7,18 @@ use std::io::Cursor;
 use std::sync::Mutex;
 use std::sync::mpsc::{self, Sender};
 
-use cpal::StreamConfig;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{FromSample, Sample, SampleFormat, Stream, StreamConfig};
 use lewton::inside_ogg::OggStreamReader;
 use once_cell::sync::Lazy;
 
 use crate::config::events::SoundChoice;
-use crate::constants::ERR_SOUND_STATE_LOCK_POISONED;
+use crate::constants::{
+    ERR_SOUND_BUILD_OUTPUT_STREAM, ERR_SOUND_DECODE_OGG, ERR_SOUND_DECODE_PACKET,
+    ERR_SOUND_ENUMERATE_DEVICES, ERR_SOUND_INVALID_CHANNEL_COUNT, ERR_SOUND_INVALID_SAMPLE_RATE,
+    ERR_SOUND_NO_DEFAULT_OUTPUT_DEVICE, ERR_SOUND_OUTPUT_CONFIG, ERR_SOUND_START_PLAYBACK,
+    ERR_SOUND_STATE_LOCK_POISONED, ERR_SOUND_UNSUPPORTED_SAMPLE_FORMAT,
+};
 
 // =============================================================================
 // Embedded Sounds
@@ -87,16 +92,16 @@ fn play_sound_blocking(request: &SoundRequest) -> Result<(), String> {
     // Decode the OGG/Vorbis data
     let cursor = Cursor::new(request.data);
     let mut reader =
-        OggStreamReader::new(cursor).map_err(|e| format!("Failed to decode OGG: {}", e))?;
+        OggStreamReader::new(cursor).map_err(|e| format!("{ERR_SOUND_DECODE_OGG}: {e}"))?;
 
-    let sample_rate = reader.ident_hdr.audio_sample_rate;
-    let channels = reader.ident_hdr.audio_channels as u16;
+    let source_sample_rate = reader.ident_hdr.audio_sample_rate;
+    let source_channels = reader.ident_hdr.audio_channels as u16;
 
     // Collect all samples (sounds are short, so this is fine)
     let mut samples: Vec<f32> = Vec::new();
     while let Some(packet) = reader
         .read_dec_packet_itl()
-        .map_err(|e| format!("Decode error: {}", e))?
+        .map_err(|e| format!("{ERR_SOUND_DECODE_PACKET}: {e}"))?
     {
         // Convert i16 samples to f32 and apply volume
         for sample in packet {
@@ -111,34 +116,82 @@ fn play_sound_blocking(request: &SoundRequest) -> Result<(), String> {
     // Get the output device
     let device = get_output_device(&request.device_name)?;
 
-    // Build stream config
-    let config = StreamConfig {
-        channels,
-        sample_rate,
-        buffer_size: cpal::BufferSize::Default,
-    };
+    let output_config = device
+        .default_output_config()
+        .map_err(|e| format!("{ERR_SOUND_OUTPUT_CONFIG}: {e}"))?;
+    let sample_format = output_config.sample_format();
+    let config = output_config.config();
+    let samples = convert_samples_for_output(
+        &samples,
+        source_sample_rate,
+        source_channels,
+        config.sample_rate,
+        config.channels,
+    )?;
 
     // Create a channel to signal when playback is done
     let (done_tx, done_rx) = mpsc::channel::<()>();
 
-    // Track playback position
+    let stream = build_output_stream(&device, &config, sample_format, samples, done_tx)?;
+
+    // Start playback
+    stream
+        .play()
+        .map_err(|e| format!("{ERR_SOUND_START_PLAYBACK}: {e}"))?;
+
+    // Wait for playback to complete (with timeout)
+    let _ = done_rx.recv_timeout(std::time::Duration::from_secs(10));
+
+    // Stream is dropped here, stopping playback
+    Ok(())
+}
+
+fn build_output_stream(
+    device: &cpal::Device,
+    config: &StreamConfig,
+    sample_format: SampleFormat,
+    samples: Vec<f32>,
+    done_tx: mpsc::Sender<()>,
+) -> Result<Stream, String> {
+    match sample_format {
+        SampleFormat::F32 => build_output_stream_typed::<f32>(device, config, samples, done_tx),
+        SampleFormat::F64 => build_output_stream_typed::<f64>(device, config, samples, done_tx),
+        SampleFormat::I8 => build_output_stream_typed::<i8>(device, config, samples, done_tx),
+        SampleFormat::I16 => build_output_stream_typed::<i16>(device, config, samples, done_tx),
+        SampleFormat::I32 => build_output_stream_typed::<i32>(device, config, samples, done_tx),
+        SampleFormat::I64 => build_output_stream_typed::<i64>(device, config, samples, done_tx),
+        SampleFormat::U8 => build_output_stream_typed::<u8>(device, config, samples, done_tx),
+        SampleFormat::U16 => build_output_stream_typed::<u16>(device, config, samples, done_tx),
+        SampleFormat::U32 => build_output_stream_typed::<u32>(device, config, samples, done_tx),
+        SampleFormat::U64 => build_output_stream_typed::<u64>(device, config, samples, done_tx),
+        _ => Err(format!(
+            "{ERR_SOUND_UNSUPPORTED_SAMPLE_FORMAT}: {sample_format:?}"
+        )),
+    }
+}
+
+fn build_output_stream_typed<T>(
+    device: &cpal::Device,
+    config: &StreamConfig,
+    samples: Vec<f32>,
+    done_tx: mpsc::Sender<()>,
+) -> Result<Stream, String>
+where
+    T: Sample + cpal::SizedSample + FromSample<f32>,
+{
     let samples_len = samples.len();
     let position = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let position_clone = position.clone();
 
-    // Build the output stream
-    let stream = device
+    device
         .build_output_stream(
-            &config,
-            move |output: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            config,
+            move |output: &mut [T], _: &cpal::OutputCallbackInfo| {
                 let pos = position_clone.load(std::sync::atomic::Ordering::Relaxed);
                 for (i, sample) in output.iter_mut().enumerate() {
                     let idx = pos + i;
-                    if idx < samples_len {
-                        *sample = samples[idx];
-                    } else {
-                        *sample = 0.0;
-                    }
+                    let value = samples.get(idx).copied().unwrap_or(0.0).clamp(-1.0, 1.0);
+                    *sample = T::from_sample(value);
                 }
                 let new_pos = pos + output.len();
                 position_clone.store(new_pos, std::sync::atomic::Ordering::Relaxed);
@@ -153,18 +206,86 @@ fn play_sound_blocking(request: &SoundRequest) -> Result<(), String> {
             |_err| (),
             None,
         )
-        .map_err(|e| format!("Failed to build output stream: {}", e))?;
+        .map_err(|e| format!("{ERR_SOUND_BUILD_OUTPUT_STREAM}: {e}"))
+}
 
-    // Start playback
-    stream
-        .play()
-        .map_err(|e| format!("Failed to start playback: {}", e))?;
+fn convert_samples_for_output(
+    samples: &[f32],
+    source_sample_rate: u32,
+    source_channels: u16,
+    output_sample_rate: u32,
+    output_channels: u16,
+) -> Result<Vec<f32>, String> {
+    if source_sample_rate == 0 || output_sample_rate == 0 {
+        return Err(ERR_SOUND_INVALID_SAMPLE_RATE.to_string());
+    }
+    if source_channels == 0 || output_channels == 0 {
+        return Err(ERR_SOUND_INVALID_CHANNEL_COUNT.to_string());
+    }
 
-    // Wait for playback to complete (with timeout)
-    let _ = done_rx.recv_timeout(std::time::Duration::from_secs(10));
+    let source_channels = source_channels as usize;
+    let output_channels = output_channels as usize;
+    let source_frames = samples.len() / source_channels;
 
-    // Stream is dropped here, stopping playback
-    Ok(())
+    if source_frames == 0 {
+        return Ok(Vec::new());
+    }
+
+    let output_frames = ((source_frames as u64 * output_sample_rate as u64)
+        .div_ceil(source_sample_rate as u64)) as usize;
+    let mut output = Vec::with_capacity(output_frames * output_channels);
+
+    for output_frame in 0..output_frames {
+        let source_pos =
+            output_frame as f64 * source_sample_rate as f64 / output_sample_rate as f64;
+        let frame_a = source_pos.floor() as usize;
+        let frame_b = (frame_a + 1).min(source_frames - 1);
+        let mix = (source_pos - frame_a as f64) as f32;
+
+        for output_channel in 0..output_channels {
+            let a = frame_sample_for_output_channel(
+                samples,
+                source_channels,
+                output_channels,
+                frame_a,
+                output_channel,
+            );
+            let b = frame_sample_for_output_channel(
+                samples,
+                source_channels,
+                output_channels,
+                frame_b,
+                output_channel,
+            );
+            output.push(a + (b - a) * mix);
+        }
+    }
+
+    Ok(output)
+}
+
+fn frame_sample_for_output_channel(
+    samples: &[f32],
+    source_channels: usize,
+    output_channels: usize,
+    frame: usize,
+    output_channel: usize,
+) -> f32 {
+    let base = frame * source_channels;
+
+    if source_channels == output_channels {
+        samples[base + output_channel]
+    } else if source_channels == 1 {
+        samples[base]
+    } else if output_channels == 1 {
+        let sum: f32 = samples[base..base + source_channels].iter().sum();
+        sum / source_channels as f32
+    } else if output_channel < source_channels {
+        samples[base + output_channel]
+    } else {
+        let sum: f32 = samples[base..base + source_channels].iter().sum();
+        sum / source_channels as f32
+    }
 }
 
 /// Get an output device by name, or the default device if name is empty
@@ -173,11 +294,11 @@ fn get_output_device(device_name: &str) -> Result<cpal::Device, String> {
 
     if device_name.is_empty() {
         host.default_output_device()
-            .ok_or_else(|| "No default output device available".to_string())
+            .ok_or_else(|| ERR_SOUND_NO_DEFAULT_OUTPUT_DEVICE.to_string())
     } else {
         let devices = host
             .output_devices()
-            .map_err(|e| format!("Failed to enumerate devices: {}", e))?;
+            .map_err(|e| format!("{ERR_SOUND_ENUMERATE_DEVICES}: {e}"))?;
 
         select_named_or_default_device(
             device_name,
@@ -190,7 +311,7 @@ fn get_output_device(device_name: &str) -> Result<cpal::Device, String> {
                     .map(|desc| desc.name().to_string())
             },
         )
-        .ok_or_else(|| "No default output device available".to_string())
+        .ok_or_else(|| ERR_SOUND_NO_DEFAULT_OUTPUT_DEVICE.to_string())
     }
 }
 
@@ -326,5 +447,29 @@ mod tests {
         );
 
         assert_eq!(selected, Some("Default"));
+    }
+
+    #[test]
+    fn convert_samples_duplicates_mono_to_stereo() {
+        let converted = convert_samples_for_output(&[0.25, -0.5], 48_000, 1, 48_000, 2)
+            .expect("convert samples");
+
+        assert_eq!(converted, vec![0.25, 0.25, -0.5, -0.5]);
+    }
+
+    #[test]
+    fn convert_samples_downmixes_stereo_to_mono() {
+        let converted = convert_samples_for_output(&[1.0, -1.0, 0.25, 0.75], 48_000, 2, 48_000, 1)
+            .expect("convert samples");
+
+        assert_eq!(converted, vec![0.0, 0.5]);
+    }
+
+    #[test]
+    fn convert_samples_resamples_with_linear_interpolation() {
+        let converted =
+            convert_samples_for_output(&[0.0, 1.0], 24_000, 1, 48_000, 1).expect("convert samples");
+
+        assert_eq!(converted, vec![0.0, 0.5, 1.0, 1.0]);
     }
 }

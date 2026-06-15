@@ -18,7 +18,10 @@ use nexus_common::names::fold_name;
 use nexus_common::voice::{VOICE_SAMPLES_PER_FRAME, VoiceQuality};
 
 use crate::config::audio::PttMode;
-use crate::constants::ERR_VOICE_THREAD_TOKIO_RUNTIME;
+use crate::constants::{
+    ERR_VOICE_CAPTURE, ERR_VOICE_CONNECTION_CLOSED, ERR_VOICE_OUTPUT_DEVICE,
+    ERR_VOICE_PLAYBACK_START, ERR_VOICE_THREAD_TOKIO_RUNTIME,
+};
 
 use super::audio::{AudioCapture, AudioMixer, soft_clip};
 use super::codec::{DecoderPool, VoiceEncoder};
@@ -409,7 +412,7 @@ fn handle_voice_command(cmd: VoiceCommand, runtime: &mut VoiceCommandRuntime<'_>
                 if let Err(e) = capture.start() {
                     let _ = runtime
                         .event_tx
-                        .send(VoiceEvent::AudioError(format!("Capture error: {}", e)));
+                        .send(VoiceEvent::AudioError(format!("{ERR_VOICE_CAPTURE}: {e}")));
                 } else {
                     let _ = runtime
                         .dtls_command_tx
@@ -581,7 +584,8 @@ async fn run_voice_session(
                         break false;
                     }
                     Some(VoiceDtlsEvent::Disconnected) => {
-                        let _ = event_tx.send(VoiceEvent::ConnectionFailed("Connection closed".to_string()));
+                        let _ = event_tx
+                            .send(VoiceEvent::ConnectionFailed(ERR_VOICE_CONNECTION_CLOSED.to_string()));
                         break false;
                     }
                     _ => continue,
@@ -604,8 +608,7 @@ async fn run_voice_session(
         Ok(m) => m,
         Err(e) => {
             let _ = event_tx.send(VoiceEvent::AudioError(format!(
-                "Output device error: {}",
-                e
+                "{ERR_VOICE_OUTPUT_DEVICE}: {e}"
             )));
             let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
             dtls_handle.abort();
@@ -616,8 +619,7 @@ async fn run_voice_session(
     // Start audio playback
     if let Err(e) = mixer.start() {
         let _ = event_tx.send(VoiceEvent::AudioError(format!(
-            "Failed to start playback: {}",
-            e
+            "{ERR_VOICE_PLAYBACK_START}: {e}"
         )));
         let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
         dtls_handle.abort();
