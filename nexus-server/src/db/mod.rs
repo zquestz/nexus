@@ -21,7 +21,9 @@ pub use channels::ChannelDb;
 pub use config::ConfigDb;
 pub use groups::{DeleteGroupResult, GroupDb, GroupPermissionWriteScope, UpdateGroupResult};
 pub use news::NewsDb;
-pub use password::{DUMMY_VERIFY_HASH, hash_password_async, verify_password_async};
+pub use password::{
+    hash_password_async, verify_password_async, verify_unknown_user_password_for_timing,
+};
 // Sync helpers retained for tests (cheap fast-hash path) and the cached test
 // hash helper. Production code in async contexts must use the `_async` variants.
 #[allow(unused_imports)]

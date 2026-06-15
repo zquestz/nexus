@@ -19,10 +19,6 @@
 
 use serde::{Deserialize, Serialize};
 
-fn default_locale() -> String {
-    crate::DEFAULT_LOCALE.to_string()
-}
-
 /// A registered server in a tracker's listing.
 ///
 /// Returned to clients as elements of [`TrackerServerMessage::TrackerServerListResponse::servers`].
@@ -69,7 +65,7 @@ pub enum TrackerClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password: Option<String>,
         /// BCP-47 language tag for translated text in responses.
-        #[serde(default = "default_locale")]
+        #[serde(default = "crate::default_locale")]
         locale: String,
         /// Sender's `CARGO_PKG_VERSION`, used by the tracker to filter
         /// the response to entries whose registered `version` is
@@ -88,7 +84,7 @@ pub enum TrackerClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password: Option<String>,
         /// BCP-47 language tag for translated text in responses.
-        #[serde(default = "default_locale")]
+        #[serde(default = "crate::default_locale")]
         locale: String,
         /// Server display name.
         name: String,

@@ -429,6 +429,152 @@ mod tests {
             .join("errors.ftl")
     }
 
+    fn strip_line_comments(content: &str) -> String {
+        let mut stripped = String::with_capacity(content.len());
+        for line in content.lines() {
+            let scan = match line.find("//") {
+                Some(idx) => &line[..idx],
+                None => line,
+            };
+            stripped.push_str(scan);
+            stripped.push('\n');
+        }
+        stripped
+    }
+
+    fn is_ident_char(c: char) -> bool {
+        c.is_alphanumeric() || c == '_'
+    }
+
+    fn skip_ws(scan: &str, mut pos: usize) -> usize {
+        while pos < scan.len() && scan.as_bytes()[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        pos
+    }
+
+    fn insert_key_if_valid(key: &str, found: &mut std::collections::HashSet<String>) {
+        if !key.is_empty() && !key.contains('{') && !key.contains('\\') {
+            found.insert(key.to_string());
+        }
+    }
+
+    fn extract_translation_keys_from_source(
+        content: &str,
+        found: &mut std::collections::HashSet<String>,
+    ) {
+        let scan = strip_line_comments(content);
+        for name in &["t_args", "t"] {
+            let mut pos = 0;
+            while let Some(idx) = scan[pos..].find(name) {
+                let abs = pos + idx;
+                let before = if abs == 0 {
+                    None
+                } else {
+                    scan[..abs].chars().last()
+                };
+                let bare_call = before.is_none_or(|c| !is_ident_char(c));
+                if bare_call {
+                    let open_paren = skip_ws(&scan, abs + name.len());
+                    if scan.as_bytes().get(open_paren) == Some(&b'(')
+                        && let Some(comma_rel) = scan[open_paren + 1..].find(',')
+                    {
+                        let key_pos = skip_ws(&scan, open_paren + 1 + comma_rel + 1);
+                        if scan.as_bytes().get(key_pos) == Some(&b'"') {
+                            let start = key_pos + 1;
+                            if let Some(end) = scan[start..].find('"') {
+                                insert_key_if_valid(&scan[start..start + end], found);
+                            }
+                        }
+                    }
+                }
+                pos = abs + name.len();
+            }
+        }
+    }
+
+    fn collect_translation_keys_from_sources(
+        dir: &std::path::Path,
+        found: &mut std::collections::HashSet<String>,
+    ) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(it) => it,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_translation_keys_from_sources(&path, found);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("rs")
+                && let Ok(content) = std::fs::read_to_string(&path)
+            {
+                let scan = match content.find("#[cfg(test)]") {
+                    Some(idx) => &content[..idx],
+                    None => content.as_str(),
+                };
+                extract_translation_keys_from_source(scan, found);
+            }
+        }
+    }
+
+    fn extract_likely_i18n_literals(
+        content: &str,
+        en_keys: &std::collections::HashSet<String>,
+        found: &mut std::collections::HashSet<String>,
+    ) {
+        let prefixes: std::collections::HashSet<&str> = en_keys
+            .iter()
+            .filter_map(|key| key.split_once('-').map(|(prefix, _)| prefix))
+            .collect();
+
+        let scan = strip_line_comments(content);
+        let mut pos = 0;
+        while let Some(idx) = scan[pos..].find('"') {
+            let start_quote = pos + idx;
+            let start = start_quote + 1;
+            let Some(end_rel) = scan[start..].find('"') else {
+                break;
+            };
+            let end = start + end_rel;
+            let value = &scan[start..end];
+            let first_prefix = value.split_once('-').map(|(prefix, _)| prefix);
+            if value.contains('-')
+                && value
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                && first_prefix.is_some_and(|prefix| prefixes.contains(prefix))
+            {
+                found.insert(value.to_string());
+            }
+            pos = end + 1;
+        }
+    }
+
+    fn collect_likely_i18n_literals(
+        dir: &std::path::Path,
+        en_keys: &std::collections::HashSet<String>,
+        found: &mut std::collections::HashSet<String>,
+    ) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(it) => it,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_likely_i18n_literals(&path, en_keys, found);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("rs")
+                && let Ok(content) = std::fs::read_to_string(&path)
+            {
+                let scan = match content.find("#[cfg(test)]") {
+                    Some(idx) => &content[..idx],
+                    None => content.as_str(),
+                };
+                extract_likely_i18n_literals(scan, en_keys, found);
+            }
+        }
+    }
+
     #[test]
     fn every_en_key_exists_in_all_locales() {
         let en_keys = collect_keys_in_ftl(&locale_errors_path("en"));
@@ -457,6 +603,77 @@ mod tests {
             "Locales missing keys present in en/errors.ftl. Translate the \
              missing keys (or remove them from EN if intentional):\n\n{}",
             report.join("\n\n"),
+        );
+    }
+
+    #[test]
+    fn no_orphan_keys_in_non_en_locales() {
+        let en_keys = collect_keys_in_ftl(&locale_errors_path("en"));
+        assert!(!en_keys.is_empty());
+
+        let mut report: Vec<String> = Vec::new();
+        for locale in NON_EN_LOCALES {
+            let locale_keys = collect_keys_in_ftl(&locale_errors_path(locale));
+            let mut orphans: Vec<&String> = locale_keys.difference(&en_keys).collect();
+            orphans.sort();
+            if !orphans.is_empty() {
+                report.push(format!(
+                    "[{}] {} orphan key(s) (in this locale but not in EN): {:#?}",
+                    locale,
+                    orphans.len(),
+                    orphans
+                ));
+            }
+        }
+
+        assert!(
+            report.is_empty(),
+            "Non-EN locales carry keys not present in en/errors.ftl. \
+             These are leftovers from a rename or removal — drop them \
+             from the locale file:\n\n{}",
+            report.join("\n\n"),
+        );
+    }
+
+    #[test]
+    fn every_t_literal_has_en_key() {
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let en_keys = collect_keys_in_ftl(&locale_errors_path("en"));
+        assert!(!en_keys.is_empty());
+
+        let mut found = std::collections::HashSet::new();
+        collect_translation_keys_from_sources(&src_dir, &mut found);
+        assert!(
+            !found.is_empty(),
+            "scanner found zero t()/t_args() literals — paths or pattern likely broken"
+        );
+
+        let mut missing: Vec<String> = found.difference(&en_keys).cloned().collect();
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "Server t()/t_args() literal(s) reference keys missing from en/errors.ftl. \
+             Missing: {:#?}",
+            missing,
+        );
+    }
+
+    #[test]
+    fn every_likely_i18n_key_literal_has_en_key() {
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let en_keys = collect_keys_in_ftl(&locale_errors_path("en"));
+        assert!(!en_keys.is_empty());
+
+        let mut found = std::collections::HashSet::new();
+        collect_likely_i18n_literals(&src_dir, &en_keys, &mut found);
+
+        let mut missing: Vec<String> = found.difference(&en_keys).cloned().collect();
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "Likely server i18n key literal(s) are missing from en/errors.ftl. \
+             Missing: {:#?}",
+            missing,
         );
     }
 }

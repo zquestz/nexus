@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use nexus_common::protocol::TransferInfo;
+use nexus_common::protocol::{TransferInfo, TransferInfoDirection};
 use tokio::sync::oneshot;
 
 use crate::constants::{
@@ -170,7 +170,10 @@ impl ActiveTransfer {
             port: self.peer_addr.port(),
             is_admin: identity.is_admin,
             is_shared: self.is_shared,
-            direction: self.direction.to_string(),
+            direction: match self.direction {
+                TransferDirection::Download => TransferInfoDirection::Download,
+                TransferDirection::Upload => TransferInfoDirection::Upload,
+            },
             path: self.path.clone(),
             total_size: self.get_total_size(),
             bytes_transferred: self.get_bytes_transferred(),

@@ -23,8 +23,79 @@ pub enum ChatAction {
     Me,
 }
 
-fn default_locale() -> String {
-    "en".to_string()
+/// Direction of an active transfer as exposed in `ConnectionMonitorResponse`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransferInfoDirection {
+    /// Server sending bytes to the client.
+    Download,
+    /// Client sending bytes to the server.
+    Upload,
+}
+
+impl TransferInfoDirection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Download => "download",
+            Self::Upload => "upload",
+        }
+    }
+}
+
+impl std::fmt::Display for TransferInfoDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Directory type metadata for `FileEntry::dir_type`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FileEntryDirType {
+    Default,
+    Upload,
+    DropBox,
+    UserDropBox(String),
+    /// Forward-compatible folder type unknown to this client/server version.
+    Other(String),
+}
+
+impl FileEntryDirType {
+    pub fn as_wire_value(&self) -> String {
+        match self {
+            Self::Default => "default".to_string(),
+            Self::Upload => "upload".to_string(),
+            Self::DropBox => "dropbox".to_string(),
+            Self::UserDropBox(owner) => format!("dropbox:{owner}"),
+            Self::Other(value) => value.clone(),
+        }
+    }
+}
+
+impl Serialize for FileEntryDirType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.as_wire_value())
+    }
+}
+
+impl<'de> Deserialize<'de> for FileEntryDirType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "default" => Ok(Self::Default),
+            "upload" => Ok(Self::Upload),
+            "dropbox" => Ok(Self::DropBox),
+            _ => match value.strip_prefix("dropbox:") {
+                Some(owner) => Ok(Self::UserDropBox(owner.to_string())),
+                None => Ok(Self::Other(value)),
+            },
+        }
+    }
 }
 
 /// Default group bandwidth weight when missing on the wire.
@@ -264,7 +335,7 @@ pub enum ClientMessage {
         username: String,
         password: String,
         features: Vec<String>,
-        #[serde(default = "default_locale")]
+        #[serde(default = "crate::default_locale")]
         locale: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         avatar: Option<String>,
@@ -555,8 +626,8 @@ pub struct TransferInfo {
     pub is_admin: bool,
     /// Whether this is a shared account
     pub is_shared: bool,
-    /// Transfer direction ("download" or "upload")
-    pub direction: String,
+    /// Transfer direction.
+    pub direction: TransferInfoDirection,
     /// Path being transferred
     pub path: String,
     /// Total size in bytes (0 if unknown)
@@ -1512,7 +1583,7 @@ pub struct FileEntry {
     pub modified: i64,
     /// Directory type (None = file, Some = directory with type)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub dir_type: Option<String>,
+    pub dir_type: Option<FileEntryDirType>,
     /// True if uploads are allowed at this location
     pub can_upload: bool,
 }
@@ -1723,6 +1794,10 @@ fn debug_prefix(value: &str, max_bytes: usize) -> &str {
         end = next;
     }
     &value[..end]
+}
+
+fn redact_optional_secret(value: &Option<String>) -> Option<&'static str> {
+    value.as_ref().map(|_| "<REDACTED>")
 }
 
 impl std::fmt::Debug for ClientMessage {
@@ -2029,15 +2104,15 @@ impl std::fmt::Debug for ClientMessage {
                 address,
                 port,
                 fingerprint,
+                password,
                 name,
                 enabled,
-                ..
             } => f
                 .debug_struct("TrackerAdd")
                 .field("address", address)
                 .field("port", port)
                 .field("fingerprint", fingerprint)
-                .field("password", &"<REDACTED>")
+                .field("password", &redact_optional_secret(password))
                 .field("name", name)
                 .field("enabled", enabled)
                 .finish(),
@@ -2053,16 +2128,16 @@ impl std::fmt::Debug for ClientMessage {
                 address,
                 port,
                 fingerprint,
+                password,
                 name,
                 enabled,
-                ..
             } => f
                 .debug_struct("TrackerUpdate")
                 .field("id", id)
                 .field("address", address)
                 .field("port", port)
                 .field("fingerprint", fingerprint)
-                .field("password", &"<REDACTED>")
+                .field("password", &redact_optional_secret(password))
                 .field("name", name)
                 .field("enabled", enabled)
                 .finish(),
@@ -2307,6 +2382,82 @@ mod tests {
         assert!(debug_output.contains("chat"));
         assert!(!debug_output.contains("super_secret_password"));
         assert!(debug_output.contains("REDACTED"));
+    }
+
+    #[test]
+    fn test_debug_user_create_redacts_password() {
+        let msg = ClientMessage::UserCreate {
+            username: "alice".to_string(),
+            password: "create_secret".to_string(),
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: vec!["chat_send".to_string()],
+            group_id: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+        };
+        let debug_output = format!("{:?}", msg);
+        assert!(!debug_output.contains("create_secret"));
+        assert!(debug_output.contains("password"));
+        assert!(debug_output.contains("<REDACTED>"));
+    }
+
+    #[test]
+    fn test_debug_tracker_add_redacts_some_password_and_preserves_none() {
+        let with_password = ClientMessage::TrackerAdd {
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: None,
+            password: Some("tracker_secret".to_string()),
+            name: "Tracker".to_string(),
+            enabled: true,
+        };
+        let dbg = format!("{:?}", with_password);
+        assert!(!dbg.contains("tracker_secret"));
+        assert!(dbg.contains("password: Some(\"<REDACTED>\")"), "{dbg}");
+
+        let without_password = ClientMessage::TrackerAdd {
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: None,
+            password: None,
+            name: "Tracker".to_string(),
+            enabled: true,
+        };
+        let dbg = format!("{:?}", without_password);
+        assert!(dbg.contains("password: None"), "{dbg}");
+        assert!(!dbg.contains("<REDACTED>"));
+    }
+
+    #[test]
+    fn test_debug_tracker_update_redacts_some_password_and_preserves_none() {
+        let with_password = ClientMessage::TrackerUpdate {
+            id: 7,
+            address: None,
+            port: None,
+            fingerprint: None,
+            password: Some("tracker_secret".to_string()),
+            name: None,
+            enabled: None,
+        };
+        let dbg = format!("{:?}", with_password);
+        assert!(!dbg.contains("tracker_secret"));
+        assert!(dbg.contains("password: Some(\"<REDACTED>\")"), "{dbg}");
+
+        let without_password = ClientMessage::TrackerUpdate {
+            id: 7,
+            address: None,
+            port: None,
+            fingerprint: None,
+            password: None,
+            name: None,
+            enabled: None,
+        };
+        let dbg = format!("{:?}", without_password);
+        assert!(dbg.contains("password: None"), "{dbg}");
+        assert!(!dbg.contains("<REDACTED>"));
     }
 
     #[test]
@@ -2717,6 +2868,61 @@ mod tests {
             }
             _ => panic!("Expected UserCreate message"),
         }
+    }
+
+    #[test]
+    fn test_transfer_info_direction_serializes_as_legacy_string() {
+        let info = TransferInfo {
+            nickname: "alice".to_string(),
+            username: "alice".to_string(),
+            ip: "127.0.0.1".to_string(),
+            port: 7501,
+            is_admin: false,
+            is_shared: false,
+            direction: TransferInfoDirection::Download,
+            path: "/file.txt".to_string(),
+            total_size: 10,
+            bytes_transferred: 5,
+            started_at: 123,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains(r#""direction":"download""#), "{json}");
+
+        let parsed: TransferInfo = serde_json::from_str(
+            r#"{"nickname":"alice","username":"alice","ip":"127.0.0.1","port":7501,"is_admin":false,"is_shared":false,"direction":"upload","path":"/file.txt","total_size":10,"bytes_transferred":5,"started_at":123}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.direction, TransferInfoDirection::Upload);
+    }
+
+    #[test]
+    fn test_file_entry_dir_type_serializes_as_legacy_string() {
+        let entry = FileEntry {
+            name: "Inbox [NEXUS-DB-alice]".to_string(),
+            size: 0,
+            modified: 123,
+            dir_type: Some(FileEntryDirType::UserDropBox("alice".to_string())),
+            can_upload: true,
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains(r#""dir_type":"dropbox:alice""#), "{json}");
+
+        let parsed: FileEntry = serde_json::from_str(
+            r#"{"name":"Uploads [NEXUS-UL]","size":0,"modified":123,"dir_type":"upload","can_upload":true}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.dir_type, Some(FileEntryDirType::Upload));
+
+        let parsed: FileEntry = serde_json::from_str(
+            r#"{"name":"Archive","size":0,"modified":123,"dir_type":"archive","can_upload":false}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.dir_type,
+            Some(FileEntryDirType::Other("archive".to_string()))
+        );
+        let json = serde_json::to_string(&parsed).unwrap();
+        assert!(json.contains(r#""dir_type":"archive""#), "{json}");
     }
 
     #[test]

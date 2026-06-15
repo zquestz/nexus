@@ -45,6 +45,12 @@ pub struct MockBehavior {
     /// `HandshakeResponse`), wedging the task in `read_handshake_response`.
     /// Used to verify shutdown aborts the deepest cycle await.
     pub wedge_after_tls: bool,
+    /// Per-connection close controls. Each accepted connection pops one
+    /// optional response count; when present, that connection closes after
+    /// sending that many register responses.
+    /// Leaves the listener alive so tests can simulate a tracker restart or
+    /// mid-idle drop while allowing the task to reconnect to the same endpoint.
+    pub close_after_register_responses: Arc<Mutex<VecDeque<usize>>>,
 }
 
 #[derive(Clone)]
@@ -65,6 +71,7 @@ impl Default for MockBehavior {
             queued_responses: Arc::new(Mutex::new(VecDeque::new())),
             captured_registers: Arc::new(Mutex::new(Vec::new())),
             wedge_after_tls: false,
+            close_after_register_responses: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }
@@ -194,6 +201,12 @@ async fn handle_connection(
     // TrackerServerRegister/Response plus refresh cycles. Each payload is
     // captured for propagation tests. Idle timeout set well past any
     // refresh interval; loop exits cleanly when the task drops the conn.
+    let close_after_register_responses = behavior
+        .close_after_register_responses
+        .lock()
+        .expect("mock close queue lock poisoned")
+        .pop_front();
+    let mut responses_sent = 0usize;
     loop {
         let received = match read_tracker_client_message_with_full_timeout(
             &mut reader,
@@ -242,6 +255,10 @@ async fn handle_connection(
             }
         };
         send_tracker_server_message(&mut writer, &response).await?;
+        responses_sent += 1;
+        if close_after_register_responses.is_some_and(|limit| responses_sent >= limit) {
+            return Ok(());
+        }
     }
 }
 

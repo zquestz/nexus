@@ -1255,6 +1255,19 @@ fn make_register_with_version(name: &str, version: &str) -> TrackerClientMessage
     msg
 }
 
+/// `make_register` with an explicit `fingerprint`.
+fn make_register_with_fingerprint(fingerprint: &str) -> TrackerClientMessage {
+    let mut msg = make_register("Fingerprint Boundary BBS", 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        fingerprint: ref mut fp,
+        ..
+    } = msg
+    {
+        *fp = fingerprint.to_string();
+    }
+    msg
+}
+
 #[tokio::test]
 async fn test_register_rejects_malformed_version() {
     ensure_crypto_provider();
@@ -1290,6 +1303,51 @@ async fn test_register_rejects_malformed_version() {
             "malformed semver should be rejected with error_kind=invalid",
         ),
         other => panic!("expected typed register failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_register_rejects_noncanonical_fingerprint_boundaries() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let bad_fingerprints = [
+        // Lowercase hex is non-canonical even though the byte count is right.
+        "aa:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
+         AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+        // Missing separators: valid hex bytes, wrong canonical display shape.
+        "AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899",
+        // One byte short.
+        "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
+         AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88",
+    ];
+
+    for fingerprint in bad_fingerprints {
+        let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+        send_tracker_client(&mut s_writer, &make_register_with_fingerprint(fingerprint)).await;
+        match read_tracker_server(&mut s_reader).await {
+            TrackerServerMessage::TrackerServerRegisterResponse {
+                success: false,
+                error_kind,
+                ..
+            } => assert_eq!(
+                error_kind.as_deref(),
+                Some("invalid"),
+                "non-canonical fingerprint {fingerprint:?} should reject with error_kind=invalid",
+            ),
+            other => panic!("expected typed register failure, got {other:?}"),
+        }
     }
 }
 

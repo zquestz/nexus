@@ -277,11 +277,9 @@ where
         Ok(None) => {
             // Equalize timing against the wrong-password path so response time
             // does not reveal whether the username exists — same defense as the
-            // BBS port's login handler. Runs the same verify the real path runs
-            // (lenient input validation + full Argon2, no strength short-circuit)
+            // BBS port's login handler. The helper runs the real verify path
             // against a fixed dummy hash; the result is intentionally discarded.
-            let _ = db::verify_password_async(password.clone(), db::DUMMY_VERIFY_HASH.to_string())
-                .await;
+            let _ = db::verify_unknown_user_password_for_timing(password.clone()).await;
             if !login_ip_trusted {
                 login_limiter.record_failure(login_ip);
             }

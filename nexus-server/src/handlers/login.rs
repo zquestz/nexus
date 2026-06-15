@@ -338,13 +338,11 @@ where
 
         if has_non_guest_users {
             // Equalize timing against the wrong-password path so response time
-            // does not reveal whether the username exists. Runs the same verify
-            // the real path runs (lenient input validation + full Argon2, no
-            // strength short-circuit) against a fixed dummy hash; the result is
+            // does not reveal whether the username exists. The helper runs the
+            // real verify path against a fixed dummy hash; the result is
             // intentionally discarded — externally this is invalid credentials
             // either way.
-            let _ = db::verify_password_async(password.clone(), db::DUMMY_VERIFY_HASH.to_string())
-                .await;
+            let _ = db::verify_unknown_user_password_for_timing(password.clone()).await;
             if !login_ip_trusted {
                 ctx.login_limiter.record_failure(login_ip);
             }
@@ -1307,6 +1305,52 @@ mod tests {
             "Login as non-existent user should fail after first user"
         );
         assert!(session_id.is_none(), "Session ID should remain None");
+    }
+
+    #[tokio::test]
+    async fn test_login_nonexistent_user_with_weak_password_uses_generic_auth_error() {
+        let mut test_ctx = create_test_context().await;
+
+        let hashed = get_cached_password_hash("password");
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "existing",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "nonexistent".to_string(),
+            // The dummy-verify timing helper itself is pinned in db::password
+            // tests; this handler-level test guards the user-visible behavior.
+            password: "a".to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_err());
+        assert!(session_id.is_none());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::Error { message, .. } => {
+                assert_eq!(message, err_invalid_credentials(DEFAULT_TEST_LOCALE));
+            }
+            other => panic!("Expected Error message, got {other:?}"),
+        }
     }
 
     #[tokio::test]

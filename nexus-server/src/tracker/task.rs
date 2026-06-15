@@ -1447,6 +1447,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tracker_restart_reconnects_before_refresh_interval() {
+        let mut close_queue = VecDeque::new();
+        close_queue.push_back(1);
+
+        // The mock closes each connection immediately after the register
+        // response while keeping its listener alive. That simulates a tracker
+        // restart/drop during the task's long mid-idle sleep. The second
+        // connection remains open, so the final connected status is stable.
+        // The task should notice the clean close via the read arm and reconnect
+        // on BACKOFF_BASE, not wait for the advertised 300s refresh interval.
+        let mock = MockTracker::start(MockBehavior {
+            register_response: RegisterPolicy::Success {
+                refresh_interval: 300,
+            },
+            close_after_register_responses: Arc::new(Mutex::new(close_queue)),
+            ..Default::default()
+        })
+        .await;
+        let captured = Arc::clone(&mock.behavior.captured_registers);
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        wait_for_capture_count(&captured, 2, Duration::from_secs(5))
+            .await
+            .expect("task should reconnect and re-register before the 300s refresh interval");
+        wait_for_status(&status, Duration::from_secs(5), |s| {
+            s.connected && s.last_error_kind.is_none()
+        })
+        .await
+        .expect("task should mark the reconnect successful");
+
+        task.abort();
+        let _ = task.await;
+        mock.stop().await;
+    }
+
+    #[tokio::test]
     async fn floor_clamps_low_refresh_interval() {
         // Tracker asks for `Some(0)` — must clamp to
         // `MIN_REFRESH_INTERVAL_SECS` rather than hot-loop at 0s sleep.

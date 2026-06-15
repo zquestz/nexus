@@ -13,7 +13,7 @@ use iced::widget::{Space, button, column, container, lazy, row, scrollable, tabl
 use iced::{Center, Element, Fill, Length, Theme, alignment};
 use iced_aw::{ContextMenu, TabLabel, Tabs};
 use nexus_common::names::fold_name;
-use nexus_common::protocol::{ConnectionInfo, TransferInfo};
+use nexus_common::protocol::{ConnectionInfo, TransferInfo, TransferInfoDirection};
 
 use super::constants::{PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK};
 use super::helpers::{format_bytes, sort_icon_or_placeholder};
@@ -640,10 +640,9 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
         let direction_column = table::column(direction_header, move |transfer: TransferInfo| {
             // "download" means server is sending to client (client downloading)
             // "upload" means client is sending to server (client uploading)
-            if transfer.direction == "download" {
-                icon::download().size(TEXT_SIZE)
-            } else {
-                icon::upload().size(TEXT_SIZE)
+            match transfer.direction {
+                TransferInfoDirection::Download => icon::download().size(TEXT_SIZE),
+                TransferInfoDirection::Upload => icon::upload().size(TEXT_SIZE),
             }
         })
         .width(Length::Shrink);
@@ -1161,7 +1160,7 @@ mod tests {
             port: 7501,
             is_admin: false,
             is_shared: false,
-            direction: "download".to_string(),
+            direction: TransferInfoDirection::Download,
             path: "/file.bin".to_string(),
             total_size: 100,
             bytes_transferred: 25,
@@ -1191,7 +1190,7 @@ mod tests {
         assert_transfer_hash_changes(|d| d.transfers[0].nickname = "Bob".to_string());
         assert_transfer_hash_changes(|d| d.transfers[0].username = "bob".to_string());
         assert_transfer_hash_changes(|d| d.transfers[0].ip = "192.0.2.2".to_string());
-        assert_transfer_hash_changes(|d| d.transfers[0].direction = "upload".to_string());
+        assert_transfer_hash_changes(|d| d.transfers[0].direction = TransferInfoDirection::Upload);
         assert_transfer_hash_changes(|d| d.transfers[0].path = "/other.bin".to_string());
         assert_transfer_hash_changes(|d| d.transfers[0].total_size = 200);
         assert_transfer_hash_changes(|d| d.transfers[0].bytes_transferred = 50);

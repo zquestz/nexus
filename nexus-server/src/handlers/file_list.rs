@@ -7,7 +7,7 @@ use tokio::io::AsyncWrite;
 use tracing::warn;
 
 use nexus_common::names::fold_name;
-use nexus_common::protocol::{FileEntry, ServerMessage};
+use nexus_common::protocol::{FileEntry, FileEntryDirType, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
 
 use super::{
@@ -79,10 +79,10 @@ fn read_directory_entries(
             .unwrap_or(0);
 
         let dir_type = folder_type.map(|ft| match ft {
-            FolderType::Default => "default".to_string(),
-            FolderType::Upload => "upload".to_string(),
-            FolderType::DropBox => "dropbox".to_string(),
-            FolderType::UserDropBox(owner) => format!("dropbox:{}", owner),
+            FolderType::Default => FileEntryDirType::Default,
+            FolderType::Upload => FileEntryDirType::Upload,
+            FolderType::DropBox => FileEntryDirType::DropBox,
+            FolderType::UserDropBox(owner) => FileEntryDirType::UserDropBox(owner),
         });
 
         entries.push(FileEntry {
@@ -863,7 +863,7 @@ mod tests {
                     "Dropbox folder entry should be visible in parent"
                 );
                 let inbox = inbox.unwrap();
-                assert_eq!(inbox.dir_type, Some("dropbox".to_string()));
+                assert_eq!(inbox.dir_type, Some(FileEntryDirType::DropBox));
             }
             _ => panic!("Expected FileListResponse"),
         }
@@ -912,8 +912,8 @@ mod tests {
                 let plain = downloads_plain.unwrap();
                 let upload = downloads_upload.unwrap();
 
-                assert_eq!(plain.dir_type, Some("default".to_string()));
-                assert_eq!(upload.dir_type, Some("upload".to_string()));
+                assert_eq!(plain.dir_type, Some(FileEntryDirType::Default));
+                assert_eq!(upload.dir_type, Some(FileEntryDirType::Upload));
 
                 // Only the upload folder allows uploads.
                 assert!(!plain.can_upload);
@@ -1119,7 +1119,7 @@ mod tests {
                 assert!(uploads.is_some(), "Should find Uploads folder");
                 let uploads = uploads.unwrap();
                 assert!(uploads.can_upload, "Uploads folder should allow uploads");
-                assert_eq!(uploads.dir_type, Some("upload".to_string()));
+                assert_eq!(uploads.dir_type, Some(FileEntryDirType::Upload));
 
                 let docs = entries.iter().find(|e| e.name == "Documents");
                 assert!(docs.is_some(), "Should find Documents folder");

@@ -6,16 +6,16 @@ use std::sync::LazyLock;
 use crate::PERMISSIONS_COUNT;
 use crate::validators::{
     BLAKE3_HEX_LENGTH, MAX_AUTO_JOIN_CHANNELS_LENGTH, MAX_AVATAR_DATA_URI_LENGTH,
-    MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER, MAX_CHAT_TOPIC_LENGTH,
-    MAX_COMMAND_LENGTH, MAX_DIR_NAME_LENGTH, MAX_DURATION_LENGTH, MAX_ERROR_KIND_LENGTH,
-    MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH,
-    MAX_GROUP_NAME_LENGTH, MAX_KICK_REASON_LENGTH, MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH,
-    MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH,
-    MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
-    MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
-    MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
-    MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRACKER_NAME_LENGTH,
-    MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, TRANSFER_ID_LENGTH,
+    MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH, MAX_CHAT_TOPIC_LENGTH, MAX_COMMAND_LENGTH,
+    MAX_DIR_NAME_LENGTH, MAX_DURATION_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH,
+    MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH,
+    MAX_KICK_REASON_LENGTH, MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH, MAX_MESSAGE_LENGTH,
+    MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH, MAX_NEWS_IMAGE_DATA_URI_LENGTH,
+    MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
+    MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SEARCH_QUERY_LENGTH,
+    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
+    MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRACKER_NAME_LENGTH, MAX_TRUST_REASON_LENGTH,
+    MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, TRANSFER_ID_LENGTH,
 };
 
 // =============================================================================
@@ -241,25 +241,8 @@ const fn json_first_i64_field(key: &str) -> usize {
 /// Variants: "Normal" (6), "Me" (2) - max is 6
 const MAX_ACTION_VARIANT: usize = 6;
 
-/// Maximum number of members in a ChatJoinResponse
-/// Typical channels have <50 members; this provides headroom
-const MAX_CHANNEL_MEMBERS: usize = 50;
-
-/// Maximum number of IPs returned in ban/trust responses
-/// Typically 1-5 IPs when banning by nickname
-const MAX_RESPONSE_IPS: usize = 8;
-
-/// Maximum IPv6 address length (including scope)
-const MAX_IP_LENGTH: usize = 45;
-
 /// Maximum MIME type length (e.g., "application/octet-stream")
 const MAX_MIME_TYPE: usize = 128;
-
-/// Maximum number of session IDs per user (one per connection)
-const MAX_SESSION_IDS: usize = 10;
-
-/// Maximum number of addresses in UserInfoDetailed
-const MAX_ADDRESSES: usize = 10;
 
 /// Length of a colon-separated SHA-256 fingerprint: "AA:BB:CC:...:ZZ" (32×2 hex + 31 colons)
 const SHA256_FINGERPRINT_LENGTH: usize = 95;
@@ -575,20 +558,6 @@ pub const TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE: usize = 32 * 1024 * 1024;
 // Server messages - Voice
 // -----------------------------------------------------------------------------
 
-/// Maximum participants in a voice session (for sizing VoiceJoinResponse)
-const MAX_VOICE_PARTICIPANTS: usize = 100;
-
-/// UUID string length when serialized (e.g., "550e8400-e29b-41d4-a716-446655440000")
-const UUID_STRING_LENGTH: usize = 36;
-
-/// VoiceJoinResponse: {"type":"VoiceJoinResponse","success":false,"token":"...36...","target":"...32...","participants":["...64...",...100...],"error":"...2048..."}
-const VOICE_JOIN_RESPONSE_SIZE: usize = json_type_base("VoiceJoinResponse")
-    + json_bool_field("success")
-    + json_string_field("token", UUID_STRING_LENGTH)
-    + json_string_chars_field("target", MAX_CHANNEL_LENGTH)
-    + json_string_array_field("participants", MAX_VOICE_PARTICIPANTS, MAX_NICKNAME_LENGTH)
-    + json_string_field("error", MAX_ERROR_LENGTH);
-
 /// VoiceLeaveResponse: {"type":"VoiceLeaveResponse","success":false,"error":"...2048..."}
 const VOICE_LEAVE_RESPONSE_SIZE: usize = json_type_base("VoiceLeaveResponse")
     + json_bool_field("success")
@@ -657,17 +626,6 @@ const CHAT_LEAVE_RESPONSE_SIZE: usize = json_type_base("ChatLeaveResponse")
     + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
     + json_string_field("error", MAX_ERROR_LENGTH);
 
-/// ChatJoinResponse: {"type":"ChatJoinResponse","success":false,"error":"...2048...","channel":"...32...","topic":"...256...","topic_set_by":"...32...","secret":false,"members":["...32..."],"voiced":["...32..."]}
-const CHAT_JOIN_RESPONSE_SIZE: usize = json_type_base("ChatJoinResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
-    + json_string_chars_field("topic", MAX_CHAT_TOPIC_LENGTH)
-    + json_string_chars_field("topic_set_by", MAX_NICKNAME_LENGTH)
-    + json_bool_field("secret")
-    + json_string_array_field("members", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
-    + json_string_array_field("voiced", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH);
-
 // -----------------------------------------------------------------------------
 // Server messages - Simple responses (success + error pattern)
 // -----------------------------------------------------------------------------
@@ -718,34 +676,6 @@ const USER_UPDATE_RESPONSE_SIZE: usize = json_type_base("UserUpdateResponse")
 const USER_KICK_RESPONSE_SIZE: usize = json_type_base("UserKickResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
-
-/// BanCreateResponse: {"type":"BanCreateResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
-const BAN_CREATE_RESPONSE_SIZE: usize = json_type_base("BanCreateResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
-    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
-
-/// BanDeleteResponse: {"type":"BanDeleteResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
-const BAN_DELETE_RESPONSE_SIZE: usize = json_type_base("BanDeleteResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
-    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
-
-/// TrustCreateResponse: {"type":"TrustCreateResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
-const TRUST_CREATE_RESPONSE_SIZE: usize = json_type_base("TrustCreateResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
-    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
-
-/// TrustDeleteResponse: {"type":"TrustDeleteResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
-const TRUST_DELETE_RESPONSE_SIZE: usize = json_type_base("TrustDeleteResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
     + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// UserMessageResponse: {"type":"UserMessageResponse","success":false,"error":"...2048...","is_away":false,"status":"...128..."}
@@ -856,80 +786,6 @@ const FILE_CREATE_DIR_RESPONSE_SIZE: usize = json_type_base("FileCreateDirRespon
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_field("path", MAX_CREATED_DIR_PATH);
-
-/// UserInfo struct size (nested object in responses):
-/// {"id":i64,"username":"...32...","nickname":"...32...","login_time":i64,"is_admin":false,"is_shared":false,"session_ids":[u32,...],"locale":"...16...","avatar":"...176000...","is_away":false,"status":"...128...","group_id":i64,"group_name":"...32..."}
-const USER_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
-    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
-    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
-    + json_i64_field("login_time")
-    + json_bool_field("is_admin")
-    + json_bool_field("is_shared")
-    + json_string_array_field("session_ids", MAX_SESSION_IDS, 10) // u32 as string ~10 digits
-    + json_string_field("locale", MAX_LOCALE_LENGTH)
-    + json_string_field("avatar", MAX_AVATAR_DATA_URI_LENGTH)
-    + json_bool_field("is_away")
-    + json_string_chars_field("status", MAX_STATUS_LENGTH)
-    + json_i64_field("group_id")
-    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH)
-    + json_u16_field("bandwidth_weight")
-    + 2; // {} braces
-
-/// UserConnected: {"type":"UserConnected","user":{...}}
-const USER_CONNECTED_SIZE: usize = json_type_base("UserConnected")
-    + json_object_field_start("user")
-    + USER_INFO_STRUCT_SIZE
-    + json_close();
-
-/// UserUpdated: {"type":"UserUpdated","previous_username":"...32...","user":{...}}
-const USER_UPDATED_SIZE: usize = json_type_base("UserUpdated")
-    + json_string_chars_field("previous_username", MAX_USERNAME_LENGTH)
-    + json_object_field_start("user")
-    + USER_INFO_STRUCT_SIZE
-    + json_close();
-
-/// UserInfoDetailed struct size (nested object in UserInfoResponse):
-/// Has more fields than UserInfo: features, created_at, addresses, channels
-const USER_INFO_DETAILED_SIZE: usize = json_first_i64_field("id")
-    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
-    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
-    + json_i64_field("login_time")
-    + json_bool_field("is_shared")
-    + json_string_array_field("session_ids", MAX_SESSION_IDS, 10)
-    + json_string_array_field("features", MAX_FEATURES_COUNT, MAX_FEATURE_LENGTH)
-    + json_i64_field("created_at")
-    + json_string_field("locale", MAX_LOCALE_LENGTH)
-    + json_string_field("avatar", MAX_AVATAR_DATA_URI_LENGTH)
-    + json_bool_field("is_admin")
-    + json_string_array_field("addresses", MAX_ADDRESSES, MAX_IP_LENGTH)
-    + json_bool_field("is_away")
-    + json_string_chars_field("status", MAX_STATUS_LENGTH)
-    + json_string_array_field("channels", MAX_CHANNELS_PER_USER, MAX_CHANNEL_LENGTH)
-    + json_i64_field("group_id")
-    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH)
-    + json_u16_field("bandwidth_weight")
-    + 2; // {} braces
-
-/// UserInfoResponse: {"type":"UserInfoResponse","success":false,"error":"...2048...","user":{...}}
-const USER_INFO_RESPONSE_SIZE: usize = json_type_base("UserInfoResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_object_field_start("user")
-    + USER_INFO_DETAILED_SIZE
-    + json_close();
-
-/// Maximum number of groups (reasonable limit for group list responses)
-const MAX_GROUPS: usize = 50;
-
-/// GroupInfo struct size (nested object in responses):
-/// {"id":i64,"name":"...32...","is_shared":false,"member_count":u32,"permissions":["...32...",...],"bandwidth_weight":u16}
-const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
-    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH)
-    + json_bool_field("is_shared")
-    + json_u32_field("member_count")
-    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
-    + json_u16_field("bandwidth_weight")
-    + 2; // {} braces
 
 /// ServerInfo struct size (nested object in responses):
 /// {"name":"...64...","description":"...256...","public_address":"...253...","version":"...32...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8,"log_level":"...5..."}
@@ -1078,63 +934,6 @@ const USER_UPDATE_SIZE: usize = json_type_base("UserUpdate")
     + json_u16_field("bandwidth_weight")
     + json_bool_field("inherit_bandwidth_weight");
 
-/// UserEditResponse: {"type":"UserEditResponse","success":false,"error":"...2048...","id":i64,"username":"...32...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...],"group_id":i64,"group_name":"...32...","group_permissions":["...32...",...],"revoked_permissions":["...32...",...],"bandwidth_weight":u16,"available_groups":[{...},...]}
-const USER_EDIT_RESPONSE_SIZE: usize = json_type_base("UserEditResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_i64_field("id")
-    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
-    + json_bool_field("is_admin")
-    + json_bool_field("is_shared")
-    + json_bool_field("enabled")
-    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
-    + json_i64_field("group_id")
-    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH)
-    + json_string_array_field(
-        "group_permissions",
-        PERMISSIONS_COUNT,
-        MAX_PERMISSION_LENGTH,
-    )
-    + json_string_array_field(
-        "revoked_permissions",
-        PERMISSIONS_COUNT,
-        MAX_PERMISSION_LENGTH,
-    )
-    + json_object_array_field("available_groups", MAX_GROUPS, GROUP_INFO_STRUCT_SIZE)
-    + json_u16_field("bandwidth_weight");
-
-/// ChannelJoinInfo nested object size (for LoginResponse channels array):
-/// {"channel":"...50...","topic":"...256...","topic_set_by":"...32...","secret":false,"members":["...32...",...]}
-const CHANNEL_JOIN_INFO_SIZE: usize = json_first_string_chars_field("channel", MAX_CHANNEL_LENGTH)
-    + json_string_chars_field("topic", MAX_CHAT_TOPIC_LENGTH)
-    + json_string_chars_field("topic_set_by", MAX_NICKNAME_LENGTH)
-    + json_bool_field("secret")
-    + json_string_array_field("members", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
-    + json_string_array_field("voiced", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
-    + 2; // {} braces
-
-/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"user_id":i64,"is_admin":false,"permissions":["...32...",...],"features":["...32...",...],"server_info":{...},"locale":"...16...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
-const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_u32_field("session_id")
-    + json_i64_field("user_id")
-    + json_bool_field("is_admin")
-    + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
-    + json_string_array_field("features", MAX_FEATURES_COUNT, MAX_FEATURE_LENGTH)
-    + json_object_field_start("server_info")
-    + SERVER_INFO_STRUCT_SIZE
-    + json_close()
-    + json_string_field("locale", MAX_LOCALE_LENGTH)
-    + json_object_array_field(
-        "channels",
-        MAX_AUTO_JOIN_CHANNELS_LENGTH,
-        CHANNEL_JOIN_INFO_SIZE,
-    )
-    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
-    + json_i64_field("group_id")
-    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH);
-
 /// PermissionsUpdated: {"type":"PermissionsUpdated","is_admin":false,"permissions":["...32...",...],"server_info":{...},"group_id":i64,"group_name":"...32..."}
 const PERMISSIONS_UPDATED_SIZE: usize = json_type_base("PermissionsUpdated")
     + json_bool_field("is_admin")
@@ -1224,7 +1023,7 @@ const TRACKER_UPDATE_SIZE: usize = json_type_base("TrackerUpdate")
 /// Plain nested struct: no `"type"` discriminator on the wire (only
 /// the parent `TrackerListResponse` / `TrackerEditResponse` carries
 /// the envelope `"type"`). Follows the same shape as `NEWS_ITEM_SIZE`
-/// and `CHANNEL_JOIN_INFO_SIZE`: first field uses `json_first_*_field`
+/// and `FILE_INFO_DETAILS_SIZE`: first field uses `json_first_*_field`
 /// (no leading comma), subsequent fields carry the comma, trailing
 /// `+ 2` accounts for `{` and `}`.
 const TRACKER_INFO_SIZE: usize = json_first_i64_field("id")
@@ -1873,11 +1672,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     );
     m.insert(
         "ChatJoinResponse",
-        FrameTypeInfo::new(
-            pad_limit(CHAT_JOIN_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, channel members/voice presence are not capped)
     m.insert(
         "ChatLeaveResponse",
         FrameTypeInfo::new(
@@ -1937,11 +1733,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     );
     m.insert(
         "LoginResponse",
-        FrameTypeInfo::new(
-            pad_limit(LOGIN_RESPONSE_SIZE as u64),
-            FrameContexts::SERVER_LOGIN_RESPONSE,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::SERVER_LOGIN_RESPONSE),
+    ); // unlimited (server-trusted login snapshot with channel/member state)
     m.insert(
         "PermissionsUpdated",
         FrameTypeInfo::new(
@@ -1972,11 +1765,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     );
     m.insert(
         "UserConnected",
-        FrameTypeInfo::new(
-            pad_limit(USER_CONNECTED_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted user snapshot; shared accounts may have many sessions)
     m.insert(
         "UserCreateResponse",
         FrameTypeInfo::new(
@@ -2000,11 +1790,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     );
     m.insert(
         "UserEditResponse",
-        FrameTypeInfo::new(
-            pad_limit(USER_EDIT_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, available groups are not capped)
     m.insert(
         "UserBroadcastResponse",
         FrameTypeInfo::new(
@@ -2014,11 +1801,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     );
     m.insert(
         "UserInfoResponse",
-        FrameTypeInfo::new(
-            pad_limit(USER_INFO_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted detailed user/session snapshot)
     m.insert(
         "UserKickResponse",
         FrameTypeInfo::new(
@@ -2046,11 +1830,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     );
     m.insert(
         "UserUpdated",
-        FrameTypeInfo::new(
-            pad_limit(USER_UPDATED_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted user snapshot; shared accounts may have many sessions)
     m.insert(
         "UserAwayResponse",
         FrameTypeInfo::new(
@@ -2083,18 +1864,12 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     // Ban server messages (self-documenting via const calculations)
     m.insert(
         "BanCreateResponse",
-        FrameTypeInfo::new(
-            pad_limit(BAN_CREATE_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, nickname/range operations can affect many IPs)
     m.insert(
         "BanDeleteResponse",
-        FrameTypeInfo::new(
-            pad_limit(BAN_DELETE_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, nickname/range operations can affect many IPs)
     m.insert(
         "BanListResponse",
         FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
@@ -2103,18 +1878,12 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     // Trust server messages (self-documenting via const calculations)
     m.insert(
         "TrustCreateResponse",
-        FrameTypeInfo::new(
-            pad_limit(TRUST_CREATE_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, nickname/range operations can affect many IPs)
     m.insert(
         "TrustDeleteResponse",
-        FrameTypeInfo::new(
-            pad_limit(TRUST_DELETE_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, nickname/range operations can affect many IPs)
     m.insert(
         "TrustListResponse",
         FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
@@ -2328,11 +2097,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
     // Voice server messages (self-documenting via const calculations)
     m.insert(
         "VoiceJoinResponse",
-        FrameTypeInfo::new(
-            pad_limit(VOICE_JOIN_RESPONSE_SIZE as u64),
-            FrameContexts::BBS_SERVER,
-        ),
-    );
+        FrameTypeInfo::new(0, FrameContexts::BBS_SERVER),
+    ); // unlimited (server-trusted, voice participants are not capped)
     m.insert(
         "VoiceLeaveResponse",
         FrameTypeInfo::new(
@@ -2457,10 +2223,7 @@ pub fn known_message_types() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{
-        ChannelJoinInfo, ChatAction, ClientMessage, GroupInfo, ServerInfo, ServerMessage, UserInfo,
-        UserInfoDetailed,
-    };
+    use crate::protocol::{ChatAction, ClientMessage, ServerInfo, ServerMessage};
     use crate::tracker_protocol::{ServerEntry, TrackerClientMessage, TrackerServerMessage};
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH,
@@ -2953,13 +2716,13 @@ mod tests {
 
     #[test]
     fn untrusted_context_types_have_nonzero_limits() {
-        // Every context except the logged-in BBS server→client stream reads
-        // from an untrusted or semi-trusted peer, so a 0 ("unlimited") payload
-        // limit there would reopen the pre-auth allocation crash.
+        // Client→server, transfer-control, and tracker contexts read from
+        // untrusted or semi-trusted peers, so a 0 ("unlimited") payload limit
+        // there would reopen the allocation crash. BBS server→client phases
+        // are server-trusted and may carry unbounded server-state snapshots.
         let untrusted = FrameContexts::CLIENT_HANDSHAKE
             | FrameContexts::CLIENT_LOGIN
             | FrameContexts::SERVER_HANDSHAKE_RESPONSE
-            | FrameContexts::SERVER_LOGIN_RESPONSE
             | FrameContexts::BBS_CLIENT
             | FrameContexts::TRANSFER_CLIENT
             | FrameContexts::TRANSFER_SERVER
@@ -3492,67 +3255,7 @@ mod tests {
 
     #[test]
     fn test_limit_chat_join_response() {
-        let msg = ServerMessage::ChatJoinResponse {
-            success: false,
-            error: None,
-            channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
-            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
-            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-            secret: Some(false),
-            members: Some(vec![str_of_len(MAX_NICKNAME_LENGTH); 50]),
-            voiced: Some(vec![str_of_len(MAX_NICKNAME_LENGTH); 50]),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("ChatJoinResponse") as usize;
-        assert!(
-            size <= limit,
-            "ChatJoinResponse success size {} exceeds limit {}",
-            size,
-            limit
-        );
-
-        // Test error case
-        let error_msg = ServerMessage::ChatJoinResponse {
-            success: false,
-            error: Some(str_of_len(MAX_ERROR_LENGTH)),
-            channel: None,
-            topic: None,
-            topic_set_by: None,
-            secret: None,
-            members: None,
-            voiced: None,
-        };
-        let error_size = json_size(&error_msg);
-        assert!(
-            error_size <= limit,
-            "ChatJoinResponse error size {} exceeds limit {}",
-            error_size,
-            limit
-        );
-    }
-
-    #[test]
-    fn test_limit_chat_join_response_with_many_members() {
-        let msg = ServerMessage::ChatJoinResponse {
-            success: false,
-            error: None,
-            channel: Some(str_of_len(MAX_CHANNEL_LENGTH)),
-            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
-            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-            secret: Some(false),
-            // Members array - MAX_CHANNEL_MEMBERS at max nickname length
-            members: Some(vec![str_of_len(MAX_NICKNAME_LENGTH); MAX_CHANNEL_MEMBERS]),
-            // Voiced array - same size as members for worst case
-            voiced: Some(vec![str_of_len(MAX_NICKNAME_LENGTH); MAX_CHANNEL_MEMBERS]),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("ChatJoinResponse") as usize;
-        assert!(
-            size <= limit,
-            "ChatJoinResponse error size {} exceeds limit {}",
-            size,
-            limit
-        );
+        assert_eq!(max_payload_for_type("ChatJoinResponse"), 0);
     }
 
     #[test]
@@ -3723,67 +3426,7 @@ mod tests {
 
     #[test]
     fn test_limit_login_response() {
-        // Create channel join info for auto-joined channels (~10 channels with ~50 members each)
-        let channel_info = ChannelJoinInfo {
-            channel: str_of_len(MAX_CHANNEL_LENGTH),
-            topic: Some(str_of_len(MAX_CHAT_TOPIC_LENGTH)),
-            topic_set_by: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-            secret: false,
-            members: (0..50).map(|_| str_of_len(MAX_NICKNAME_LENGTH)).collect(),
-            voiced: Some((0..50).map(|_| str_of_len(MAX_NICKNAME_LENGTH)).collect()),
-        };
-        let channels: Vec<ChannelJoinInfo> = (0..10).map(|_| channel_info.clone()).collect();
-
-        let msg = ServerMessage::LoginResponse {
-            success: false,
-            error: None,
-            session_id: Some(u32::MAX),
-            user_id: Some(i64::MAX),
-            is_admin: Some(false),
-            permissions: Some(
-                (0..PERMISSIONS_COUNT)
-                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
-                    .collect(),
-            ),
-            features: Some(
-                (0..MAX_FEATURES_COUNT)
-                    .map(|_| str_of_len(MAX_FEATURE_LENGTH))
-                    .collect(),
-            ),
-            server_info: Some(ServerInfo {
-                name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
-                description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
-                public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
-                version: Some(str_of_len(MAX_VERSION_LENGTH)),
-                max_connections_per_ip: Some(u32::MAX),
-                max_transfers_per_ip: Some(u32::MAX),
-                image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
-                transfer_port: u16::MAX,
-                transfer_websocket_port: Some(u16::MAX),
-                file_reindex_interval: Some(u32::MAX),
-                persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
-                auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
-                chat_burst_limit: Some(u32::MAX),
-                chat_rate_limit: Some(u32::MAX),
-                min_password_strength: Some(u8::MAX),
-                log_level: Some(str_of_len(MAX_LOG_LEVEL_LENGTH)),
-                max_outbound_rate: Some(u64::MAX),
-                scheduler_chunk_size: Some(u32::MAX),
-            }),
-            locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
-            channels: Some(channels),
-            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-            group_id: Some(i64::MAX),
-            group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("LoginResponse") as usize;
-        assert!(
-            size <= limit,
-            "LoginResponse size {} exceeds limit {}",
-            size,
-            limit
-        );
+        assert_eq!(max_payload_for_type("LoginResponse"), 0);
     }
 
     #[test]
@@ -3892,31 +3535,7 @@ mod tests {
 
     #[test]
     fn test_limit_user_connected() {
-        let msg = ServerMessage::UserConnected {
-            user: UserInfo {
-                id: i64::MAX,
-                username: str_of_len(MAX_USERNAME_LENGTH),
-                nickname: str_of_len(MAX_NICKNAME_LENGTH),
-                login_time: i64::MAX,
-                is_admin: false,
-                is_shared: false,
-                session_ids: vec![u32::MAX; 10],
-                locale: str_of_len(MAX_LOCALE_LENGTH),
-                avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
-                is_away: false,
-                status: Some(str_of_len(MAX_STATUS_LENGTH)),
-                group_id: Some(i64::MAX),
-                group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-                bandwidth_weight: u16::MAX,
-            },
-        };
-        assert!(
-            json_size(&msg) <= max_payload_for_type("UserConnected") as usize,
-            "{} size {} exceeds limit {}",
-            "UserConnected",
-            json_size(&msg),
-            max_payload_for_type("UserConnected")
-        );
+        assert_eq!(max_payload_for_type("UserConnected"), 0);
     }
 
     #[test]
@@ -3969,54 +3588,7 @@ mod tests {
 
     #[test]
     fn test_limit_user_edit_response() {
-        let msg = ServerMessage::UserEditResponse {
-            success: false,
-            error: None,
-            id: Some(i64::MAX),
-            username: Some(str_of_len(MAX_USERNAME_LENGTH)),
-            is_admin: Some(false),
-            is_shared: Some(false),
-            enabled: Some(false),
-            permissions: Some(
-                (0..PERMISSIONS_COUNT)
-                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
-                    .collect(),
-            ),
-            bandwidth_weight: Some(u16::MAX),
-            group_id: Some(i64::MAX),
-            group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-            group_permissions: Some(
-                (0..PERMISSIONS_COUNT)
-                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
-                    .collect(),
-            ),
-            revoked_permissions: Some(
-                (0..PERMISSIONS_COUNT)
-                    .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
-                    .collect(),
-            ),
-            available_groups: Some(
-                (0..MAX_GROUPS)
-                    .map(|_| GroupInfo {
-                        id: i64::MAX,
-                        name: str_of_len(MAX_GROUP_NAME_LENGTH),
-                        is_shared: false,
-                        member_count: u32::MAX,
-                        permissions: (0..PERMISSIONS_COUNT)
-                            .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
-                            .collect(),
-                        bandwidth_weight: u16::MAX,
-                    })
-                    .collect(),
-            ),
-        };
-        assert!(
-            json_size(&msg) <= max_payload_for_type("UserEditResponse") as usize,
-            "{} size {} exceeds limit {}",
-            "UserEditResponse",
-            json_size(&msg),
-            max_payload_for_type("UserEditResponse")
-        );
+        assert_eq!(max_payload_for_type("UserEditResponse"), 0);
     }
 
     #[test]
@@ -4036,39 +3608,7 @@ mod tests {
 
     #[test]
     fn test_limit_user_info_response() {
-        let msg = ServerMessage::UserInfoResponse {
-            success: false,
-            error: None,
-            user: Some(UserInfoDetailed {
-                id: i64::MAX,
-                username: str_of_len(MAX_USERNAME_LENGTH),
-                nickname: str_of_len(MAX_NICKNAME_LENGTH),
-                login_time: i64::MAX,
-                is_shared: false,
-                session_ids: vec![u32::MAX; 10],
-                features: (0..MAX_FEATURES_COUNT)
-                    .map(|_| str_of_len(MAX_FEATURE_LENGTH))
-                    .collect(),
-                created_at: i64::MAX,
-                locale: str_of_len(MAX_LOCALE_LENGTH),
-                avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
-                is_admin: false,
-                addresses: Some(vec![str_of_len(45); 10]),
-                is_away: false,
-                status: Some(str_of_len(MAX_STATUS_LENGTH)),
-                channels: Some((0..100).map(|_| str_of_len(MAX_CHANNEL_LENGTH)).collect()),
-                group_id: Some(i64::MAX),
-                group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-                bandwidth_weight: u16::MAX,
-            }),
-        };
-        assert!(
-            json_size(&msg) <= max_payload_for_type("UserInfoResponse") as usize,
-            "{} size {} exceeds limit {}",
-            "UserInfoResponse",
-            json_size(&msg),
-            max_payload_for_type("UserInfoResponse")
-        );
+        assert_eq!(max_payload_for_type("UserInfoResponse"), 0);
     }
 
     #[test]
@@ -4134,32 +3674,7 @@ mod tests {
 
     #[test]
     fn test_limit_user_updated() {
-        let msg = ServerMessage::UserUpdated {
-            previous_username: str_of_len(MAX_USERNAME_LENGTH),
-            user: UserInfo {
-                id: i64::MAX,
-                username: str_of_len(MAX_USERNAME_LENGTH),
-                nickname: str_of_len(MAX_NICKNAME_LENGTH),
-                login_time: i64::MAX,
-                is_admin: false,
-                is_shared: false,
-                session_ids: vec![u32::MAX; 10],
-                locale: str_of_len(MAX_LOCALE_LENGTH),
-                avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
-                is_away: false,
-                status: Some(str_of_len(MAX_STATUS_LENGTH)),
-                group_id: Some(i64::MAX),
-                group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-                bandwidth_weight: u16::MAX,
-            },
-        };
-        assert!(
-            json_size(&msg) <= max_payload_for_type("UserUpdated") as usize,
-            "{} size {} exceeds limit {}",
-            "UserUpdated",
-            json_size(&msg),
-            max_payload_for_type("UserUpdated")
-        );
+        assert_eq!(max_payload_for_type("UserUpdated"), 0);
     }
 
     #[test]
@@ -4226,40 +3741,12 @@ mod tests {
 
     #[test]
     fn test_limit_ban_create_response() {
-        // Max size: success + error (2048) + ips array + nickname (32) + overhead
-        let msg = ServerMessage::BanCreateResponse {
-            success: false,
-            error: Some(str_of_len(2048)),
-            ips: Some(vec![str_of_len(45)]), // One IPv6 address
-            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("BanCreateResponse") as usize;
-        assert!(
-            size <= limit,
-            "BanCreateResponse size {} exceeds limit {}",
-            size,
-            limit
-        );
+        assert_eq!(max_payload_for_type("BanCreateResponse"), 0);
     }
 
     #[test]
     fn test_limit_ban_delete_response() {
-        // Max size: success + error (2048) + ips array + nickname (32) + overhead
-        let msg = ServerMessage::BanDeleteResponse {
-            success: false,
-            error: Some(str_of_len(2048)),
-            ips: Some(vec![str_of_len(45)]), // One IPv6 address
-            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("BanDeleteResponse") as usize;
-        assert!(
-            size <= limit,
-            "BanDeleteResponse size {} exceeds limit {}",
-            size,
-            limit
-        );
+        assert_eq!(max_payload_for_type("BanDeleteResponse"), 0);
     }
 
     #[test]
@@ -4320,40 +3807,12 @@ mod tests {
 
     #[test]
     fn test_limit_trust_create_response() {
-        // Max size: success + error (2048) + ips array + nickname (32) + overhead
-        let msg = ServerMessage::TrustCreateResponse {
-            success: false,
-            error: Some(str_of_len(2048)),
-            ips: Some(vec![str_of_len(45)]), // One IPv6 address
-            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("TrustCreateResponse") as usize;
-        assert!(
-            size <= limit,
-            "TrustCreateResponse size {} exceeds limit {}",
-            size,
-            limit
-        );
+        assert_eq!(max_payload_for_type("TrustCreateResponse"), 0);
     }
 
     #[test]
     fn test_limit_trust_delete_response() {
-        // Max size: success + error (2048) + ips array + nickname (32) + overhead
-        let msg = ServerMessage::TrustDeleteResponse {
-            success: false,
-            error: Some(str_of_len(2048)),
-            ips: Some(vec![str_of_len(45)]), // One IPv6 address
-            nickname: Some(str_of_len(MAX_NICKNAME_LENGTH)),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("TrustDeleteResponse") as usize;
-        assert!(
-            size <= limit,
-            "TrustDeleteResponse size {} exceeds limit {}",
-            size,
-            limit
-        );
+        assert_eq!(max_payload_for_type("TrustDeleteResponse"), 0);
     }
 
     #[test]
@@ -5081,6 +4540,11 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_limit_voice_join_response() {
+        assert_eq!(max_payload_for_type("VoiceJoinResponse"), 0);
+    }
+
     // =========================================================================
     // UTF-8 stress tests: chars-counted fields filled with 4-byte chars
     // =========================================================================
@@ -5188,54 +4652,6 @@ mod tests {
         assert!(
             size <= limit,
             "TrackerServerRegister (UTF-8 stress) size {size} exceeds limit {limit}"
-        );
-    }
-
-    #[test]
-    fn test_limit_login_response_utf8_stress() {
-        // Regression test for the SERVER_INFO_STRUCT_SIZE bug: server
-        // name in the embedded ServerInfo used `json_first_string_field`
-        // (byte budget) for a chars-counted constant. A multi-byte server
-        // name at the cap blew the budget.
-        let msg = ServerMessage::LoginResponse {
-            success: true,
-            error: None,
-            session_id: Some(1),
-            user_id: Some(1),
-            is_admin: Some(false),
-            permissions: Some(vec![]),
-            features: Some(vec![unicode_str_of_len(MAX_FEATURE_LENGTH)]),
-            server_info: Some(ServerInfo {
-                name: Some(unicode_str_of_len(MAX_SERVER_NAME_LENGTH)),
-                description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
-                public_address: None,
-                version: Some("0.9.2".to_string()),
-                max_connections_per_ip: None,
-                max_transfers_per_ip: None,
-                image: None,
-                transfer_port: 0,
-                transfer_websocket_port: None,
-                file_reindex_interval: None,
-                persistent_channels: None,
-                auto_join_channels: None,
-                chat_burst_limit: None,
-                chat_rate_limit: None,
-                min_password_strength: None,
-                log_level: None,
-                max_outbound_rate: None,
-                scheduler_chunk_size: None,
-            }),
-            locale: Some("en".to_string()),
-            channels: Some(vec![]),
-            nickname: Some(unicode_str_of_len(MAX_NICKNAME_LENGTH)),
-            group_id: None,
-            group_name: Some(unicode_str_of_len(MAX_GROUP_NAME_LENGTH)),
-        };
-        let size = json_size(&msg);
-        let limit = max_payload_for_type("LoginResponse") as usize;
-        assert!(
-            size <= limit,
-            "LoginResponse (UTF-8 stress) size {size} exceeds limit {limit}"
         );
     }
 }

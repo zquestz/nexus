@@ -35,7 +35,7 @@ const DUMMY_VERIFY_PASSWORD: &str = "nexus-login-timing-equalizer";
 /// `dummy_hash_matches_current_argon2_defaults` test fails — regenerate this
 /// value from `DUMMY_VERIFY_PASSWORD` so the equalizer cost still matches the
 /// cost of verifying accounts hashed by the new defaults.
-pub const DUMMY_VERIFY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$7RgGov81OJ457eyqQUa7XQ$LFQL/pSW4kjwXefB0uoiSeE4qrWNIKON7v/AUn7eH/0";
+const DUMMY_VERIFY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$7RgGov81OJ457eyqQUa7XQ$LFQL/pSW4kjwXefB0uoiSeE4qrWNIKON7v/AUn7eH/0";
 
 #[derive(Debug)]
 pub enum PasswordError {
@@ -185,6 +185,17 @@ pub async fn verify_password_async(
         .unwrap_or(Err(PasswordError::TaskJoin))
 }
 
+/// Verify against the fixed dummy Argon2 hash used for unknown-user login timing.
+///
+/// This deliberately routes through [`verify_password_async`], not
+/// [`hash_password_async`], so weak or empty passwords use the same lenient
+/// validation and Argon2 work as a wrong password for a real account.
+pub async fn verify_unknown_user_password_for_timing(
+    password: String,
+) -> Result<bool, PasswordError> {
+    verify_password_async(password, DUMMY_VERIFY_HASH.to_string()).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,6 +233,14 @@ mod tests {
         assert!(matches!(
             verify_password(DUMMY_VERIFY_PASSWORD, DUMMY_VERIFY_HASH),
             Ok(true)
+        ));
+    }
+
+    #[tokio::test]
+    async fn unknown_user_timing_helper_accepts_weak_password_input() {
+        assert!(matches!(
+            verify_unknown_user_password_for_timing("a".to_string()).await,
+            Ok(false)
         ));
     }
 

@@ -32,7 +32,7 @@ use toolbar::{breadcrumb_bar, search_breadcrumb, search_input_row, toolbar};
 use iced::widget::{Space, button, column, container, row, scrollable, stack, tooltip};
 use iced::{Center, Element, Fill, alignment};
 use nexus_common::names::fold_name;
-use nexus_common::protocol::{FileEntry, FileSearchResult};
+use nexus_common::protocol::{FileEntry, FileEntryDirType, FileSearchResult};
 
 use crate::i18n::t;
 use crate::icon;
@@ -578,7 +578,7 @@ mod tests {
         assert_file_hash_changes(|d| d.rows[0].entry.name = "other.txt".to_string());
         assert_file_hash_changes(|d| d.rows[0].entry.size = 200);
         assert_file_hash_changes(|d| d.rows[0].entry.modified = 2000);
-        assert_file_hash_changes(|d| d.rows[0].entry.dir_type = Some("upload".to_string()));
+        assert_file_hash_changes(|d| d.rows[0].entry.dir_type = Some(FileEntryDirType::Upload));
         assert_file_hash_changes(|d| d.rows[0].entry.can_upload = true);
         assert_file_hash_changes(|d| d.rows[0].path = "/other.txt".to_string());
         assert_file_hash_changes(|d| d.rows[0].is_cut = true);

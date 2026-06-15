@@ -480,6 +480,8 @@ impl RelayedVoicePacket {
     }
 }
 
+const _: () = assert!(RelayedVoicePacket::MAX_SENDER_LEN <= u8::MAX as usize);
+
 fn sender_prefix_len(sender: &str, max_len: usize) -> usize {
     if sender.len() <= max_len {
         return sender.len();

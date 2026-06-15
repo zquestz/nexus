@@ -91,6 +91,11 @@ pub const DEFAULT_REFRESH_INTERVAL_SECS: u32 = 300;
 /// paths.
 pub const DEFAULT_LOCALE: &str = "en";
 
+/// Owned default locale string for Serde `default =` hooks.
+pub fn default_locale() -> String {
+    DEFAULT_LOCALE.to_string()
+}
+
 /// Owner-only directory mode for daemon data directories on Unix.
 ///
 /// Used by `nexus-server` and `nexus-tracker` for both the data
