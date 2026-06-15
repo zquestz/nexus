@@ -20,6 +20,7 @@ use super::{
     ScrollState, ServerInfoEditState, ServerInfoTab, TrackerManagementState, UserInfo,
     UserManagementState, VoiceState,
 };
+use crate::i18n::t;
 use crate::image::CachedImage;
 
 // =============================================================================
@@ -618,7 +619,7 @@ impl ServerConnection {
         let message_id = MessageId::new();
         self.tx
             .send((message_id, message))
-            .map_err(|e| e.to_string())?;
+            .map_err(|_| t("err-connection-broken"))?;
         Ok(message_id)
     }
 
@@ -822,6 +823,15 @@ mod tests {
             tx,
             shutdown_handle: Arc::new(Mutex::new(None)),
         })
+    }
+
+    #[test]
+    fn send_closed_command_channel_returns_localized_connection_error() {
+        let conn = test_connection();
+        let err = conn
+            .send(ClientMessage::Ping)
+            .expect_err("send should fail");
+        assert_eq!(err, t("err-connection-broken"));
     }
 
     /// An info message stamped `secs` past the epoch with `text` as its body, so tests
