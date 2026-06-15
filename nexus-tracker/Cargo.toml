@@ -1,7 +1,7 @@
 [package]
 name = "nexus-tracker"
 version = "0.1.3"
-edition = "2024"
+edition.workspace = true
 license = "MIT"
 authors = ["Josh Ellithorpe <quest@mac.com>"]
 description = "Discovery service for Nexus BBS servers"

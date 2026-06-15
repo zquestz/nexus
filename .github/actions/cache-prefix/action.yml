@@ -1,0 +1,17 @@
+name: Cache Prefix
+description: Build a cache key prefix that includes the hosted runner image version.
+outputs:
+  prefix:
+    description: Cache key prefix.
+    value: ${{ steps.prefix.outputs.prefix }}
+runs:
+  using: composite
+  steps:
+    - name: Set cache prefix
+      id: prefix
+      shell: bash
+      run: |
+        image_os="${ImageOS:-${RUNNER_OS:-unknown-os}}"
+        image_version="${ImageVersion:-unknown-image}"
+        arch="$(printf '%s' "${RUNNER_ARCH:-unknown-arch}" | tr '[:upper:]' '[:lower:]')"
+        echo "prefix=${image_os}-${image_version}-${arch}" >> "$GITHUB_OUTPUT"

@@ -35,10 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Set lowercase arch
         id: arch
         shell: bash
-        run: echo "arch=$(echo ${{ runner.arch }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        run: |
+          arch="$(printf '%s' "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')"
+          printf 'arch=%s\n' "$arch" >> "$GITHUB_OUTPUT"
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -55,6 +61,7 @@ jobs:
 
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: reg add HKLM\SYSTEM\CurrentControlSet\Control\FileSystem /v LongPathsEnabled /t REG_DWORD /d 1 /f
 
       - name: Install Windows dependencies
@@ -68,26 +75,26 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-index-
 
       - name: Cache cargo build
         if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-build-v3-
 
       - name: Run tests
         run: cargo test --workspace --verbose
@@ -98,6 +105,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
 
       - name: Install Linux dependencies
         run: |
@@ -116,25 +127,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: linux-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-x64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-x64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: linux-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-x64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-x64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: clippy-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-clippy-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            clippy-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-clippy-cargo-build-v3-
 
       - name: Run clippy
         run: cargo clippy --all-targets --workspace -- -D warnings
@@ -162,6 +173,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -172,32 +187,32 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-arm64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-client-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-client-cargo-build-v3-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: cargo-bundle-macos-arm64-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-macos-arm64-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -240,6 +255,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -252,25 +271,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-x64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-x64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-x64-client-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-x64-client-cargo-build-v3-
 
       - name: Build client (x64)
         run: cargo build --release --package nexus-client --target x86_64-apple-darwin
@@ -331,6 +350,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Linux dependencies
         run: |
           # Remove Microsoft repos that cause 403 errors on ARM runners
@@ -347,32 +370,32 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: linux-${{ matrix.arch }}-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-client-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-client-cargo-build-v3-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: cargo-bundle-linux-${{ matrix.arch }}-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-linux-${{ matrix.arch }}-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -394,7 +417,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Enable long paths
+        shell: pwsh
         run: reg add HKLM\SYSTEM\CurrentControlSet\Control\FileSystem /v LongPathsEnabled /t REG_DWORD /d 1 /f
 
       - name: Install Windows dependencies
@@ -407,24 +435,24 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle.exe
-          key: cargo-bundle-windows-x64-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-x64-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -443,11 +471,27 @@ jobs:
 
   # Test Docker image build
   docker-build:
-    name: Docker Build
+    name: Docker Build (${{ matrix.image }})
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: server
+            dockerfile: Dockerfile
+            tag: nexusd:ci-test
+            cache_scope: nexusd-ci
+          - image: tracker
+            dockerfile: Dockerfile.tracker
+            tag: nexus-trackerd:ci-test
+            cache_scope: nexus-trackerd-ci
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -456,7 +500,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           push: false
-          tags: nexusd:ci-test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ matrix.tag }}
+          cache-from: type=gha,scope=${{ steps.cache-prefix.outputs.prefix }}-${{ matrix.cache_scope }}
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-prefix.outputs.prefix }}-${{ matrix.cache_scope }}

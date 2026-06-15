@@ -31,6 +31,7 @@ jobs:
       major: ${{ steps.extract.outputs.major }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Extract tracker version
@@ -43,9 +44,11 @@ jobs:
             echo "::error::nexus-tracker version not extractable: '$VERSION'" >&2
             exit 1
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "major_minor=$(echo "$VERSION" | cut -d. -f1-2)" >> "$GITHUB_OUTPUT"
-          echo "major=$(echo "$VERSION" | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+          {
+            printf 'version=%s\n' "$VERSION"
+            printf 'major_minor=%s\n' "${VERSION%.*}"
+            printf 'major=%s\n' "${VERSION%%.*}"
+          } >> "$GITHUB_OUTPUT"
 
   # Build Linux client packages (deb, rpm, appimage)
   build-linux-client:
@@ -63,6 +66,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install dependencies
         run: |
           # Remove Microsoft repos that cause 403 errors on ARM runners
@@ -79,32 +86,32 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: linux-${{ matrix.arch }}-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-client-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-client-cargo-build-v3-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: cargo-bundle-linux-${{ matrix.arch }}-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-linux-${{ matrix.arch }}-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -112,7 +119,7 @@ jobs:
 
       - name: Get version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: printf 'VERSION=%s\n' "${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Build deb package
         working-directory: nexus-client
@@ -150,6 +157,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -157,32 +168,32 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: linux-${{ matrix.arch }}-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-server-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-server-cargo-build-v3-
 
       - name: Build server
         run: cargo build --release --package nexus-server
 
       - name: Get version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: printf 'VERSION=%s\n' "${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Package server
         run: |
@@ -216,6 +227,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -223,25 +238,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: linux-${{ matrix.arch }}-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-tracker-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-linux-${{ matrix.arch }}-tracker-cargo-build-v3-
 
       - name: Build tracker
         run: cargo build --release --package nexus-tracker
@@ -269,6 +284,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -279,32 +298,32 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-arm64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-client-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-client-cargo-build-v3-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: cargo-bundle-macos-arm64-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-macos-arm64-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -347,6 +366,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -359,25 +382,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-x64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-x64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-x64-client-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-x64-client-cargo-build-v3-
 
       - name: Build client (x64)
         run: cargo build --release --package nexus-client --target x86_64-apple-darwin
@@ -415,7 +438,7 @@ jobs:
 
       - name: Get version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: printf 'VERSION=%s\n' "${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Create universal binary and replace in bundle
         run: |
@@ -477,6 +500,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -486,25 +513,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-server-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-server-cargo-build-v3-
 
       - name: Build server (arm64)
         run: cargo build --release --package nexus-server --target aarch64-apple-darwin
@@ -514,7 +541,7 @@ jobs:
 
       - name: Get version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: printf 'VERSION=%s\n' "${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Package server (x64)
         run: |
@@ -549,6 +576,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -558,25 +589,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-arm64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-macos-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-tracker-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-macos-tracker-cargo-build-v3-
 
       - name: Build tracker (arm64)
         run: cargo build --release --package nexus-tracker --target aarch64-apple-darwin
@@ -616,7 +647,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Enable long paths
+        shell: pwsh
         run: reg add HKLM\SYSTEM\CurrentControlSet\Control\FileSystem /v LongPathsEnabled /t REG_DWORD /d 1 /f
 
       - name: Install Windows dependencies
@@ -629,29 +665,29 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-
 
       - name: Get version from tag
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: printf 'VERSION=%s\n' "${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle.exe
-          key: cargo-bundle-windows-x64-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-x64-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -688,6 +724,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -695,25 +735,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: windows-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-server-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-server-cargo-build-v3-
 
       - name: Build server
         run: cargo build --release --package nexus-server
@@ -721,7 +761,7 @@ jobs:
       - name: Get version from tag
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: printf 'VERSION=%s\n' "${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Package server
         shell: bash
@@ -747,6 +787,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -754,25 +798,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-x64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: windows-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-tracker-cargo-build-v3-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-tracker-cargo-build-v3-
 
       - name: Build tracker
         run: cargo build --release --package nexus-tracker
@@ -805,7 +849,7 @@ jobs:
 
       - name: Get version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: printf 'VERSION=%s\n' "${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Download Linux client artifacts
         uses: actions/download-artifact@v4
@@ -893,7 +937,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd release
-          sha256sum * > SHA256SUMS.txt
+          sha256sum ./* > SHA256SUMS.txt
           echo "Checksums:"
           cat SHA256SUMS.txt
 
@@ -972,6 +1016,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -996,8 +1044,8 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64-${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-amd64
-          cache-to: type=gha,mode=max,scope=docker-amd64
+          cache-from: type=gha,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-amd64
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-amd64
 
   # Build Docker image (arm64) - native build
   build-docker-arm64:
@@ -1009,6 +1057,10 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -1034,8 +1086,8 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64-${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-arm64
-          cache-to: type=gha,mode=max,scope=docker-arm64
+          cache-from: type=gha,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-arm64
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-arm64
 
   # Build tracker Docker image (amd64) - native build
   build-docker-tracker-amd64:
@@ -1047,6 +1099,10 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -1073,8 +1129,8 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}:amd64-${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-tracker-amd64
-          cache-to: type=gha,mode=max,scope=docker-tracker-amd64
+          cache-from: type=gha,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-tracker-amd64
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-tracker-amd64
 
   # Build tracker Docker image (arm64) - native build
   build-docker-tracker-arm64:
@@ -1086,6 +1142,10 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set cache key prefix
+        id: cache-prefix
+        uses: ./.github/actions/cache-prefix
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -1112,8 +1172,8 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}:arm64-${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-tracker-arm64
-          cache-to: type=gha,mode=max,scope=docker-tracker-arm64
+          cache-from: type=gha,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-tracker-arm64
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-prefix.outputs.prefix }}-docker-tracker-arm64
 
   # Merge Docker manifests into multi-arch image
   docker-manifest:

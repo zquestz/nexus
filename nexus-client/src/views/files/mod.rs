@@ -32,7 +32,7 @@ use toolbar::{breadcrumb_bar, search_breadcrumb, search_input_row, toolbar};
 use iced::widget::{Space, button, column, container, row, scrollable, stack, tooltip};
 use iced::{Center, Element, Fill, alignment};
 use nexus_common::names::fold_name;
-use nexus_common::protocol::{FileEntry, FileEntryDirType, FileSearchResult};
+use nexus_common::protocol::{FileEntry, FileSearchResult};
 
 use crate::i18n::t;
 use crate::icon;
@@ -516,6 +516,8 @@ pub fn files_view<'a>(
 mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+
+    use nexus_common::protocol::FileEntryDirType;
 
     use super::*;
 
