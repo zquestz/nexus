@@ -926,25 +926,15 @@ impl NexusApp {
 
     /// Handle PTT release delay selection
     ///
-    /// Updates the setting immediately. The new delay will apply to the next
-    /// PTT release (no need to rejoin voice).
+    /// Updates the settings draft immediately. The new delay applies to the
+    /// next PTT release because voice reads from the current in-memory config,
+    /// but it is only persisted when Settings is saved.
     pub fn handle_audio_ptt_release_delay_selected(
         &mut self,
         delay: PttReleaseDelay,
     ) -> Task<Message> {
         self.config.settings.audio.ptt_release_delay = delay;
-        let save_task = match self.config.save() {
-            Ok(()) => Task::none(),
-            Err(e) => self.add_active_background_error_message(t_args(
-                "err-failed-save-config",
-                &[("error", &e)],
-            )),
-        };
-
-        // No need to update anything else - the delay is read from config
-        // each time PTT is released in handle_voice_ptt_state_changed()
-
-        save_task
+        Task::none()
     }
 
     /// Handle microphone test start
