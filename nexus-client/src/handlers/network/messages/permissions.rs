@@ -67,6 +67,11 @@ impl NexusApp {
             conn.user_message_voiced.clear();
         }
 
+        if had_user_list && !has_user_list {
+            conn.online_users.clear();
+            conn.expanded_user = None;
+        }
+
         // Update server info fields unconditionally (None means "cleared/not set").
         // Exception: image uses a guard because it's not sent in PermissionsUpdated,
         // so None means "not included" rather than "cleared".
@@ -146,7 +151,7 @@ mod tests {
     use nexus_common::names::fold_name;
     use tokio::sync::{Mutex, mpsc};
 
-    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams, UserInfo};
 
     fn test_connection(connection_id: usize) -> ServerConnection {
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -211,5 +216,34 @@ mod tests {
         let conn = app.connections.get(&1).expect("connection remains");
         assert!(conn.channel_voiced.is_empty());
         assert!(conn.user_message_voiced.is_empty());
+    }
+
+    #[test]
+    fn removing_user_list_clears_cached_user_list_state() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let mut conn = test_connection(1);
+        conn.permissions.push(PERMISSION_USER_LIST.to_string());
+        conn.expanded_user = Some("Alice".to_string());
+        conn.online_users.push(UserInfo {
+            id: 2,
+            username: "alice".to_string(),
+            nickname: "Alice".to_string(),
+            is_admin: false,
+            is_shared: false,
+            session_ids: vec![22],
+            avatar_hash: None,
+            is_away: false,
+            status: None,
+        });
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_permissions_updated(1, false, Vec::new(), None);
+
+        let conn = app.connections.get(&1).expect("connection remains");
+        assert!(conn.online_users.is_empty());
+        assert!(conn.expanded_user.is_none());
     }
 }
