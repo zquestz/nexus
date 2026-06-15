@@ -293,6 +293,11 @@ pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
 /// cancelled. Surfaces so callers fail closed rather than treating it as verify-success.
 pub const ERR_PASSWORD_TASK_JOIN: &str = "password task did not complete";
 
+pub const ERR_GROUP_DELETE_EMPTY_RETRY_FAILED: &str =
+    "group delete failed for existing empty group";
+pub const ERR_USER_UPDATE_NON_ADMIN_SCOPE_REQUIRED: &str =
+    "non-admin update_user caller must supply OwnedSubset scope and requester_bandwidth_max";
+
 // `files::index::FileIndex` prefixes, composed `format!("{}{}", PREFIX, err)`.
 pub const ERR_FILE_INDEX_CREATE_TEMP: &str = "Failed to create temp index: ";
 #[cfg(unix)]

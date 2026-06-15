@@ -7,6 +7,8 @@ pub const SQL_SET_CONFIG: &str = "UPDATE config SET value = ? WHERE key = ?";
 
 pub const SQL_GET_ALL_CONFIG: &str = "SELECT key, value FROM config";
 
+pub const SQL_BEGIN_IMMEDIATE: &str = "BEGIN IMMEDIATE";
+
 /// Single-query bundle (rather than three separate `SQL_GET_CONFIG` calls) —
 /// small efficiency win on the tracker task's per-refresh hot path. Missing
 /// keys are simply absent from the result set.
@@ -314,6 +316,8 @@ pub const SQL_SELECT_ALL_GROUPS: &str =
 pub const SQL_SELECT_GROUP_BY_ID: &str =
     "SELECT id, name, is_shared, bandwidth_weight FROM groups WHERE id = ?";
 
+pub const SQL_SELECT_GROUP_ID: &str = "SELECT id FROM groups WHERE id = ?";
+
 /// Case-insensitive matching via the folded `name_lower` column (written as
 /// `fold_name(name)`); the original case is preserved in `name`. Bind the
 /// folded form (`fold_name(input)`), not the raw input.
@@ -435,6 +439,9 @@ pub mod test_sql {
 
     pub const SQL_COUNT_USER_PERMISSIONS: &str =
         "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?";
+
+    pub const SQL_UPDATE_ALL_NEWS_TIMESTAMPS: &str =
+        "UPDATE news SET created_at = ?, updated_at = ?";
 
     pub const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
 }

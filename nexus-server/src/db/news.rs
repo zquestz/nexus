@@ -275,7 +275,7 @@ mod tests {
             .await
             .unwrap();
 
-        sqlx::query("UPDATE news SET created_at = ?, updated_at = ?")
+        sqlx::query(sql::test_sql::SQL_UPDATE_ALL_NEWS_TIMESTAMPS)
             .bind(1_767_225_600_i64)
             .bind(1_767_225_600_i64)
             .execute(&pool)

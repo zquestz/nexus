@@ -11,6 +11,7 @@ use nexus_common::validators;
 use sqlx::SqliteConnection;
 use sqlx::sqlite::SqlitePool;
 
+use crate::constants::ERR_GROUP_DELETE_EMPTY_RETRY_FAILED;
 use crate::db::permissions::{Permission, Permissions};
 use crate::db::sql;
 use crate::db::util::clamp_db_bandwidth_weight;
@@ -373,7 +374,7 @@ impl GroupDb {
         let outcome = if result.rows_affected() > 0 {
             DeleteGroupResult::Deleted
         } else {
-            let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM groups WHERE id = ?")
+            let exists: Option<(i64,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_ID)
                 .bind(id)
                 .fetch_optional(&mut *tx)
                 .await?;
@@ -399,7 +400,7 @@ impl GroupDb {
                         DeleteGroupResult::Deleted
                     } else {
                         return Err(sqlx::Error::Protocol(
-                            "group delete failed for existing empty group".to_string(),
+                            ERR_GROUP_DELETE_EMPTY_RETRY_FAILED.to_string(),
                         ));
                     }
                 }
@@ -704,13 +705,13 @@ mod tests {
             .unwrap();
 
         // Assign users to group via direct SQL (update_user doesn't have group_id yet)
-        sqlx::query("UPDATE users SET group_id = ? WHERE id = ?")
+        sqlx::query(sql::SQL_UPDATE_USER_GROUP)
             .bind(group.id)
             .bind(user1.id)
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query("UPDATE users SET group_id = ? WHERE id = ?")
+        sqlx::query(sql::SQL_UPDATE_USER_GROUP)
             .bind(group.id)
             .bind(user2.id)
             .execute(&pool)
@@ -1231,7 +1232,7 @@ mod tests {
             .await
             .unwrap();
 
-        sqlx::query("UPDATE users SET group_id = ? WHERE id = ?")
+        sqlx::query(sql::SQL_UPDATE_USER_GROUP)
             .bind(group.id)
             .bind(user.id)
             .execute(&pool)
@@ -1272,14 +1273,15 @@ mod tests {
             .await
             .unwrap();
 
-        sqlx::query("UPDATE users SET group_id = ? WHERE id = ?")
+        sqlx::query(sql::SQL_UPDATE_USER_GROUP)
             .bind(group.id)
             .bind(user.id)
             .execute(&pool)
             .await
             .unwrap();
 
-        sqlx::query("UPDATE users SET group_id = NULL WHERE id = ?")
+        sqlx::query(sql::SQL_UPDATE_USER_GROUP)
+            .bind(None::<i64>)
             .bind(user.id)
             .execute(&pool)
             .await

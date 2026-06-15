@@ -4,8 +4,8 @@ use nexus_common::validators::MIN_BANDWIDTH_WEIGHT;
 use tracing::warn;
 
 use crate::constants::LOG_BANDWIDTH_WEIGHT_CLAMPED;
+use crate::db::sql;
 
-const SQL_BEGIN_IMMEDIATE: &str = "BEGIN IMMEDIATE";
 #[cfg(test)]
 const SQLITE_BUSY_PRIMARY: i32 = 5;
 #[cfg(test)]
@@ -18,7 +18,7 @@ const SQLITE_LOCKED_PRIMARY: i32 = 6;
 pub(super) async fn begin_immediate(
     pool: &sqlx::SqlitePool,
 ) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>, sqlx::Error> {
-    pool.begin_with(SQL_BEGIN_IMMEDIATE).await
+    pool.begin_with(sql::SQL_BEGIN_IMMEDIATE).await
 }
 
 /// True if `err` is a UNIQUE-constraint violation.
@@ -53,6 +53,10 @@ mod tests {
     use std::time::Duration;
 
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    const SQL_CREATE_TEST_ROWS: &str = "CREATE TABLE rows (id INTEGER PRIMARY KEY)";
+    const SQL_COUNT_TEST_ROWS: &str = "SELECT COUNT(*) FROM rows";
+    const SQL_INSERT_TEST_ROW: &str = "INSERT INTO rows (id) VALUES (1)";
 
     #[test]
     fn in_range_values_round_trip() {
@@ -93,18 +97,18 @@ mod tests {
             .await
             .expect("create sqlite pool");
 
-        sqlx::query("CREATE TABLE rows (id INTEGER PRIMARY KEY)")
+        sqlx::query(SQL_CREATE_TEST_ROWS)
             .execute(&pool)
             .await
             .expect("create table");
 
         let mut tx = begin_immediate(&pool).await.expect("begin immediate");
-        let _: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM rows")
+        let _: (i64,) = sqlx::query_as(SQL_COUNT_TEST_ROWS)
             .fetch_one(&mut *tx)
             .await
             .expect("read inside immediate tx");
 
-        let err = sqlx::query("INSERT INTO rows (id) VALUES (1)")
+        let err = sqlx::query(SQL_INSERT_TEST_ROW)
             .execute(&pool)
             .await
             .expect_err("competing writer should not acquire write slot");
@@ -115,7 +119,7 @@ mod tests {
 
         tx.commit().await.expect("commit immediate tx");
 
-        sqlx::query("INSERT INTO rows (id) VALUES (1)")
+        sqlx::query(SQL_INSERT_TEST_ROW)
             .execute(&pool)
             .await
             .expect("write succeeds after immediate tx commits");

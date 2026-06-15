@@ -7,6 +7,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use super::permissions::{Permission, Permissions};
 use super::util::{begin_immediate, clamp_db_bandwidth_weight, is_unique_violation};
+use crate::constants::ERR_USER_UPDATE_NON_ADMIN_SCOPE_REQUIRED;
 use crate::db::sql;
 
 pub struct CreateUserParams<'a> {
@@ -955,9 +956,7 @@ impl UserDb {
                 (PermissionWriteScope::OwnedSubset(o), Some(m)) => (o, m),
                 _ => {
                     return Err(sqlx::Error::Protocol(
-                        "non-admin update_user caller must supply OwnedSubset scope \
-                         and requester_bandwidth_max"
-                            .into(),
+                        ERR_USER_UPDATE_NON_ADMIN_SCOPE_REQUIRED.into(),
                     ));
                 }
             };
@@ -3999,12 +3998,11 @@ mod tests {
             .unwrap();
         assert_eq!(user.group_id, Some(group.id));
         let count_perm_rows = async |id: i64| -> i64 {
-            let (n,): (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM user_permissions WHERE user_id = ?")
-                    .bind(id)
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap();
+            let (n,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USER_PERMISSIONS)
+                .bind(id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
             n
         };
         assert!(
@@ -4196,13 +4194,11 @@ mod tests {
     /// Helper: snapshot a user's permission rows as `(permission, override_type)`
     /// pairs, sorted, for deterministic assertions.
     async fn snapshot_perm_rows(pool: &SqlitePool, user_id: i64) -> Vec<(String, String)> {
-        let mut rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT permission, override_type FROM user_permissions WHERE user_id = ?",
-        )
-        .bind(user_id)
-        .fetch_all(pool)
-        .await
-        .unwrap();
+        let mut rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
+            .bind(user_id)
+            .fetch_all(pool)
+            .await
+            .unwrap();
         rows.sort();
         rows
     }
