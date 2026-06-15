@@ -1,15 +1,14 @@
 //! IP ban database operations
 
-use std::net::IpAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ipnet::IpNet;
 use nexus_common::names::fold_name;
 use sqlx::sqlite::SqlitePool;
 
-use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_VALID_IP_PREFIX};
+use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use crate::db::sql;
-use crate::db::util::begin_immediate;
+use crate::db::util::{begin_immediate, target_is_contained_by_range};
 use crate::ip_rule_cache::assert_canonical_target;
 
 #[derive(Debug, Clone)]
@@ -207,30 +206,6 @@ impl BanDb {
 
         tx.commit().await?;
         Ok(deleted)
-    }
-}
-
-fn target_is_contained_by_range(target: &str, range: &IpNet) -> bool {
-    let ban_net = if let Ok(net) = target.parse::<IpNet>() {
-        net
-    } else if let Ok(ip) = target.parse::<IpAddr>() {
-        // A bare IP is treated as a single-host /32 or /128.
-        match ip {
-            IpAddr::V4(v4) => IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect(ERR_VALID_IP_PREFIX)),
-            IpAddr::V6(v6) => IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect(ERR_VALID_IP_PREFIX)),
-        }
-    } else {
-        return false;
-    };
-
-    match (&ban_net, range) {
-        (IpNet::V4(ban_v4), IpNet::V4(range_v4)) => {
-            range_v4.contains(&ban_v4.network()) && ban_v4.prefix_len() >= range_v4.prefix_len()
-        }
-        (IpNet::V6(ban_v6), IpNet::V6(range_v6)) => {
-            range_v6.contains(&ban_v6.network()) && ban_v6.prefix_len() >= range_v6.prefix_len()
-        }
-        _ => false,
     }
 }
 

@@ -1,9 +1,12 @@
 //! Internal helpers shared across the `db` submodules.
 
+use std::net::IpAddr;
+
+use ipnet::IpNet;
 use nexus_common::validators::MIN_BANDWIDTH_WEIGHT;
 use tracing::warn;
 
-use crate::constants::LOG_BANDWIDTH_WEIGHT_CLAMPED;
+use crate::constants::{ERR_VALID_IP_PREFIX, LOG_BANDWIDTH_WEIGHT_CLAMPED};
 use crate::db::sql;
 
 #[cfg(test)]
@@ -47,6 +50,32 @@ pub(super) fn clamp_db_bandwidth_weight(value: i64) -> u16 {
     clamped
 }
 
+pub(super) fn target_is_contained_by_range(target: &str, range: &IpNet) -> bool {
+    let target_net = if let Ok(net) = target.parse::<IpNet>() {
+        net
+    } else if let Ok(ip) = target.parse::<IpAddr>() {
+        // A bare IP is treated as a single-host /32 or /128.
+        match ip {
+            IpAddr::V4(v4) => IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect(ERR_VALID_IP_PREFIX)),
+            IpAddr::V6(v6) => IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect(ERR_VALID_IP_PREFIX)),
+        }
+    } else {
+        return false;
+    };
+
+    match (&target_net, range) {
+        (IpNet::V4(target_v4), IpNet::V4(range_v4)) => {
+            range_v4.contains(&target_v4.network())
+                && target_v4.prefix_len() >= range_v4.prefix_len()
+        }
+        (IpNet::V6(target_v6), IpNet::V6(range_v6)) => {
+            range_v6.contains(&target_v6.network())
+                && target_v6.prefix_len() >= range_v6.prefix_len()
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,6 +110,36 @@ mod tests {
         assert_eq!(clamp_db_bandwidth_weight(65536), u16::MAX);
         assert_eq!(clamp_db_bandwidth_weight(100_000), u16::MAX);
         assert_eq!(clamp_db_bandwidth_weight(i64::MAX), u16::MAX);
+    }
+
+    #[test]
+    fn target_range_contains_single_ip() {
+        let range = "192.0.2.0/24".parse::<IpNet>().expect("valid range");
+
+        assert!(target_is_contained_by_range("192.0.2.42", &range));
+    }
+
+    #[test]
+    fn target_range_contains_narrower_cidr() {
+        let range = "2001:db8::/32".parse::<IpNet>().expect("valid range");
+
+        assert!(target_is_contained_by_range("2001:db8:1::/48", &range));
+    }
+
+    #[test]
+    fn target_range_rejects_outside_or_wider_targets() {
+        let range = "192.0.2.0/24".parse::<IpNet>().expect("valid range");
+
+        assert!(!target_is_contained_by_range("192.0.3.1", &range));
+        assert!(!target_is_contained_by_range("192.0.0.0/16", &range));
+    }
+
+    #[test]
+    fn target_range_rejects_invalid_or_different_family_targets() {
+        let range = "192.0.2.0/24".parse::<IpNet>().expect("valid range");
+
+        assert!(!target_is_contained_by_range("not-an-ip", &range));
+        assert!(!target_is_contained_by_range("2001:db8::1", &range));
     }
 
     #[tokio::test]
