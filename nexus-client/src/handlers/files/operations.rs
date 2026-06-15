@@ -380,11 +380,20 @@ impl NexusApp {
             }
         };
 
-        conn.files_management.active_tab_mut().is_paste_submitting = true;
+        {
+            let tab = conn.files_management.active_tab_mut();
+            tab.error = None;
+            tab.is_paste_submitting = true;
+        }
 
-        let Ok(message_id) = conn.send(message) else {
-            conn.files_management.active_tab_mut().is_paste_submitting = false;
-            return Task::none();
+        let message_id = match conn.send(message) {
+            Ok(message_id) => message_id,
+            Err(e) => {
+                let tab = conn.files_management.active_tab_mut();
+                tab.is_paste_submitting = false;
+                tab.error = Some(format!("{}: {}", t("err-send-failed"), e));
+                return Task::none();
+            }
         };
 
         let routing = if is_move {
@@ -432,12 +441,7 @@ impl NexusApp {
             return Task::none();
         }
 
-        let Some(pending) = conn
-            .files_management
-            .active_tab_mut()
-            .pending_overwrite
-            .take()
-        else {
+        let Some(pending) = conn.files_management.active_tab().pending_overwrite.clone() else {
             return Task::none();
         };
 
@@ -462,12 +466,23 @@ impl NexusApp {
             }
         };
 
-        conn.files_management.active_tab_mut().is_paste_submitting = true;
+        {
+            let tab = conn.files_management.active_tab_mut();
+            tab.error = None;
+            tab.is_paste_submitting = true;
+        }
 
-        let Ok(message_id) = conn.send(message) else {
-            conn.files_management.active_tab_mut().is_paste_submitting = false;
-            return Task::none();
+        let message_id = match conn.send(message) {
+            Ok(message_id) => message_id,
+            Err(e) => {
+                let tab = conn.files_management.active_tab_mut();
+                tab.is_paste_submitting = false;
+                tab.error = Some(format!("{}: {}", t("err-send-failed"), e));
+                return Task::none();
+            }
         };
+
+        conn.files_management.active_tab_mut().pending_overwrite = None;
 
         let tab_id = conn.files_management.active_tab_id();
         let routing = if pending.is_move {
@@ -498,6 +513,7 @@ impl NexusApp {
         let tab = conn.files_management.active_tab_mut();
         tab.pending_overwrite = None;
         tab.is_paste_submitting = false;
+        tab.error = None;
 
         Task::none()
     }
@@ -528,5 +544,157 @@ impl NexusApp {
         tab.update_sorted_entries();
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::types::{
+        ConnectionInfo, PendingOverwrite, ServerConnection, ServerConnectionParams,
+    };
+
+    fn closed_connection(connection_id: usize) -> ServerConnection {
+        let (tx, rx) = mpsc::unbounded_channel();
+        drop(rx);
+
+        ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: "Test".to_string(),
+                address: "bbs.example".to_string(),
+                port: 7500,
+                transfer_port: 7501,
+                certificate_fingerprint: String::new(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: String::new(),
+            },
+            display_name: "Test".to_string(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    fn app_with_closed_connection() -> NexusApp {
+        let connection_id = 1;
+        let mut app = NexusApp {
+            active_connection: Some(connection_id),
+            ..NexusApp::default()
+        };
+        app.connections
+            .insert(connection_id, closed_connection(connection_id));
+        app
+    }
+
+    #[test]
+    fn paste_send_failure_shows_error_and_keeps_clipboard() {
+        let mut app = app_with_closed_connection();
+        let conn = app.connections.get_mut(&1).expect("connection exists");
+        conn.files_management.clipboard = Some(ClipboardItem {
+            path: "source.txt".to_string(),
+            name: "source.txt".to_string(),
+            operation: ClipboardOperation::Copy,
+            root: false,
+        });
+        conn.files_management.active_tab_mut().error = Some("stale error".to_string());
+
+        let task = app.handle_file_paste();
+        drop(task);
+
+        let conn = app.connections.get(&1).expect("connection exists");
+        let tab = conn.files_management.active_tab();
+        assert!(!tab.is_paste_submitting);
+        assert!(conn.files_management.clipboard.is_some());
+        assert!(
+            tab.error
+                .as_deref()
+                .is_some_and(|error| error.starts_with(&t("err-send-failed")))
+        );
+    }
+
+    #[test]
+    fn overwrite_send_failure_preserves_dialog_state() {
+        let mut app = app_with_closed_connection();
+        let conn = app.connections.get_mut(&1).expect("connection exists");
+        conn.files_management.active_tab_mut().pending_overwrite = Some(PendingOverwrite {
+            source_path: "source.txt".to_string(),
+            destination_dir: "dest".to_string(),
+            name: "source.txt".to_string(),
+            is_move: true,
+            source_root: false,
+            destination_root: false,
+        });
+        conn.files_management.active_tab_mut().error = Some("stale error".to_string());
+
+        let task = app.handle_file_overwrite_confirm();
+        drop(task);
+
+        let conn = app.connections.get(&1).expect("connection exists");
+        let tab = conn.files_management.active_tab();
+        assert!(!tab.is_paste_submitting);
+        assert!(tab.pending_overwrite.is_some());
+        assert!(
+            tab.error
+                .as_deref()
+                .is_some_and(|error| error.starts_with(&t("err-send-failed")))
+        );
+    }
+
+    #[test]
+    fn overwrite_cancel_clears_send_failure_error() {
+        let mut app = app_with_closed_connection();
+        let conn = app.connections.get_mut(&1).expect("connection exists");
+        conn.files_management.active_tab_mut().pending_overwrite = Some(PendingOverwrite {
+            source_path: "source.txt".to_string(),
+            destination_dir: "dest".to_string(),
+            name: "source.txt".to_string(),
+            is_move: true,
+            source_root: false,
+            destination_root: false,
+        });
+
+        let task = app.handle_file_overwrite_confirm();
+        drop(task);
+
+        let tab = app.connections[&1].files_management.active_tab();
+        assert!(tab.pending_overwrite.is_some());
+        assert!(tab.error.is_some());
+
+        let task = app.handle_file_overwrite_cancel();
+        drop(task);
+
+        let tab = app.connections[&1].files_management.active_tab();
+        assert!(tab.pending_overwrite.is_none());
+        assert!(tab.error.is_none());
+        assert!(!tab.is_paste_submitting);
     }
 }

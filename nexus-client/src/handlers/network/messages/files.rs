@@ -473,6 +473,7 @@ impl NexusApp {
                     {
                         tab.pending_overwrite = Some(pending);
                         tab.is_paste_submitting = false;
+                        tab.error = None;
                     }
                     Task::none()
                 }
@@ -581,6 +582,7 @@ impl NexusApp {
                     {
                         tab.pending_overwrite = Some(pending);
                         tab.is_paste_submitting = false;
+                        tab.error = None;
                     }
                     Task::none()
                 }

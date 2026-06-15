@@ -195,7 +195,12 @@ pub fn files_view<'a>(
 
     // If overwrite confirmation is pending, show that dialog
     if let Some(pending) = &tab.pending_overwrite {
-        return overwrite_confirm_dialog(&pending.name, perms.file_delete, tab.is_paste_submitting);
+        return overwrite_confirm_dialog(
+            &pending.name,
+            perms.file_delete,
+            tab.is_paste_submitting,
+            tab.error.as_ref(),
+        );
     }
 
     // If rename dialog is pending, show that

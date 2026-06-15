@@ -90,6 +90,7 @@ pub(super) fn overwrite_confirm_dialog<'a>(
     name: &str,
     has_file_delete: bool,
     is_submitting: bool,
+    error: Option<&'a String>,
 ) -> Element<'a, Message> {
     let title = panel_title(t("files-overwrite-title"));
 
@@ -124,19 +125,36 @@ pub(super) fn overwrite_confirm_dialog<'a>(
         }
     }
 
-    let form = column![
-        title,
-        Space::new().height(SPACER_SIZE_MEDIUM),
+    let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
+
+    if let Some(err) = error {
+        form_items.push(
+            shaped_text_wrapped(err)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+    }
+
+    form_items.extend([
         shaped_text_wrapped(&message)
             .size(TEXT_SIZE)
             .width(Fill)
-            .align_x(Center),
-        Space::new().height(SPACER_SIZE_MEDIUM),
-        buttons_row,
-    ]
-    .spacing(ELEMENT_SPACING)
-    .padding(CONTENT_PADDING)
-    .max_width(CONTENT_MAX_WIDTH);
+            .align_x(Center)
+            .into(),
+        Space::new().height(SPACER_SIZE_MEDIUM).into(),
+        buttons_row.into(),
+    ]);
+
+    let form = iced::widget::Column::with_children(form_items)
+        .spacing(ELEMENT_SPACING)
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
 }
