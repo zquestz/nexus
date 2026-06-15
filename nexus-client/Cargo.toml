@@ -36,7 +36,7 @@ deb_depends = ["libasound2"]
 [dependencies]
 nexus-common = { path = "../nexus-common", features = ["image-decode"] }
 idna = "1"
-iced = { version = "0.14", features = ["advanced", "image", "lazy", "markdown", "svg", "tokio"] }
+iced = { version = "0.14", features = ["advanced", "image-without-codecs", "lazy", "markdown", "svg", "tokio"] }
 iced_aw = { version = "0.14", features = ["context_menu", "number_input", "tabs"] }
 # Direct dep for `iced_runtime::task::widget(...)` — wraps a widget
 # `Operation` as a `Task` so handlers can query the actually-focused
@@ -66,7 +66,7 @@ linkify = { git = "https://github.com/zquestz/linkify" }
 rfd = "0.17"
 base64 = "0.22"
 identicon-rs = "7.0"
-image = "0.25"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 usvg = "0.45"
 uuid = { version = "1.20", features = ["v4", "serde"] }
 webrtc-audio-processing = { git = "https://github.com/zquestz/webrtc-audio-processing", features = ["bundled"] }
