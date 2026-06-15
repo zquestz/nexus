@@ -47,6 +47,13 @@ use crate::widgets::MenuButton;
 /// Guest account username (case-insensitive comparison)
 const GUEST_USERNAME: &str = "guest";
 
+fn hash_color<H: Hasher>(color: iced::Color, state: &mut H) {
+    color.r.to_bits().hash(state);
+    color.g.to_bits().hash(state);
+    color.b.to_bits().hash(state);
+    color.a.to_bits().hash(state);
+}
+
 // ============================================================================
 // Group Option (for pick_list dropdown)
 // ============================================================================
@@ -348,7 +355,8 @@ impl Hash for UserTableDeps {
         self.can_delete.hash(state);
         self.is_admin.hash(state);
         self.current_username.hash(state);
-        // Colors don't need hashing - they're derived from theme which doesn't change per-render
+        hash_color(self.admin_color, state);
+        hash_color(self.shared_color, state);
     }
 }
 
@@ -1389,4 +1397,75 @@ fn tabbed_list_view<'a>(
         .height(Fill)
         .style(content_background_style)
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    use super::*;
+
+    fn sample_user() -> UserInfo {
+        UserInfo {
+            id: 1,
+            username: "alice".to_string(),
+            nickname: "alice".to_string(),
+            login_time: 100,
+            is_admin: false,
+            is_shared: false,
+            session_ids: vec![1],
+            locale: "en".to_string(),
+            avatar: None,
+            is_away: false,
+            status: None,
+            group_id: Some(10),
+            group_name: Some("users".to_string()),
+            bandwidth_weight: 1,
+        }
+    }
+
+    fn sample_deps() -> UserTableDeps {
+        UserTableDeps {
+            users: vec![sample_user()],
+            sort_column: UserManagementSortColumn::Username,
+            sort_ascending: true,
+            admin_color: iced::Color::from_rgb(1.0, 0.0, 0.0),
+            shared_color: iced::Color::from_rgb(0.5, 0.5, 0.5),
+            can_edit: true,
+            can_delete: true,
+            is_admin: true,
+            current_username: "quest".to_string(),
+        }
+    }
+
+    fn deps_hash(deps: &UserTableDeps) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        deps.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn assert_hash_changes(mutate: impl FnOnce(&mut UserTableDeps)) {
+        let mut deps = sample_deps();
+        let base = deps_hash(&deps);
+        mutate(&mut deps);
+        assert_ne!(deps_hash(&deps), base);
+    }
+
+    #[test]
+    fn user_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_hash_changes(|d| d.users[0].id = 2);
+        assert_hash_changes(|d| d.users[0].username = "bob".to_string());
+        assert_hash_changes(|d| d.users[0].is_admin = true);
+        assert_hash_changes(|d| d.users[0].is_shared = true);
+        assert_hash_changes(|d| d.users[0].group_name = Some("admins".to_string()));
+        assert_hash_changes(|d| d.sort_column = UserManagementSortColumn::Group);
+        assert_hash_changes(|d| d.sort_ascending = false);
+        assert_hash_changes(|d| d.can_edit = false);
+        assert_hash_changes(|d| d.can_delete = false);
+        assert_hash_changes(|d| d.is_admin = false);
+        assert_hash_changes(|d| d.current_username = "alice".to_string());
+        assert_hash_changes(|d| d.admin_color = iced::Color::from_rgb(0.0, 1.0, 0.0));
+        assert_hash_changes(|d| d.shared_color = iced::Color::from_rgb(0.0, 0.0, 1.0));
+    }
 }

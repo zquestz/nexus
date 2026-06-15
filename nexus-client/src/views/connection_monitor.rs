@@ -43,6 +43,13 @@ struct ConnectionMonitorPermissions {
     ban_create: bool,
 }
 
+fn hash_color<H: Hasher>(color: iced::Color, state: &mut H) {
+    color.r.to_bits().hash(state);
+    color.g.to_bits().hash(state);
+    color.b.to_bits().hash(state);
+    color.a.to_bits().hash(state);
+}
+
 /// Dependencies for lazy connection table rendering
 #[derive(Clone)]
 struct ConnectionTableDeps {
@@ -68,7 +75,8 @@ impl Hash for ConnectionTableDeps {
         self.sort_column.hash(state);
         self.sort_ascending.hash(state);
         self.permissions.hash(state);
-        // Colors don't need hashing - they're derived from theme which doesn't change per-render
+        hash_color(self.admin_color, state);
+        hash_color(self.shared_color, state);
     }
 }
 
@@ -99,7 +107,8 @@ impl Hash for TransferTableDeps {
         }
         self.sort_column.hash(state);
         self.sort_ascending.hash(state);
-        // Colors don't need hashing - they're derived from theme which doesn't change per-render
+        hash_color(self.admin_color, state);
+        hash_color(self.shared_color, state);
     }
 }
 
@@ -1076,4 +1085,122 @@ pub fn connection_monitor_view<'a>(
         .height(Fill)
         .style(content_background_style)
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    use super::*;
+
+    fn hash_value<T: Hash>(value: &T) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn sample_permissions() -> ConnectionMonitorPermissions {
+        ConnectionMonitorPermissions {
+            user_info: true,
+            user_kick: true,
+            ban_create: true,
+        }
+    }
+
+    fn sample_connection() -> ConnectionInfo {
+        ConnectionInfo {
+            nickname: "Alice".to_string(),
+            username: "alice".to_string(),
+            ip: "192.0.2.1".to_string(),
+            port: 7500,
+            login_time: 100,
+            is_admin: false,
+            is_shared: false,
+        }
+    }
+
+    fn sample_connection_deps() -> ConnectionTableDeps {
+        ConnectionTableDeps {
+            connections: vec![sample_connection()],
+            sort_column: ConnectionMonitorSortColumn::Nickname,
+            sort_ascending: true,
+            admin_color: iced::Color::from_rgb(1.0, 0.0, 0.0),
+            shared_color: iced::Color::from_rgb(0.5, 0.5, 0.5),
+            permissions: sample_permissions(),
+        }
+    }
+
+    fn assert_connection_hash_changes(mutate: impl FnOnce(&mut ConnectionTableDeps)) {
+        let mut deps = sample_connection_deps();
+        let base = hash_value(&deps);
+        mutate(&mut deps);
+        assert_ne!(hash_value(&deps), base);
+    }
+
+    #[test]
+    fn connection_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_connection_hash_changes(|d| d.connections[0].nickname = "Bob".to_string());
+        assert_connection_hash_changes(|d| d.connections[0].username = "bob".to_string());
+        assert_connection_hash_changes(|d| d.connections[0].ip = "192.0.2.2".to_string());
+        assert_connection_hash_changes(|d| d.connections[0].login_time = 200);
+        assert_connection_hash_changes(|d| d.connections[0].is_admin = true);
+        assert_connection_hash_changes(|d| d.connections[0].is_shared = true);
+        assert_connection_hash_changes(|d| d.sort_column = ConnectionMonitorSortColumn::Ip);
+        assert_connection_hash_changes(|d| d.sort_ascending = false);
+        assert_connection_hash_changes(|d| d.permissions.user_kick = false);
+        assert_connection_hash_changes(|d| d.admin_color = iced::Color::from_rgb(0.0, 1.0, 0.0));
+        assert_connection_hash_changes(|d| d.shared_color = iced::Color::from_rgb(0.0, 0.0, 1.0));
+    }
+
+    fn sample_transfer() -> TransferInfo {
+        TransferInfo {
+            nickname: "Alice".to_string(),
+            username: "alice".to_string(),
+            ip: "192.0.2.1".to_string(),
+            port: 7501,
+            is_admin: false,
+            is_shared: false,
+            direction: "download".to_string(),
+            path: "/file.bin".to_string(),
+            total_size: 100,
+            bytes_transferred: 25,
+            started_at: 100,
+        }
+    }
+
+    fn sample_transfer_deps() -> TransferTableDeps {
+        TransferTableDeps {
+            transfers: vec![sample_transfer()],
+            sort_column: TransferSortColumn::User,
+            sort_ascending: true,
+            admin_color: iced::Color::from_rgb(1.0, 0.0, 0.0),
+            shared_color: iced::Color::from_rgb(0.5, 0.5, 0.5),
+        }
+    }
+
+    fn assert_transfer_hash_changes(mutate: impl FnOnce(&mut TransferTableDeps)) {
+        let mut deps = sample_transfer_deps();
+        let base = hash_value(&deps);
+        mutate(&mut deps);
+        assert_ne!(hash_value(&deps), base);
+    }
+
+    #[test]
+    fn transfer_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_transfer_hash_changes(|d| d.transfers[0].nickname = "Bob".to_string());
+        assert_transfer_hash_changes(|d| d.transfers[0].username = "bob".to_string());
+        assert_transfer_hash_changes(|d| d.transfers[0].ip = "192.0.2.2".to_string());
+        assert_transfer_hash_changes(|d| d.transfers[0].direction = "upload".to_string());
+        assert_transfer_hash_changes(|d| d.transfers[0].path = "/other.bin".to_string());
+        assert_transfer_hash_changes(|d| d.transfers[0].total_size = 200);
+        assert_transfer_hash_changes(|d| d.transfers[0].bytes_transferred = 50);
+        assert_transfer_hash_changes(|d| d.transfers[0].started_at = 200);
+        assert_transfer_hash_changes(|d| d.transfers[0].is_admin = true);
+        assert_transfer_hash_changes(|d| d.transfers[0].is_shared = true);
+        assert_transfer_hash_changes(|d| d.sort_column = TransferSortColumn::Progress);
+        assert_transfer_hash_changes(|d| d.sort_ascending = false);
+        assert_transfer_hash_changes(|d| d.admin_color = iced::Color::from_rgb(0.0, 1.0, 0.0));
+        assert_transfer_hash_changes(|d| d.shared_color = iced::Color::from_rgb(0.0, 0.0, 1.0));
+    }
 }

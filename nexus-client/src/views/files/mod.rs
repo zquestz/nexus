@@ -511,3 +511,115 @@ pub fn files_view<'a>(
         main_content.into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    use super::*;
+
+    fn hash_value<T: Hash>(value: &T) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn sample_permissions() -> FilePermissions {
+        FilePermissions {
+            file_root: false,
+            file_create_dir: true,
+            file_info: true,
+            file_delete: true,
+            file_rename: true,
+            file_move: true,
+            file_copy: true,
+            file_download: true,
+            file_upload: true,
+            file_upload_anywhere: false,
+            file_search: true,
+        }
+    }
+
+    fn sample_file_entry() -> FileEntry {
+        FileEntry {
+            name: "file.txt".to_string(),
+            size: 100,
+            modified: 1000,
+            dir_type: None,
+            can_upload: false,
+        }
+    }
+
+    fn sample_file_deps() -> FileTableDeps {
+        FileTableDeps {
+            rows: vec![FileRowData {
+                entry: sample_file_entry(),
+                path: "/file.txt".to_string(),
+                is_cut: false,
+                perms: sample_permissions(),
+                has_clipboard: true,
+                bypass_via_ownership: false,
+            }],
+            sort_column: FileSortColumn::Name,
+            sort_ascending: true,
+        }
+    }
+
+    fn assert_file_hash_changes(mutate: impl FnOnce(&mut FileTableDeps)) {
+        let mut deps = sample_file_deps();
+        let base = hash_value(&deps);
+        mutate(&mut deps);
+        assert_ne!(hash_value(&deps), base);
+    }
+
+    #[test]
+    fn file_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_file_hash_changes(|d| d.rows[0].entry.name = "other.txt".to_string());
+        assert_file_hash_changes(|d| d.rows[0].entry.size = 200);
+        assert_file_hash_changes(|d| d.rows[0].entry.modified = 2000);
+        assert_file_hash_changes(|d| d.rows[0].entry.dir_type = Some("upload".to_string()));
+        assert_file_hash_changes(|d| d.rows[0].entry.can_upload = true);
+        assert_file_hash_changes(|d| d.rows[0].path = "/other.txt".to_string());
+        assert_file_hash_changes(|d| d.rows[0].is_cut = true);
+        assert_file_hash_changes(|d| d.rows[0].perms.file_download = false);
+        assert_file_hash_changes(|d| d.rows[0].has_clipboard = false);
+        assert_file_hash_changes(|d| d.rows[0].bypass_via_ownership = true);
+        assert_file_hash_changes(|d| d.sort_column = FileSortColumn::Size);
+        assert_file_hash_changes(|d| d.sort_ascending = false);
+    }
+
+    fn sample_search_deps() -> SearchResultsDeps {
+        SearchResultsDeps {
+            results: vec![FileSearchResult {
+                path: "/file.txt".to_string(),
+                name: "file.txt".to_string(),
+                size: 100,
+                modified: 1000,
+                is_directory: false,
+            }],
+            perms: sample_permissions(),
+            sort_column: FileSortColumn::Path,
+            sort_ascending: true,
+        }
+    }
+
+    fn assert_search_hash_changes(mutate: impl FnOnce(&mut SearchResultsDeps)) {
+        let mut deps = sample_search_deps();
+        let base = hash_value(&deps);
+        mutate(&mut deps);
+        assert_ne!(hash_value(&deps), base);
+    }
+
+    #[test]
+    fn search_results_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_search_hash_changes(|d| d.results[0].path = "/other.txt".to_string());
+        assert_search_hash_changes(|d| d.results[0].name = "other.txt".to_string());
+        assert_search_hash_changes(|d| d.results[0].size = 200);
+        assert_search_hash_changes(|d| d.results[0].modified = 2000);
+        assert_search_hash_changes(|d| d.results[0].is_directory = true);
+        assert_search_hash_changes(|d| d.perms.file_download = false);
+        assert_search_hash_changes(|d| d.sort_column = FileSortColumn::Size);
+        assert_search_hash_changes(|d| d.sort_ascending = false);
+    }
+}

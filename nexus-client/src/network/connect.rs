@@ -1,6 +1,6 @@
 //! Server connection, handshake, and login
 
-use tokio::io::BufReader;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
@@ -17,7 +17,6 @@ use super::stream::setup_communication_channels;
 use super::tls::establish_connection;
 use super::types::{
     ConnectError, ConnectionParams, FingerprintInterception, FingerprintMismatchDetails, LoginInfo,
-    Reader, Writer,
 };
 
 /// Connect to server, perform staged fingerprint verification, handshake, and login.
@@ -50,47 +49,20 @@ pub async fn connect_to_server(
     // Stage 1: TOFU check against bookmark's stored fingerprint, if any.
     // Both sides come from `nexus_common::fingerprint::format_certificate_fingerprint`
     // (single canonical producer), so direct `!=` is correct — no normalization needed.
-    if let Some(expected) = &params.expected_fingerprint
-        && expected != &tls_fingerprint
-    {
-        return Err(ConnectError::FingerprintMismatch(Box::new(
-            FingerprintMismatchDetails {
-                expected: expected.clone(),
-                received: tls_fingerprint.clone(),
-                server_address: params.server_address.clone(),
-                server_port: params.port,
-            },
-        )));
-    }
+    verify_expected_tls_fingerprint(&params, &tls_fingerprint)?;
 
     let (reader, writer) = tokio::io::split(tls_stream);
     let buf_reader = BufReader::new(reader);
     let mut frame_reader = FrameReader::new(buf_reader);
     let mut frame_writer = FrameWriter::new(writer);
 
-    // Handshake — server self-reports its certificate fingerprint here.
-    let server_fingerprint = perform_handshake(&mut frame_reader, &mut frame_writer)
-        .await
-        .map_err(ConnectError::Other)?;
-
-    // Stage 2: server-reported fingerprint must match TLS-observed.
-    // Both produced by the same canonical formatter — direct `!=` is correct.
-    // Mismatch here = active TLS interception. No accept path; bail before
-    // sending credentials.
-    if server_fingerprint != tls_fingerprint {
-        return Err(ConnectError::FingerprintInterception(Box::new(
-            FingerprintInterception {
-                // Left empty — connect.rs has no friendly name. Result handlers
-                // populate this with the user-typed form name, bookmark name,
-                // or matched-URI bookmark name as appropriate.
-                server_name: String::new(),
-                server_address: params.server_address.clone(),
-                server_port: params.port,
-                tls_fingerprint: tls_fingerprint.clone(),
-                server_fingerprint,
-            },
-        )));
-    }
+    perform_verified_handshake(
+        &mut frame_reader,
+        &mut frame_writer,
+        &tls_fingerprint,
+        &params,
+    )
+    .await?;
 
     // Both stages passed — safe to send credentials.
     let login_info = perform_login(
@@ -135,11 +107,74 @@ pub async fn connect_to_server(
     .map_err(ConnectError::Other)
 }
 
+fn verify_expected_tls_fingerprint(
+    params: &ConnectionParams,
+    tls_fingerprint: &str,
+) -> Result<(), ConnectError> {
+    if let Some(expected) = &params.expected_fingerprint
+        && expected != tls_fingerprint
+    {
+        return Err(ConnectError::FingerprintMismatch(Box::new(
+            FingerprintMismatchDetails {
+                expected: expected.clone(),
+                received: tls_fingerprint.to_string(),
+                server_address: params.server_address.clone(),
+                server_port: params.port,
+            },
+        )));
+    }
+    Ok(())
+}
+
+async fn perform_verified_handshake<R, W>(
+    reader: &mut FrameReader<R>,
+    writer: &mut FrameWriter<W>,
+    tls_fingerprint: &str,
+    params: &ConnectionParams,
+) -> Result<(), ConnectError>
+where
+    R: AsyncReadExt + Unpin,
+    W: AsyncWriteExt + Unpin,
+{
+    // Handshake — server self-reports its certificate fingerprint here.
+    let server_fingerprint = perform_handshake(reader, writer)
+        .await
+        .map_err(ConnectError::Other)?;
+
+    // Stage 2: server-reported fingerprint must match TLS-observed.
+    // Both produced by the same canonical formatter — direct `!=` is correct.
+    // Mismatch here = active TLS interception. No accept path; bail before
+    // sending credentials.
+    if server_fingerprint != tls_fingerprint {
+        return Err(ConnectError::FingerprintInterception(Box::new(
+            FingerprintInterception {
+                // Left empty — connect.rs has no friendly name. Result handlers
+                // populate this with the user-typed form name, bookmark name,
+                // or matched-URI bookmark name as appropriate.
+                server_name: String::new(),
+                server_address: params.server_address.clone(),
+                server_port: params.port,
+                tls_fingerprint: tls_fingerprint.to_string(),
+                server_fingerprint,
+            },
+        )));
+    }
+
+    Ok(())
+}
+
 /// Perform protocol handshake with the server.
 ///
 /// Returns the server's self-reported certificate fingerprint, which the
 /// caller compares against the TLS-observed fingerprint before login.
-async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<String, String> {
+async fn perform_handshake<R, W>(
+    reader: &mut FrameReader<R>,
+    writer: &mut FrameWriter<W>,
+) -> Result<String, String>
+where
+    R: AsyncReadExt + Unpin,
+    W: AsyncWriteExt + Unpin,
+{
     let handshake = ClientMessage::Handshake {
         version: PROTOCOL_VERSION.to_string(),
     };
@@ -216,8 +251,8 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<S
 
 /// Perform login and return login info (session ID, admin status, permissions, locale)
 async fn perform_login(
-    reader: &mut Reader,
-    writer: &mut Writer,
+    reader: &mut FrameReader<impl AsyncReadExt + Unpin>,
+    writer: &mut FrameWriter<impl AsyncWriteExt + Unpin>,
     username: String,
     password: String,
     nickname: Option<String>,
@@ -333,5 +368,110 @@ async fn perform_login(
         } => Err(t("err-login-failed")),
         ServerMessage::Error { message, .. } => Err(message),
         _ => Err(t("err-unexpected-login-response")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use nexus_common::framing::{FrameReader, FrameWriter};
+    use nexus_common::io::{
+        read_client_handshake_message_with_full_timeout,
+        read_client_login_message_with_full_timeout, send_server_message_with_id,
+    };
+    use nexus_common::protocol::{ClientMessage, ServerMessage};
+    use tokio::io::BufReader;
+
+    use super::*;
+
+    fn test_params(expected_fingerprint: Option<String>) -> ConnectionParams {
+        ConnectionParams {
+            server_address: "bbs.example".to_string(),
+            port: 7500,
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            nickname: None,
+            locale: "en".to_string(),
+            avatar: None,
+            connection_id: 1,
+            proxy: None,
+            expected_fingerprint,
+        }
+    }
+
+    #[test]
+    fn stage1_fingerprint_mismatch_rejects_before_protocol() {
+        let err =
+            verify_expected_tls_fingerprint(&test_params(Some("expected".to_string())), "received")
+                .unwrap_err();
+
+        assert!(matches!(err, ConnectError::FingerprintMismatch(_)));
+    }
+
+    #[tokio::test]
+    async fn stage2_fingerprint_mismatch_rejects_before_login() {
+        let (client_stream, server_stream) = tokio::io::duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, server_write) = tokio::io::split(server_stream);
+
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut server_reader = FrameReader::new(BufReader::new(server_read));
+        let mut server_writer = FrameWriter::new(server_write);
+
+        let server = tokio::spawn(async move {
+            let received = read_client_handshake_message_with_full_timeout(
+                &mut server_reader,
+                Some(Duration::from_millis(100)),
+                Some(Duration::from_millis(100)),
+            )
+            .await
+            .expect("handshake frame should parse")
+            .expect("client should send handshake");
+
+            assert!(matches!(
+                received.message,
+                ClientMessage::Handshake { version: _ }
+            ));
+
+            send_server_message_with_id(
+                &mut server_writer,
+                &ServerMessage::HandshakeResponse {
+                    success: true,
+                    version: Some(PROTOCOL_VERSION.to_string()),
+                    fingerprint: "server-reported".to_string(),
+                    error: None,
+                },
+                received.message_id,
+            )
+            .await
+            .expect("server should send handshake response");
+
+            server_reader
+        });
+
+        let err = perform_verified_handshake(
+            &mut client_reader,
+            &mut client_writer,
+            "tls-observed",
+            &test_params(None),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, ConnectError::FingerprintInterception(_)));
+
+        drop(client_writer);
+        drop(client_reader);
+
+        let mut server_reader = server.await.expect("server task should finish");
+        let login = read_client_login_message_with_full_timeout(
+            &mut server_reader,
+            Some(Duration::from_millis(10)),
+            Some(Duration::from_millis(10)),
+        )
+        .await;
+
+        assert!(matches!(login, Ok(None)));
     }
 }

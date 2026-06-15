@@ -854,6 +854,29 @@ impl MixerState {
         self.user_buffers.remove(&key);
     }
 
+    fn queue_audio(&mut self, nickname: &str, samples: &[f32]) {
+        // Skip if deafened or user is muted
+        if self.deafened || self.muted.contains(&fold_name(nickname)) {
+            return;
+        }
+
+        // Get or create buffer for this user
+        let key = fold_name(nickname);
+        let buffer = self
+            .user_buffers
+            .entry(key)
+            .or_insert_with(UserAudioBuffer::new);
+
+        buffer.samples.extend_from_slice(samples);
+
+        // Limit buffer size to prevent latency buildup
+        let max_size = VOICE_SAMPLES_PER_FRAME as usize * MAX_PLAYBACK_BUFFER_FRAMES;
+        if buffer.samples.len() > max_size {
+            let drain_count = buffer.samples.len() - max_size;
+            buffer.samples.drain(..drain_count);
+        }
+    }
+
     fn rename_user(&mut self, old: &str, new: &str, muted: bool) {
         let old_key = fold_name(old);
         let new_key = fold_name(new);
@@ -1064,26 +1087,7 @@ impl AudioMixer {
     /// Samples should be f32 normalized to [-1.0, 1.0] at 48kHz.
     pub fn queue_audio(&self, nickname: &str, samples: &[f32]) {
         if let Ok(mut state) = self.state.lock() {
-            // Skip if deafened or user is muted
-            if state.deafened || state.muted.contains(&fold_name(nickname)) {
-                return;
-            }
-
-            // Get or create buffer for this user
-            let key = fold_name(nickname);
-            let buffer = state
-                .user_buffers
-                .entry(key)
-                .or_insert_with(UserAudioBuffer::new);
-
-            buffer.samples.extend_from_slice(samples);
-
-            // Limit buffer size to prevent latency buildup
-            let max_size = VOICE_SAMPLES_PER_FRAME as usize * MAX_PLAYBACK_BUFFER_FRAMES;
-            if buffer.samples.len() > max_size {
-                let drain_count = buffer.samples.len() - max_size;
-                buffer.samples.drain(..drain_count);
-            }
+            state.queue_audio(nickname, samples);
         }
     }
 }
@@ -1514,6 +1518,18 @@ mod tests {
 
         assert!(!state.user_buffers.contains_key(&fold_name("Alice")));
         assert!(state.muted.contains(&fold_name("Alice")));
+    }
+
+    #[test]
+    fn test_mixer_state_muted_user_cannot_buffer_new_audio() {
+        let mut state = MixerState::new(0.0);
+        state.mute_user_and_clear("Alice");
+
+        state.queue_audio("Alice", &[0.25, 0.5]);
+        state.queue_audio("Bob", &[0.75]);
+
+        assert!(!state.user_buffers.contains_key(&fold_name("Alice")));
+        assert_eq!(state.user_buffers[&fold_name("Bob")].samples, vec![0.75]);
     }
 
     // =========================================================================

@@ -46,6 +46,13 @@ use crate::types::{
 };
 use crate::widgets::MenuButton;
 
+fn hash_color<H: Hasher>(color: iced::Color, state: &mut H) {
+    color.r.to_bits().hash(state);
+    color.g.to_bits().hash(state);
+    color.b.to_bits().hash(state);
+    color.a.to_bits().hash(state);
+}
+
 // ============================================================================
 // Status Bullet
 // ============================================================================
@@ -157,7 +164,9 @@ impl Hash for TrackerTableDeps {
         self.sort_ascending.hash(state);
         self.can_edit.hash(state);
         self.can_remove.hash(state);
-        // Colors derive from theme, no need to hash.
+        hash_color(self.success_color, state);
+        hash_color(self.warning_color, state);
+        hash_color(self.danger_color, state);
     }
 }
 
@@ -1079,4 +1088,95 @@ pub fn accept_fingerprint_modal(state: &TrackerManagementState) -> Element<'_, M
         .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_modal(dialog)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    use super::*;
+
+    fn sample_tracker() -> TrackerInfo {
+        TrackerInfo {
+            id: 1,
+            address: "tracker.example".to_string(),
+            port: DEFAULT_TRACKER_PORT,
+            fingerprint: Some("AA:BB".to_string()),
+            password: None,
+            name: "Primary".to_string(),
+            enabled: true,
+            created_at: 100,
+            updated_at: 100,
+            connected: true,
+            last_connected_at: Some(100),
+            last_attempted_at: Some(100),
+            last_error: None,
+            last_error_kind: None,
+            pending_fingerprint: None,
+            refresh_interval: Some(300),
+        }
+    }
+
+    fn sample_deps() -> TrackerTableDeps {
+        TrackerTableDeps {
+            trackers: vec![sample_tracker()],
+            sort_column: TrackerManagementSortColumn::Name,
+            sort_ascending: true,
+            can_edit: true,
+            can_remove: true,
+            success_color: iced::Color::from_rgb(0.0, 1.0, 0.0),
+            warning_color: iced::Color::from_rgb(1.0, 1.0, 0.0),
+            danger_color: iced::Color::from_rgb(1.0, 0.0, 0.0),
+        }
+    }
+
+    fn deps_hash(deps: &TrackerTableDeps) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        deps.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn assert_hash_changes(mutate: impl FnOnce(&mut TrackerTableDeps)) {
+        let mut deps = sample_deps();
+        let base = deps_hash(&deps);
+        mutate(&mut deps);
+        assert_ne!(deps_hash(&deps), base);
+    }
+
+    #[test]
+    fn tracker_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_hash_changes(|d| d.trackers[0].id = 2);
+        assert_hash_changes(|d| d.trackers[0].name = "Backup".to_string());
+        assert_hash_changes(|d| d.trackers[0].address = "other.example".to_string());
+        assert_hash_changes(|d| d.trackers[0].port = 7511);
+        assert_hash_changes(|d| d.trackers[0].connected = false);
+        assert_hash_changes(|d| d.trackers[0].last_error = Some("failed".to_string()));
+        assert_hash_changes(|d| d.trackers[0].last_error_kind = Some("unauthorized".to_string()));
+        assert_hash_changes(|d| d.trackers[0].pending_fingerprint = Some("CC:DD".to_string()));
+        assert_hash_changes(|d| d.sort_column = TrackerManagementSortColumn::Status);
+        assert_hash_changes(|d| d.sort_ascending = false);
+        assert_hash_changes(|d| d.can_edit = false);
+        assert_hash_changes(|d| d.can_remove = false);
+        assert_hash_changes(|d| d.success_color = iced::Color::from_rgb(0.0, 0.5, 0.0));
+        assert_hash_changes(|d| d.warning_color = iced::Color::from_rgb(0.5, 0.5, 0.0));
+        assert_hash_changes(|d| d.danger_color = iced::Color::from_rgb(0.5, 0.0, 0.0));
+    }
+
+    #[test]
+    fn tracker_table_deps_hash_ignores_non_row_fields() {
+        let mut deps = sample_deps();
+        let base = deps_hash(&deps);
+
+        deps.trackers[0].fingerprint = Some("CC:DD".to_string());
+        deps.trackers[0].password = Some("secret".to_string());
+        deps.trackers[0].enabled = false;
+        deps.trackers[0].created_at = 200;
+        deps.trackers[0].updated_at = 300;
+        deps.trackers[0].last_connected_at = Some(400);
+        deps.trackers[0].last_attempted_at = Some(500);
+        deps.trackers[0].refresh_interval = Some(600);
+
+        assert_eq!(deps_hash(&deps), base);
+    }
 }

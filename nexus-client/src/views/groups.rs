@@ -810,3 +810,57 @@ pub fn group_form_view<'a>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    use super::*;
+
+    fn sample_group() -> GroupInfo {
+        GroupInfo {
+            id: 1,
+            name: "users".to_string(),
+            is_shared: false,
+            member_count: 3,
+            permissions: vec!["chat".to_string()],
+            bandwidth_weight: 1,
+        }
+    }
+
+    fn sample_deps() -> GroupTableDeps {
+        GroupTableDeps {
+            groups: vec![sample_group()],
+            sort_column: GroupManagementSortColumn::Name,
+            sort_ascending: true,
+            can_edit: true,
+            can_delete: true,
+        }
+    }
+
+    fn deps_hash(deps: &GroupTableDeps) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        deps.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn assert_hash_changes(mutate: impl FnOnce(&mut GroupTableDeps)) {
+        let mut deps = sample_deps();
+        let base = deps_hash(&deps);
+        mutate(&mut deps);
+        assert_ne!(deps_hash(&deps), base);
+    }
+
+    #[test]
+    fn group_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_hash_changes(|d| d.groups[0].id = 2);
+        assert_hash_changes(|d| d.groups[0].name = "admins".to_string());
+        assert_hash_changes(|d| d.groups[0].is_shared = true);
+        assert_hash_changes(|d| d.groups[0].member_count = 4);
+        assert_hash_changes(|d| d.sort_column = GroupManagementSortColumn::Members);
+        assert_hash_changes(|d| d.sort_ascending = false);
+        assert_hash_changes(|d| d.can_edit = false);
+        assert_hash_changes(|d| d.can_delete = false);
+    }
+}

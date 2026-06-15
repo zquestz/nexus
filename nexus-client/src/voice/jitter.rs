@@ -474,6 +474,28 @@ mod tests {
     }
 
     #[test]
+    fn test_jitter_buffer_trims_stale_packets_after_push() {
+        let mut buffer = JitterBuffer::new();
+        buffer.next_sequence = Some(100);
+        buffer.target_frames = MIN_BUFFER_FRAMES;
+
+        for sequence in 0..10 {
+            buffer.packets.insert(
+                sequence,
+                BufferedPacket {
+                    samples: make_samples(),
+                },
+            );
+        }
+
+        assert!(buffer.push(100, VOICE_SAMPLES_PER_FRAME * 100, make_samples()));
+
+        assert!(buffer.packets.len() <= buffer.target_frames * 3);
+        assert!(!buffer.packets.contains_key(&0));
+        assert!(buffer.packets.contains_key(&100));
+    }
+
+    #[test]
     fn test_jitter_buffer_reset() {
         let mut buffer = JitterBuffer::new();
 

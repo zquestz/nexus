@@ -1324,15 +1324,23 @@ mod tests {
         }
     }
 
-    fn deps_hash(entries: Vec<ServerEntry>) -> u64 {
+    fn deps_hash_with(
+        entries: Vec<ServerEntry>,
+        sort_column: TrackerBrowserSortColumn,
+        sort_ascending: bool,
+    ) -> u64 {
         let deps = ServerTableDeps {
             entries,
-            sort_column: TrackerBrowserSortColumn::Name,
-            sort_ascending: true,
+            sort_column,
+            sort_ascending,
         };
         let mut hasher = DefaultHasher::new();
         deps.hash(&mut hasher);
         hasher.finish()
+    }
+
+    fn deps_hash(entries: Vec<ServerEntry>) -> u64 {
+        deps_hash_with(entries, TrackerBrowserSortColumn::Name, true)
     }
 
     #[test]
@@ -1347,16 +1355,33 @@ mod tests {
     fn server_table_deps_hash_changes_on_action_affecting_fields() {
         let base = deps_hash(vec![sample_entry()]);
         for mutate in [
+            (|e: &mut ServerEntry| e.name = "Other".to_string()) as fn(&mut ServerEntry),
+            |e| e.description = Some("Changed".to_string()),
             (|e: &mut ServerEntry| e.fingerprint = "CC:DD".to_string()) as fn(&mut ServerEntry),
             |e| e.address = "other.example".to_string(),
             |e| e.port = 7600,
             |e| e.websocket_port = Some(8502),
             |e| e.version = "0.9.3".to_string(),
+            |e| e.user_count = 7,
+            |e| e.allows_guest = false,
         ] {
             let mut entry = sample_entry();
             mutate(&mut entry);
             assert_ne!(deps_hash(vec![entry]), base);
         }
+    }
+
+    #[test]
+    fn server_table_deps_hash_changes_on_sort_state() {
+        let base = deps_hash(vec![sample_entry()]);
+        assert_ne!(
+            deps_hash_with(vec![sample_entry()], TrackerBrowserSortColumn::Users, true,),
+            base
+        );
+        assert_ne!(
+            deps_hash_with(vec![sample_entry()], TrackerBrowserSortColumn::Name, false),
+            base
+        );
     }
 
     #[test]

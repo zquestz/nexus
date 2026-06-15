@@ -179,18 +179,38 @@ fn get_output_device(device_name: &str) -> Result<cpal::Device, String> {
             .output_devices()
             .map_err(|e| format!("Failed to enumerate devices: {}", e))?;
 
-        for device in devices {
-            if let Ok(desc) = device.description()
-                && desc.name() == device_name
-            {
-                return Ok(device);
-            }
-        }
-
-        // Device not found, fall back to default
-        host.default_output_device()
-            .ok_or_else(|| "No default output device available".to_string())
+        select_named_or_default_device(
+            device_name,
+            devices,
+            host.default_output_device(),
+            |device| {
+                device
+                    .description()
+                    .ok()
+                    .map(|desc| desc.name().to_string())
+            },
+        )
+        .ok_or_else(|| "No default output device available".to_string())
     }
+}
+
+fn select_named_or_default_device<T, I, F>(
+    device_name: &str,
+    devices: I,
+    default_device: Option<T>,
+    mut describe: F,
+) -> Option<T>
+where
+    I: IntoIterator<Item = T>,
+    F: FnMut(&T) -> Option<String>,
+{
+    for device in devices {
+        if describe(&device).as_deref() == Some(device_name) {
+            return Some(device);
+        }
+    }
+
+    default_device
 }
 
 /// Get the sender for sound requests
@@ -282,5 +302,29 @@ mod tests {
     fn test_get_sound_data_pop() {
         let data = get_sound_data(&SoundChoice::Pop);
         assert_eq!(&data[0..4], b"OggS");
+    }
+
+    #[test]
+    fn select_named_or_default_device_prefers_exact_match() {
+        let selected = select_named_or_default_device(
+            "Headphones",
+            ["Speakers", "Headphones"],
+            Some("Default"),
+            |name| Some((*name).to_string()),
+        );
+
+        assert_eq!(selected, Some("Headphones"));
+    }
+
+    #[test]
+    fn select_named_or_default_device_falls_back_to_default() {
+        let selected = select_named_or_default_device(
+            "Missing",
+            ["Speakers", "Headphones"],
+            Some("Default"),
+            |name| Some((*name).to_string()),
+        );
+
+        assert_eq!(selected, Some("Default"));
     }
 }

@@ -88,6 +88,16 @@ fn calculate_rms_level(samples: &[f32]) -> f32 {
     (rms * RMS_DISPLAY_SCALE).min(1.0) as f32
 }
 
+fn clear_mic_level(mic_level: &AtomicU32) {
+    mic_level.store(0f32.to_bits(), Ordering::Relaxed);
+}
+
+fn store_mic_level_for_samples(mic_level: &AtomicU32, samples: &[f32]) -> f32 {
+    let level = calculate_rms_level(samples);
+    mic_level.store(level.to_bits(), Ordering::Relaxed);
+    level
+}
+
 fn soft_clip_render_reference(frame: &mut [f32]) {
     for sample in frame {
         *sample = soft_clip(*sample);
@@ -142,6 +152,10 @@ impl VoiceParticipantState {
 
     fn is_muted_key(&self, key: &str) -> bool {
         self.muted_users.contains(key)
+    }
+
+    fn should_buffer_received_voice_key(&self, key: &str) -> bool {
+        self.is_known_key(key) && !self.is_muted_key(key)
     }
 
     fn add_user(&mut self, nickname: &str) {
@@ -417,7 +431,7 @@ fn handle_voice_command(cmd: VoiceCommand, runtime: &mut VoiceCommandRuntime<'_>
                     capture.stop();
                 }
                 // Clear mic level when stopping
-                runtime.mic_level.store(0f32.to_bits(), Ordering::Relaxed);
+                clear_mic_level(runtime.mic_level);
                 let _ = runtime
                     .dtls_command_tx
                     .send(VoiceDtlsCommand::SendSpeakingStopped);
@@ -771,14 +785,14 @@ async fn run_voice_session(
                         // In toggle mode, use VAD to gate transmission
                         // This prevents sending silence/noise when mic is "open"
                         if ptt_mode == PttMode::Toggle && !proc.has_voice(&samples) {
+                            clear_mic_level(&config.mic_level);
                             continue;
                         }
                     }
 
                     // Calculate mic level after processing so the VU meter
                     // reflects what others actually hear (post-AGC/NS)
-                    let level = calculate_rms_level(&samples);
-                    config.mic_level.store(level.to_bits(), Ordering::Relaxed);
+                    store_mic_level_for_samples(&config.mic_level, &samples);
                     if let Some(encoder) = encoder.as_mut()
                         && let Ok(encoded) = encoder.encode(&samples)
                     {
@@ -786,7 +800,7 @@ async fn run_voice_session(
                     }
                 } else if transmitting {
                     // Still transmitting but no frame ready - clear level
-                    config.mic_level.store(0f32.to_bits(), Ordering::Relaxed);
+                    clear_mic_level(&config.mic_level);
                 }
             }
 
@@ -794,7 +808,13 @@ async fn run_voice_session(
             event = dtls_event_rx.recv() => {
                 match event {
                     Some(VoiceDtlsEvent::VoiceReceived { sender, sequence, timestamp, payload }) => {
-                        if !participants.is_known(&sender) {
+                        let sender_key = fold_name(&sender);
+                        if !participants.is_known_key(&sender_key) {
+                            decoder_pool.remove(&sender);
+                            jitter_pool.remove(&sender);
+                            continue;
+                        }
+                        if !participants.should_buffer_received_voice_key(&sender_key) {
                             decoder_pool.remove(&sender);
                             jitter_pool.remove(&sender);
                             continue;
@@ -1191,6 +1211,32 @@ mod tests {
     }
 
     #[test]
+    fn rms_level_reports_silence_and_clamps_loud_input() {
+        assert_eq!(calculate_rms_level(&[]), 0.0);
+        assert_eq!(calculate_rms_level(&[0.0; 16]), 0.0);
+        assert_eq!(calculate_rms_level(&[1.0; 16]), 1.0);
+
+        let moderate = calculate_rms_level(&[0.25; 16]);
+        assert!(moderate > 0.0);
+        assert!(moderate < 1.0);
+    }
+
+    #[test]
+    fn mic_level_helpers_store_audio_level_and_clear_silence_gate() {
+        let mic_level = AtomicU32::new(0f32.to_bits());
+
+        let stored = store_mic_level_for_samples(&mic_level, &[0.25; 16]);
+        assert!(stored > 0.0);
+        assert_eq!(
+            f32::from_bits(mic_level.load(Ordering::Relaxed)).to_bits(),
+            stored.to_bits()
+        );
+
+        clear_mic_level(&mic_level);
+        assert_eq!(f32::from_bits(mic_level.load(Ordering::Relaxed)), 0.0);
+    }
+
+    #[test]
     fn participant_state_rename_collision_keeps_new_known_and_unions_mute() {
         let mut state = VoiceParticipantState::new(vec!["Alice".to_string(), "Alicia".to_string()]);
         state.set_muted("Alice", true);
@@ -1233,6 +1279,19 @@ mod tests {
         assert!(!state.set_muted("Bob", true));
 
         assert!(!state.is_muted_key(&fold_name("Bob")));
+    }
+
+    #[test]
+    fn participant_state_blocks_received_voice_for_muted_user() {
+        let mut state = VoiceParticipantState::new(vec!["Alice".to_string()]);
+        let alice_key = fold_name("Alice");
+
+        assert!(state.should_buffer_received_voice_key(&alice_key));
+
+        assert!(state.set_muted("Alice", true));
+
+        assert!(!state.should_buffer_received_voice_key(&alice_key));
+        assert!(!state.should_buffer_received_voice_key(&fold_name("Bob")));
     }
 
     #[test]
