@@ -3,8 +3,6 @@
 //! Handles persistence of channel settings for persistent channels.
 //! Ephemeral channels do not have their settings stored in the database.
 
-use std::io;
-
 use nexus_common::names::fold_name;
 use sqlx::SqlitePool;
 
@@ -28,13 +26,15 @@ impl ChannelDb {
         Self { pool }
     }
 
-    pub async fn get_channel_settings(&self, name: &str) -> io::Result<Option<ChannelSettings>> {
+    pub async fn get_channel_settings(
+        &self,
+        name: &str,
+    ) -> Result<Option<ChannelSettings>, sqlx::Error> {
         let result =
             sqlx::query_as::<_, (String, String, String, bool)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
                 .bind(fold_name(name))
                 .fetch_optional(&self.pool)
-                .await
-                .map_err(|e| io::Error::other(e.to_string()))?;
+                .await?;
 
         Ok(
             result.map(|(name, topic, topic_set_by, secret)| ChannelSettings {
@@ -49,13 +49,12 @@ impl ChannelDb {
     pub async fn get_channel_settings_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         name: &str,
-    ) -> io::Result<Option<ChannelSettings>> {
+    ) -> Result<Option<ChannelSettings>, sqlx::Error> {
         let result =
             sqlx::query_as::<_, (String, String, String, bool)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
                 .bind(fold_name(name))
                 .fetch_optional(&mut **tx)
-                .await
-                .map_err(|e| io::Error::other(e.to_string()))?;
+                .await?;
 
         Ok(
             result.map(|(name, topic, topic_set_by, secret)| ChannelSettings {
@@ -67,13 +66,12 @@ impl ChannelDb {
         )
     }
 
-    pub async fn get_all_channel_settings(&self) -> io::Result<Vec<ChannelSettings>> {
+    pub async fn get_all_channel_settings(&self) -> Result<Vec<ChannelSettings>, sqlx::Error> {
         let results = sqlx::query_as::<_, (String, String, String, bool)>(
             sql::SQL_SELECT_ALL_CHANNEL_SETTINGS,
         )
         .fetch_all(&self.pool)
-        .await
-        .map_err(|e| io::Error::other(e.to_string()))?;
+        .await?;
 
         Ok(results
             .into_iter()
@@ -88,13 +86,12 @@ impl ChannelDb {
 
     pub async fn get_all_channel_settings_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    ) -> io::Result<Vec<ChannelSettings>> {
+    ) -> Result<Vec<ChannelSettings>, sqlx::Error> {
         let results = sqlx::query_as::<_, (String, String, String, bool)>(
             sql::SQL_SELECT_ALL_CHANNEL_SETTINGS,
         )
         .fetch_all(&mut **tx)
-        .await
-        .map_err(|e| io::Error::other(e.to_string()))?;
+        .await?;
 
         Ok(results
             .into_iter()
@@ -107,22 +104,19 @@ impl ChannelDb {
             .collect())
     }
 
-    pub async fn upsert_channel_settings(&self, settings: &ChannelSettings) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+    pub async fn upsert_channel_settings(
+        &self,
+        settings: &ChannelSettings,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
         Self::upsert_channel_settings_in_tx(&mut tx, settings).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        tx.commit().await
     }
 
     pub async fn upsert_channel_settings_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         settings: &ChannelSettings,
-    ) -> io::Result<()> {
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(sql::SQL_UPSERT_CHANNEL_SETTINGS)
             .bind(&settings.name)
             .bind(fold_name(&settings.name))
@@ -130,56 +124,51 @@ impl ChannelDb {
             .bind(&settings.topic_set_by)
             .bind(settings.secret)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
 
-    pub async fn set_topic(&self, name: &str, topic: &str, set_by: &str) -> io::Result<()> {
+    pub async fn set_topic(
+        &self,
+        name: &str,
+        topic: &str,
+        set_by: &str,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(sql::SQL_UPDATE_CHANNEL_TOPIC)
             .bind(topic)
             .bind(set_by)
             .bind(fold_name(name))
             .execute(&self.pool)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
 
-    pub async fn set_secret(&self, name: &str, secret: bool) -> io::Result<()> {
+    pub async fn set_secret(&self, name: &str, secret: bool) -> Result<(), sqlx::Error> {
         sqlx::query(sql::SQL_UPDATE_CHANNEL_SECRET)
             .bind(secret)
             .bind(fold_name(name))
             .execute(&self.pool)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
 
-    pub async fn delete_channel_settings(&self, name: &str) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+    pub async fn delete_channel_settings(&self, name: &str) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
         Self::delete_channel_settings_in_tx(&mut tx, name).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        tx.commit().await
     }
 
     pub async fn delete_channel_settings_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         name: &str,
-    ) -> io::Result<()> {
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(sql::SQL_DELETE_CHANNEL_SETTINGS)
             .bind(fold_name(name))
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }

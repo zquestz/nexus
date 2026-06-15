@@ -7,7 +7,6 @@
 //!   settings stored in-memory only.
 
 use std::collections::{HashMap, HashSet};
-use std::io;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -239,7 +238,7 @@ impl ChannelManager {
 
     /// Returns Ok(true) if channel exists and was updated, Ok(false) if channel doesn't exist.
     /// Returns Err on database error (only possible for persistent channels).
-    pub async fn set_secret(&self, channel_name: &str, secret: bool) -> io::Result<bool> {
+    pub async fn set_secret(&self, channel_name: &str, secret: bool) -> Result<bool, sqlx::Error> {
         let key = fold_name(channel_name);
         let mut channels = self.channels.write().await;
 
@@ -273,7 +272,7 @@ impl ChannelManager {
         channel_name: &str,
         topic: Option<String>,
         set_by: Option<String>,
-    ) -> io::Result<bool> {
+    ) -> Result<bool, sqlx::Error> {
         let key = fold_name(channel_name);
         let mut channels = self.channels.write().await;
 

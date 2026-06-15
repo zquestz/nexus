@@ -1,7 +1,8 @@
 //! Server configuration database operations
 
 use std::collections::HashMap;
-use std::io;
+use std::error::Error;
+use std::fmt;
 
 use nexus_common::validators::{
     BandwidthChunkSizeError, ChannelListError, DEFAULT_BANDWIDTH_CHUNK_SIZE,
@@ -81,6 +82,36 @@ pub struct ConfigDb {
     pool: SqlitePool,
 }
 
+#[derive(Debug)]
+pub enum ConfigDbError {
+    Db(sqlx::Error),
+    Validation(String),
+}
+
+impl fmt::Display for ConfigDbError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConfigDbError::Db(err) => write!(f, "{err}"),
+            ConfigDbError::Validation(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl Error for ConfigDbError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ConfigDbError::Db(err) => Some(err),
+            ConfigDbError::Validation(_) => None,
+        }
+    }
+}
+
+impl From<sqlx::Error> for ConfigDbError {
+    fn from(err: sqlx::Error) -> Self {
+        ConfigDbError::Db(err)
+    }
+}
+
 impl ConfigDb {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -154,20 +185,19 @@ impl ConfigDb {
     pub async fn set_max_outbound_rate_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u64,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_OUTBOUND_RATE)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
         Ok(())
     }
 
     pub async fn set_scheduler_chunk_size_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_bandwidth_chunk_size(value) {
             let msg = match e {
@@ -178,15 +208,14 @@ impl ConfigDb {
                     format!("{ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE} {MAX_BANDWIDTH_CHUNK_SIZE}")
                 }
             };
-            return Err(io::Error::other(msg));
+            return Err(ConfigDbError::Validation(msg));
         }
 
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_SCHEDULER_CHUNK_SIZE)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
         Ok(())
     }
 
@@ -233,13 +262,12 @@ impl ConfigDb {
     pub async fn set_max_connections_per_ip_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -257,13 +285,12 @@ impl ConfigDb {
     pub async fn set_max_transfers_per_ip_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -271,7 +298,7 @@ impl ConfigDb {
     pub async fn set_server_name_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         name: &str,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_server_name(name) {
             let msg = match e {
@@ -280,15 +307,14 @@ impl ConfigDb {
                 ServerNameError::ContainsNewlines => ERR_SERVER_NAME_NEWLINES,
                 ServerNameError::InvalidCharacters => ERR_SERVER_NAME_INVALID_CHARS,
             };
-            return Err(io::Error::other(msg));
+            return Err(ConfigDbError::Validation(msg.to_string()));
         }
 
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(name)
             .bind(CONFIG_KEY_SERVER_NAME)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -296,7 +322,7 @@ impl ConfigDb {
     pub async fn set_server_description_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         description: &str,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_server_description(description) {
             let msg = match e {
@@ -304,15 +330,14 @@ impl ConfigDb {
                 ServerDescriptionError::ContainsNewlines => ERR_SERVER_DESC_NEWLINES,
                 ServerDescriptionError::InvalidCharacters => ERR_SERVER_DESC_INVALID_CHARS,
             };
-            return Err(io::Error::other(msg));
+            return Err(ConfigDbError::Validation(msg.to_string()));
         }
 
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(description)
             .bind(CONFIG_KEY_SERVER_DESCRIPTION)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -320,7 +345,7 @@ impl ConfigDb {
     pub async fn set_server_image_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         image: &str,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         // Defense-in-depth (handler also validates); empty string clears the image.
         if !image.is_empty() {
             validate_server_image_for_db(image).await?;
@@ -330,8 +355,7 @@ impl ConfigDb {
             .bind(image)
             .bind(CONFIG_KEY_SERVER_IMAGE)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -339,7 +363,7 @@ impl ConfigDb {
     pub async fn set_public_address_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: &str,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         // Defense-in-depth (handler also validates); empty string clears the address.
         if let Err(e) = validate_public_address(value) {
             let msg = match e {
@@ -353,15 +377,14 @@ impl ConfigDb {
                 PublicAddressError::ContainsZoneId => ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID,
                 PublicAddressError::InvalidFormat => ERR_PUBLIC_ADDRESS_INVALID_FORMAT,
             };
-            return Err(io::Error::other(msg));
+            return Err(ConfigDbError::Validation(msg.to_string()));
         }
 
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_PUBLIC_ADDRESS)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -380,13 +403,12 @@ impl ConfigDb {
     pub async fn set_file_reindex_interval_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_FILE_REINDEX_INTERVAL)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -403,7 +425,7 @@ impl ConfigDb {
     pub async fn set_persistent_channels_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: &str,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_persistent_channels(value) {
             let msg = match e {
@@ -411,15 +433,14 @@ impl ConfigDb {
                 ChannelListError::InvalidCharacters => ERR_PERSISTENT_CHANNELS_INVALID_CHARS,
                 ChannelListError::ContainsNewlines => ERR_PERSISTENT_CHANNELS_NEWLINES,
             };
-            return Err(io::Error::other(msg));
+            return Err(ConfigDbError::Validation(msg.to_string()));
         }
 
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -427,7 +448,7 @@ impl ConfigDb {
     pub async fn set_auto_join_channels_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: &str,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_auto_join_channels(value) {
             let msg = match e {
@@ -435,15 +456,14 @@ impl ConfigDb {
                 ChannelListError::InvalidCharacters => ERR_AUTO_JOIN_CHANNELS_INVALID_CHARS,
                 ChannelListError::ContainsNewlines => ERR_AUTO_JOIN_CHANNELS_NEWLINES,
             };
-            return Err(io::Error::other(msg));
+            return Err(ConfigDbError::Validation(msg.to_string()));
         }
 
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_AUTO_JOIN_CHANNELS)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -462,13 +482,12 @@ impl ConfigDb {
     pub async fn set_min_password_strength_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: PasswordStrength,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.score().to_string())
             .bind(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
 
         Ok(())
     }
@@ -487,13 +506,12 @@ impl ConfigDb {
     pub async fn set_chat_burst_limit_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_CHAT_BURST_LIMIT)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
         Ok(())
     }
 
@@ -511,13 +529,12 @@ impl ConfigDb {
     pub async fn set_chat_rate_limit_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
-    ) -> io::Result<()> {
+    ) -> Result<(), ConfigDbError> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_CHAT_RATE_LIMIT)
             .execute(&mut **tx)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
+            .await?;
         Ok(())
     }
 
@@ -528,138 +545,112 @@ impl ConfigDb {
 
 #[cfg(test)]
 impl ConfigDb {
-    async fn begin_test_tx(&self) -> io::Result<sqlx::Transaction<'_, sqlx::Sqlite>> {
-        self.pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+    async fn begin_test_tx(&self) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, ConfigDbError> {
+        Ok(self.pool.begin().await?)
     }
 
-    pub async fn set_max_outbound_rate(&self, value: u64) -> io::Result<()> {
+    pub async fn set_max_outbound_rate(&self, value: u64) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_max_outbound_rate_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
-    pub async fn set_scheduler_chunk_size(&self, value: u32) -> io::Result<()> {
+    pub async fn set_scheduler_chunk_size(&self, value: u32) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_scheduler_chunk_size_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
     /// A value of 0 means unlimited connections are allowed.
-    pub async fn set_max_connections_per_ip(&self, value: u32) -> io::Result<()> {
+    pub async fn set_max_connections_per_ip(&self, value: u32) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_max_connections_per_ip_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
     /// A value of 0 means unlimited transfers are allowed.
-    pub async fn set_max_transfers_per_ip(&self, value: u32) -> io::Result<()> {
+    pub async fn set_max_transfers_per_ip(&self, value: u32) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_max_transfers_per_ip_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
-    pub async fn set_server_name(&self, name: &str) -> io::Result<()> {
+    pub async fn set_server_name(&self, name: &str) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_server_name_in_tx(&mut tx, name).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
-    pub async fn set_server_description(&self, description: &str) -> io::Result<()> {
+    pub async fn set_server_description(&self, description: &str) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_server_description_in_tx(&mut tx, description).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
     /// An empty string is allowed to clear the image.
-    pub async fn set_server_image(&self, image: &str) -> io::Result<()> {
+    pub async fn set_server_image(&self, image: &str) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_server_image_in_tx(&mut tx, image).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
     /// An empty string is allowed to clear the advertised address.
-    pub async fn set_public_address(&self, value: &str) -> io::Result<()> {
+    pub async fn set_public_address(&self, value: &str) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_public_address_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
     /// A value of 0 disables automatic reindexing.
-    pub async fn set_file_reindex_interval(&self, value: u32) -> io::Result<()> {
+    pub async fn set_file_reindex_interval(&self, value: u32) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_file_reindex_interval_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
     /// These channels survive restart and can't be deleted when empty.
-    pub async fn set_persistent_channels(&self, value: &str) -> io::Result<()> {
+    pub async fn set_persistent_channels(&self, value: &str) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_persistent_channels_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
-    pub async fn set_auto_join_channels(&self, value: &str) -> io::Result<()> {
+    pub async fn set_auto_join_channels(&self, value: &str) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_auto_join_channels_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
-    pub async fn set_min_password_strength(&self, value: PasswordStrength) -> io::Result<()> {
+    pub async fn set_min_password_strength(
+        &self,
+        value: PasswordStrength,
+    ) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_min_password_strength_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
-    pub async fn set_chat_burst_limit(&self, value: u32) -> io::Result<()> {
+    pub async fn set_chat_burst_limit(&self, value: u32) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_chat_burst_limit_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 
-    pub async fn set_chat_rate_limit(&self, value: u32) -> io::Result<()> {
+    pub async fn set_chat_rate_limit(&self, value: u32) -> Result<(), ConfigDbError> {
         let mut tx = self.begin_test_tx().await?;
         Self::set_chat_rate_limit_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
+        Ok(tx.commit().await?)
     }
 }
 
-async fn validate_server_image_for_db(image: &str) -> io::Result<()> {
+async fn validate_server_image_for_db(image: &str) -> Result<(), ConfigDbError> {
     let owned = image.to_string();
     match tokio::task::spawn_blocking(move || validate_server_image(&owned)).await {
         Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(io::Error::other(server_image_error_message(e))),
-        Err(e) => Err(io::Error::other(format!(
+        Ok(Err(e)) => Err(ConfigDbError::Validation(
+            server_image_error_message(e).to_string(),
+        )),
+        Err(e) => Err(ConfigDbError::Validation(format!(
             "{ERR_SERVER_IMAGE_VALIDATE_TASK_FAILED}: {e}"
         ))),
     }
@@ -681,6 +672,30 @@ mod tests {
     use nexus_common::validators;
 
     const VALID_PNG_DATA_URI: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    fn expect_config_validation_error(result: Result<(), ConfigDbError>, expected_fragment: &str) {
+        match result {
+            Err(ConfigDbError::Validation(msg)) => {
+                assert!(
+                    msg.contains(expected_fragment),
+                    "validation error {msg:?} should contain {expected_fragment:?}"
+                );
+            }
+            other => panic!("expected validation error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn config_setters_preserve_sqlx_errors() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool.clone());
+        pool.close().await;
+
+        assert!(matches!(
+            config_db.set_max_connections_per_ip(10).await,
+            Err(ConfigDbError::Db(_))
+        ));
+    }
 
     #[tokio::test]
     async fn test_get_max_connections_per_ip_default() {
@@ -768,8 +783,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         let result = config_db.set_server_name("").await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+        expect_config_validation_error(result, "cannot be empty");
     }
 
     #[tokio::test]
@@ -779,8 +793,7 @@ mod tests {
 
         let long_name = "a".repeat(validators::MAX_SERVER_NAME_LENGTH + 1);
         let result = config_db.set_server_name(&long_name).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("too long"));
+        expect_config_validation_error(result, "too long");
     }
 
     #[tokio::test]
@@ -828,8 +841,7 @@ mod tests {
 
         let long_desc = "a".repeat(validators::MAX_SERVER_DESCRIPTION_LENGTH + 1);
         let result = config_db.set_server_description(&long_desc).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("too long"));
+        expect_config_validation_error(result, "too long");
     }
 
     #[tokio::test]
@@ -874,8 +886,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         let result = config_db.set_server_image("not a data uri").await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid format"));
+        expect_config_validation_error(result, "invalid format");
     }
 
     #[tokio::test]
@@ -886,8 +897,7 @@ mod tests {
         let result = config_db
             .set_server_image("data:image/gif;base64,R0lGODlh")
             .await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unsupported type"));
+        expect_config_validation_error(result, "unsupported type");
     }
 
     #[tokio::test]
@@ -900,8 +910,7 @@ mod tests {
         let large_image = format!("{}{}", prefix, padding);
 
         let result = config_db.set_server_image(&large_image).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("too large"));
+        expect_config_validation_error(result, "too large");
     }
 
     #[tokio::test]
@@ -965,7 +974,7 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
         let result = config_db.set_public_address("nexus://example.com").await;
-        assert!(result.is_err());
+        expect_config_validation_error(result, "scheme");
     }
 
     #[tokio::test]
@@ -973,7 +982,7 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
         let result = config_db.set_public_address("example.com:7500").await;
-        assert!(result.is_err());
+        expect_config_validation_error(result, "port");
     }
 
     #[tokio::test]
@@ -981,7 +990,7 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
         let result = config_db.set_public_address("[::1]").await;
-        assert!(result.is_err());
+        expect_config_validation_error(result, "brackets");
     }
 
     #[tokio::test]
@@ -1190,11 +1199,11 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        assert!(
+        expect_config_validation_error(
             config_db
                 .set_scheduler_chunk_size(MIN_BANDWIDTH_CHUNK_SIZE - 1)
-                .await
-                .is_err()
+                .await,
+            &MIN_BANDWIDTH_CHUNK_SIZE.to_string(),
         );
 
         // Stored value should remain the default (no write happened).
@@ -1206,11 +1215,11 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        assert!(
+        expect_config_validation_error(
             config_db
                 .set_scheduler_chunk_size(MAX_BANDWIDTH_CHUNK_SIZE + 1)
-                .await
-                .is_err()
+                .await,
+            &MAX_BANDWIDTH_CHUNK_SIZE.to_string(),
         );
 
         // Stored value should remain the default (no write happened).
