@@ -158,6 +158,7 @@ impl NexusApp {
         tab.pending_rename = Some(path);
         tab.rename_name = name;
         tab.rename_error = None;
+        tab.rename_submission_error = None;
         tab.is_rename_submitting = false;
 
         // Focus the name input field
@@ -229,6 +230,7 @@ impl NexusApp {
         // Clear any previous error before sending
         let tab = conn.files_management.active_tab_mut();
         tab.rename_error = None;
+        tab.rename_submission_error = None;
         tab.is_rename_submitting = true;
 
         let tab_id = conn.files_management.active_tab_id();
@@ -244,7 +246,7 @@ impl NexusApp {
             Err(e) => {
                 let tab = conn.files_management.active_tab_mut();
                 tab.is_rename_submitting = false;
-                tab.rename_error = Some(format!("{}: {}", t("err-send-failed"), e));
+                tab.rename_submission_error = Some(format!("{}: {}", t("err-send-failed"), e));
             }
         }
 
@@ -264,6 +266,7 @@ impl NexusApp {
         tab.pending_rename = None;
         tab.rename_name = String::new();
         tab.rename_error = None;
+        tab.rename_submission_error = None;
         tab.is_rename_submitting = false;
 
         Task::none()
@@ -696,5 +699,62 @@ mod tests {
         assert!(tab.pending_overwrite.is_none());
         assert!(tab.error.is_none());
         assert!(!tab.is_paste_submitting);
+    }
+
+    #[test]
+    fn rename_valid_edit_preserves_submission_error() {
+        let mut app = app_with_closed_connection();
+        let conn = app.connections.get_mut(&1).expect("connection exists");
+        let tab = conn.files_management.active_tab_mut();
+        tab.pending_rename = Some("old.txt".to_string());
+        tab.rename_name = "old.txt".to_string();
+        tab.rename_submission_error = Some("server error".to_string());
+
+        let task = app.handle_file_rename_name_changed("new.txt".to_string());
+        drop(task);
+
+        let tab = app.connections[&1].files_management.active_tab();
+        assert_eq!(tab.rename_name, "new.txt");
+        assert!(tab.rename_error.is_none());
+        assert_eq!(tab.rename_submission_error.as_deref(), Some("server error"));
+    }
+
+    #[test]
+    fn rename_invalid_edit_sets_validation_error_without_dropping_submission_error() {
+        let mut app = app_with_closed_connection();
+        let conn = app.connections.get_mut(&1).expect("connection exists");
+        let tab = conn.files_management.active_tab_mut();
+        tab.pending_rename = Some("old.txt".to_string());
+        tab.rename_name = "old.txt".to_string();
+        tab.rename_submission_error = Some("server error".to_string());
+
+        let task = app.handle_file_rename_name_changed("bad/name".to_string());
+        drop(task);
+
+        let tab = app.connections[&1].files_management.active_tab();
+        assert_eq!(tab.rename_name, "bad/name");
+        assert!(tab.rename_error.is_some());
+        assert_eq!(tab.rename_submission_error.as_deref(), Some("server error"));
+    }
+
+    #[test]
+    fn rename_submit_with_submission_error_still_attempts_send() {
+        let mut app = app_with_closed_connection();
+        let conn = app.connections.get_mut(&1).expect("connection exists");
+        let tab = conn.files_management.active_tab_mut();
+        tab.pending_rename = Some("old.txt".to_string());
+        tab.rename_name = "new.txt".to_string();
+        tab.rename_submission_error = Some("server error".to_string());
+
+        let task = app.handle_file_rename_submit();
+        drop(task);
+
+        let tab = app.connections[&1].files_management.active_tab();
+        assert!(!tab.is_rename_submitting);
+        assert!(
+            tab.rename_submission_error
+                .as_deref()
+                .is_some_and(|error| error.starts_with(&t("err-send-failed")))
+        );
     }
 }

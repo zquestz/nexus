@@ -282,12 +282,14 @@ fn info_row<'a>(label: String, value: String) -> iced::widget::Row<'a, Message> 
 /// Build the new directory dialog (matches broadcast view layout)
 pub(super) fn new_directory_dialog<'a>(
     name: &str,
-    error: Option<&String>,
+    validation_error: Option<&String>,
+    submission_error: Option<&String>,
     is_submitting: bool,
 ) -> Element<'a, Message> {
     let title = panel_title(t("files-create-directory-title"));
 
-    let name_valid = !name.is_empty() && error.is_none();
+    let name_valid = !name.is_empty() && validation_error.is_none();
+    let display_error = validation_error.or(submission_error);
 
     let name_input = text_input(&t("files-directory-name-placeholder"), name)
         .id(InputId::NewDirectoryName)
@@ -315,7 +317,7 @@ pub(super) fn new_directory_dialog<'a>(
     let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
 
     // Show error if present
-    if let Some(err) = error {
+    if let Some(err) = display_error {
         form_items.push(
             shaped_text_wrapped(err)
                 .size(TEXT_SIZE)
@@ -347,7 +349,8 @@ pub(super) fn new_directory_dialog<'a>(
 pub(super) fn rename_dialog<'a>(
     path: &str,
     name: &str,
-    error: Option<&String>,
+    validation_error: Option<&String>,
+    submission_error: Option<&String>,
     is_submitting: bool,
 ) -> Element<'a, Message> {
     // Extract filename from path for display
@@ -356,7 +359,8 @@ pub(super) fn rename_dialog<'a>(
     let title_text = crate::i18n::t_args("files-rename-title", &[("name", &display_filename)]);
     let title = panel_title(title_text);
 
-    let name_valid = !name.is_empty() && error.is_none();
+    let name_valid = !name.is_empty() && validation_error.is_none();
+    let display_error = validation_error.or(submission_error);
 
     let name_input = text_input(&t("files-rename-placeholder"), name)
         .id(InputId::RenameName)
@@ -384,7 +388,7 @@ pub(super) fn rename_dialog<'a>(
     let mut form_items: Vec<Element<'_, Message>> = vec![title.into()];
 
     // Show error if present
-    if let Some(err) = error {
+    if let Some(err) = display_error {
         form_items.push(
             shaped_text_wrapped(err)
                 .size(TEXT_SIZE)

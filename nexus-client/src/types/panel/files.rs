@@ -114,8 +114,10 @@ pub struct FileTab {
     pub creating_directory: bool,
     /// New directory name input
     pub new_directory_name: String,
-    /// New directory validation/creation error
+    /// New directory local validation error
     pub new_directory_error: Option<String>,
+    /// New directory send/server error
+    pub new_directory_submission_error: Option<String>,
     /// Path pending deletion (for confirmation dialog)
     pub pending_delete: Option<String>,
     /// Error from delete operation (shown in delete dialog)
@@ -126,8 +128,10 @@ pub struct FileTab {
     pub pending_rename: Option<String>,
     /// New name input for rename dialog
     pub rename_name: String,
-    /// Error message for rename dialog
+    /// Rename local validation error
     pub rename_error: Option<String>,
+    /// Rename send/server error
+    pub rename_submission_error: Option<String>,
     /// Pending overwrite confirmation (when destination exists)
     pub pending_overwrite: Option<PendingOverwrite>,
     /// Whether a delete request is in flight (prevents double-submit)
@@ -174,12 +178,14 @@ impl Default for FileTab {
             creating_directory: false,
             new_directory_name: String::new(),
             new_directory_error: None,
+            new_directory_submission_error: None,
             pending_delete: None,
             delete_error: None,
             pending_info: None,
             pending_rename: None,
             rename_name: String::new(),
             rename_error: None,
+            rename_submission_error: None,
             pending_overwrite: None,
             is_delete_submitting: false,
             is_rename_submitting: false,
@@ -218,12 +224,14 @@ impl FileTab {
             creating_directory: false,
             new_directory_name: String::new(),
             new_directory_error: None,
+            new_directory_submission_error: None,
             pending_delete: None,
             delete_error: None,
             pending_info: None,
             pending_rename: None,
             rename_name: String::new(),
             rename_error: None,
+            rename_submission_error: None,
             pending_overwrite: None,
             is_delete_submitting: false,
             is_rename_submitting: false,
@@ -259,12 +267,14 @@ impl FileTab {
             creating_directory: false,
             new_directory_name: String::new(),
             new_directory_error: None,
+            new_directory_submission_error: None,
             pending_delete: None,
             delete_error: None,
             pending_info: None,
             pending_rename: None,
             rename_name: String::new(),
             rename_error: None,
+            rename_submission_error: None,
             pending_overwrite: None,
             is_delete_submitting: false,
             is_rename_submitting: false,
@@ -376,6 +386,7 @@ impl FileTab {
         self.creating_directory = true;
         self.new_directory_name = String::new();
         self.new_directory_error = None;
+        self.new_directory_submission_error = None;
         self.is_create_dir_submitting = false;
     }
 
@@ -384,6 +395,7 @@ impl FileTab {
         self.creating_directory = false;
         self.new_directory_name = String::new();
         self.new_directory_error = None;
+        self.new_directory_submission_error = None;
         self.is_create_dir_submitting = false;
     }
 
@@ -850,12 +862,14 @@ mod tests {
             creating_directory: true,
             new_directory_name: "My Folder".to_string(),
             new_directory_error: Some("Name already exists".to_string()),
+            new_directory_submission_error: None,
             pending_delete: None,
             delete_error: None,
             pending_info: None,
             pending_rename: None,
             rename_name: String::new(),
             rename_error: None,
+            rename_submission_error: None,
             pending_overwrite: None,
             is_delete_submitting: false,
             is_rename_submitting: false,

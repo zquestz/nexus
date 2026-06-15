@@ -192,7 +192,8 @@ impl NexusApp {
             // is released before `self.focus_field` runs.
             let dialog_open = if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
                 tab.is_create_dir_submitting = false;
-                tab.new_directory_error = error;
+                tab.new_directory_error = None;
+                tab.new_directory_submission_error = error;
                 true
             } else {
                 false
@@ -345,6 +346,7 @@ impl NexusApp {
             tab.pending_rename = None;
             tab.rename_name = String::new();
             tab.rename_error = None;
+            tab.rename_submission_error = None;
             tab.is_rename_submitting = false;
 
             // Refresh the current directory listing
@@ -372,7 +374,8 @@ impl NexusApp {
             // borrow is released before `self.focus_field` runs.
             let dialog_open = if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
                 tab.is_rename_submitting = false;
-                tab.rename_error = error;
+                tab.rename_error = None;
+                tab.rename_submission_error = error;
                 true
             } else {
                 false

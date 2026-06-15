@@ -209,6 +209,7 @@ pub fn files_view<'a>(
             path,
             &tab.rename_name,
             tab.rename_error.as_ref(),
+            tab.rename_submission_error.as_ref(),
             tab.is_rename_submitting,
         );
     }
@@ -228,6 +229,7 @@ pub fn files_view<'a>(
         return new_directory_dialog(
             &tab.new_directory_name,
             tab.new_directory_error.as_ref(),
+            tab.new_directory_submission_error.as_ref(),
             tab.is_create_dir_submitting,
         );
     }
