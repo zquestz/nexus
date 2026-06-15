@@ -7,6 +7,9 @@
 use iced::Task;
 use iced::widget::Id;
 use nexus_common::names::fold_name;
+use nexus_common::{
+    ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUTHORIZED,
+};
 use uuid::Uuid;
 
 use super::focus::{dispatch_find_focused, next_in_cycle};
@@ -977,10 +980,10 @@ fn translate_tracker_query_error(err: &TrackerQueryError) -> String {
             t_args("err-tracker-query-malformed-response", &[("error", e)])
         }
         TrackerQueryError::Rejected { kind, message } => match kind.as_deref() {
-            Some("unauthorized") => t("err-tracker-query-unauthorized"),
-            Some("rate_limited") => t("err-tracker-query-rate-limited"),
-            Some("capacity") => t("err-tracker-query-capacity"),
-            Some("invalid") => t("err-tracker-query-invalid"),
+            Some(ERROR_KIND_UNAUTHORIZED) => t("err-tracker-query-unauthorized"),
+            Some(ERROR_KIND_RATE_LIMITED) => t("err-tracker-query-rate-limited"),
+            Some(ERROR_KIND_CAPACITY) => t("err-tracker-query-capacity"),
+            Some(ERROR_KIND_INVALID) => t("err-tracker-query-invalid"),
             _ => t_args(
                 "err-tracker-query-rejected",
                 &[("message", message.as_str())],
