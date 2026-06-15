@@ -2,7 +2,7 @@
 
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, TargetError};
+use nexus_common::validators::{self, TargetError, TrustReasonError};
 
 use super::duration::is_duration_format;
 use crate::NexusApp;
@@ -86,6 +86,19 @@ pub fn execute(
     } else {
         (None, None)
     };
+
+    if let Some(ref r) = reason
+        && let Err(e) = validators::validate_trust_reason(r)
+    {
+        let error_msg = match e {
+            TrustReasonError::TooLong => t_args(
+                "err-trust-reason-too-long",
+                &[("max", &validators::MAX_TRUST_REASON_LENGTH.to_string())],
+            ),
+            TrustReasonError::InvalidCharacters => t("err-trust-reason-invalid-characters"),
+        };
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
+    }
 
     let msg = ClientMessage::TrustCreate {
         target,

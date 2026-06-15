@@ -2,7 +2,7 @@
 
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, TargetError};
+use nexus_common::validators::{self, BanReasonError, TargetError};
 
 use super::duration::is_duration_format;
 use crate::NexusApp;
@@ -85,6 +85,19 @@ pub fn execute(
     } else {
         (None, None)
     };
+
+    if let Some(ref r) = reason
+        && let Err(e) = validators::validate_ban_reason(r)
+    {
+        let error_msg = match e {
+            BanReasonError::TooLong => t_args(
+                "err-ban-reason-too-long",
+                &[("max", &validators::MAX_BAN_REASON_LENGTH.to_string())],
+            ),
+            BanReasonError::InvalidCharacters => t("err-ban-reason-invalid-characters"),
+        };
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
+    }
 
     let msg = ClientMessage::BanCreate {
         target,

@@ -995,3 +995,188 @@ impl NexusApp {
         Task::none()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use iced::keyboard::key::{Code, Physical};
+    use nexus_common::framing::MessageId;
+    use nexus_common::validators::{self, PasswordStrength};
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::i18n::t_args;
+    use crate::types::{
+        BookmarkEditMode, ConnectionInfo, DisconnectDialogState, ServerBookmark, ServerConnection,
+        ServerConnectionParams,
+    };
+
+    fn key_press(named: key::Named, code: Code) -> Event {
+        Event::Keyboard(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Named(named),
+            modified_key: keyboard::Key::Named(named),
+            physical_key: Physical::Code(code),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::default(),
+            text: None,
+            repeat: false,
+        })
+    }
+
+    fn test_connection(connection_id: usize) -> ServerConnection {
+        let (tx, _rx) = mpsc::unbounded_channel::<(MessageId, ClientMessage)>();
+        ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: "me".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    fn app_with_connection() -> NexusApp {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connections.insert(1, test_connection(1));
+        app
+    }
+
+    #[test]
+    fn escape_prioritizes_disconnect_dialog_over_connection_form() {
+        let mut app = app_with_connection();
+        app.connection_form.connect_origin = Some(ActivePanel::Files);
+        app.connections
+            .get_mut(&1)
+            .expect("test connection should exist")
+            .disconnect_dialog = Some(DisconnectDialogState::new("Bob".to_string()));
+
+        let _ = app.handle_keyboard_event(key_press(key::Named::Escape, Code::Escape));
+
+        assert!(app.connections[&1].disconnect_dialog.is_none());
+        assert_eq!(app.connection_form.connect_origin, Some(ActivePanel::Files));
+    }
+
+    #[test]
+    fn enter_prioritizes_disconnect_dialog_over_connection_form() {
+        let mut app = app_with_connection();
+        app.connection_form.connect_origin = Some(ActivePanel::Files);
+        app.connection_form.server_name = "Server".to_string();
+        app.connection_form.server_address = "example.com".to_string();
+
+        let mut dialog = DisconnectDialogState::new("Bob".to_string());
+        dialog.reason = "x".repeat(validators::MAX_KICK_REASON_LENGTH + 1);
+        app.connections
+            .get_mut(&1)
+            .expect("test connection should exist")
+            .disconnect_dialog = Some(dialog);
+
+        let _ = app.handle_keyboard_event(key_press(key::Named::Enter, Code::Enter));
+
+        let dialog = app.connections[&1]
+            .disconnect_dialog
+            .as_ref()
+            .expect("invalid dialog submit should keep dialog open");
+        assert_eq!(
+            dialog.error.as_deref(),
+            Some(
+                t_args(
+                    "err-kick-reason-too-long",
+                    &[("max", &validators::MAX_KICK_REASON_LENGTH.to_string())]
+                )
+                .as_str()
+            )
+        );
+        assert!(!app.connection_form.is_connecting);
+        assert_eq!(app.connection_form.connect_origin, Some(ActivePanel::Files));
+    }
+
+    #[test]
+    fn escape_prioritizes_connection_form_over_bookmark_editor() {
+        let mut app = NexusApp::default();
+        app.connection_form.connect_origin = Some(ActivePanel::News);
+        app.bookmark_edit.mode = BookmarkEditMode::Add;
+
+        let _ = app.handle_keyboard_event(key_press(key::Named::Escape, Code::Escape));
+
+        assert!(app.connection_form.connect_origin.is_none());
+        assert_eq!(app.bookmark_edit.mode, BookmarkEditMode::Add);
+    }
+
+    #[test]
+    fn enter_prioritizes_connection_form_over_bookmark_editor() {
+        let mut app = NexusApp::default();
+        app.connection_form.connect_origin = Some(ActivePanel::News);
+        app.bookmark_edit.mode = BookmarkEditMode::Add;
+        app.bookmark_edit.bookmark = ServerBookmark {
+            name: "Valid Bookmark".to_string(),
+            address: "example.com".to_string(),
+            ..ServerBookmark::default()
+        };
+
+        let _ = app.handle_keyboard_event(key_press(key::Named::Enter, Code::Enter));
+
+        assert!(app.connection_form.error.is_some());
+        assert_eq!(app.bookmark_edit.mode, BookmarkEditMode::Add);
+        assert!(app.bookmark_edit.error.is_none());
+    }
+
+    #[test]
+    fn escape_prioritizes_bookmark_editor_over_active_panel() {
+        let mut app = NexusApp::default();
+        app.ui_state.active_panel = ActivePanel::About;
+        app.bookmark_edit.mode = BookmarkEditMode::Add;
+
+        let _ = app.handle_keyboard_event(key_press(key::Named::Escape, Code::Escape));
+
+        assert_eq!(app.active_panel(), ActivePanel::About);
+        assert_eq!(app.bookmark_edit.mode, BookmarkEditMode::None);
+    }
+
+    #[test]
+    fn enter_prioritizes_bookmark_editor_over_active_panel() {
+        let mut app = NexusApp::default();
+        app.ui_state.active_panel = ActivePanel::About;
+        app.bookmark_edit.mode = BookmarkEditMode::Add;
+
+        let _ = app.handle_keyboard_event(key_press(key::Named::Enter, Code::Enter));
+
+        assert_eq!(app.active_panel(), ActivePanel::About);
+        assert_eq!(app.bookmark_edit.mode, BookmarkEditMode::Add);
+        assert!(app.bookmark_edit.error.is_some());
+    }
+}

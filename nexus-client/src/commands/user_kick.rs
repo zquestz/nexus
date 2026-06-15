@@ -2,7 +2,7 @@
 
 use iced::Task;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, NicknameError};
+use nexus_common::validators::{self, KickReasonError, NicknameError};
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
@@ -49,6 +49,19 @@ pub fn execute(
     } else {
         None
     };
+
+    if let Some(ref r) = reason
+        && let Err(e) = validators::validate_kick_reason(r)
+    {
+        let error_msg = match e {
+            KickReasonError::TooLong => t_args(
+                "err-kick-reason-too-long",
+                &[("max", &validators::MAX_KICK_REASON_LENGTH.to_string())],
+            ),
+            KickReasonError::InvalidCharacters => t("err-kick-reason-invalid-characters"),
+        };
+        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
+    }
 
     let msg = ClientMessage::UserKick {
         nickname: nickname.clone(),

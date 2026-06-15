@@ -715,10 +715,11 @@ mod tests {
 
     use nexus_common::framing::MessageId;
     use nexus_common::protocol::ClientMessage;
+    use nexus_common::validators;
     use nexus_common::validators::PasswordStrength;
     use tokio::sync::{Mutex, mpsc};
 
-    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+    use crate::types::{ConnectionInfo, MessageType, ServerConnection, ServerConnectionParams};
 
     fn chat_features() -> Vec<String> {
         vec![FEATURE_CHAT.to_string()]
@@ -1060,6 +1061,102 @@ mod tests {
 
         assert!(rx.try_recv().is_err());
         assert_eq!(app.connections[&1].console_messages.len(), 1);
+    }
+
+    #[test]
+    fn test_kick_command_rejects_invalid_reason_before_send() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.permissions.push(PERMISSION_USER_KICK.to_string());
+        app.connections.insert(1, conn);
+
+        let reason = "x".repeat(validators::MAX_KICK_REASON_LENGTH + 1);
+        let _ = execute_command(
+            &mut app,
+            1,
+            CommandInvocation {
+                name: "kick".to_string(),
+                args: vec!["bob".to_string(), reason],
+            },
+        );
+
+        assert!(rx.try_recv().is_err());
+        let message = &app.connections[&1].console_messages[0];
+        assert_eq!(message.message_type, MessageType::Error);
+        assert_eq!(
+            message.message,
+            t_args(
+                "err-kick-reason-too-long",
+                &[("max", &validators::MAX_KICK_REASON_LENGTH.to_string())]
+            )
+        );
+    }
+
+    #[test]
+    fn test_ban_command_rejects_invalid_reason_before_send() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.permissions.push(PERMISSION_BAN_CREATE.to_string());
+        app.connections.insert(1, conn);
+
+        let reason = "x".repeat(validators::MAX_BAN_REASON_LENGTH + 1);
+        let _ = execute_command(
+            &mut app,
+            1,
+            CommandInvocation {
+                name: "ban".to_string(),
+                args: vec!["bob".to_string(), "1h".to_string(), reason],
+            },
+        );
+
+        assert!(rx.try_recv().is_err());
+        let message = &app.connections[&1].console_messages[0];
+        assert_eq!(message.message_type, MessageType::Error);
+        assert_eq!(
+            message.message,
+            t_args(
+                "err-ban-reason-too-long",
+                &[("max", &validators::MAX_BAN_REASON_LENGTH.to_string())]
+            )
+        );
+    }
+
+    #[test]
+    fn test_trust_command_rejects_invalid_reason_before_send() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.permissions.push(PERMISSION_TRUST_CREATE.to_string());
+        app.connections.insert(1, conn);
+
+        let reason = "x".repeat(validators::MAX_TRUST_REASON_LENGTH + 1);
+        let _ = execute_command(
+            &mut app,
+            1,
+            CommandInvocation {
+                name: "trust".to_string(),
+                args: vec!["bob".to_string(), "0".to_string(), reason],
+            },
+        );
+
+        assert!(rx.try_recv().is_err());
+        let message = &app.connections[&1].console_messages[0];
+        assert_eq!(message.message_type, MessageType::Error);
+        assert_eq!(
+            message.message,
+            t_args(
+                "err-trust-reason-too-long",
+                &[("max", &validators::MAX_TRUST_REASON_LENGTH.to_string())]
+            )
+        );
     }
 
     // =========================================================================
