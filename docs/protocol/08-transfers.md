@@ -450,7 +450,7 @@ Both sides use a `StreamingHasher` whose `partial_hash()` returns the current di
 | `invalid`             | Invalid input (malformed path)    |
 | `unsupported_version` | Protocol version not supported    |
 | `disk_full`           | Disk full                         |
-| `capacity`            | Destination lacks free space       |
+| `capacity`            | Destination lacks free space      |
 | `hash_mismatch`       | BLAKE3 verification failed        |
 | `io_error`            | File I/O error                    |
 | `protocol_error`      | Invalid/unexpected data           |
@@ -459,14 +459,15 @@ Both sides use a `StreamingHasher` whose `partial_hash()` returns the current di
 
 ## Timeouts
 
-| Context                 | Timeout    | Description                                                  |
-| ----------------------- | ---------- | ------------------------------------------------------------ |
-| Connection              | 30 seconds | TLS handshake must complete                                  |
-| Download directory scan | 50 seconds | Server-side scan before `FileDownloadResponse` must complete |
-| Download response wait  | 60 seconds | Client wait for initial `FileDownloadResponse`               |
-| Idle                    | 30 seconds | Time waiting for first byte of any other frame               |
-| Frame                   | 60 seconds | Frame must complete within 60s of first byte                 |
-| FileData progress       | 60 seconds | Must receive some bytes within 60s                           |
+| Context                 | Timeout    | Type     | Description                                                                   |
+| ----------------------- | ---------- | -------- | ----------------------------------------------------------------------------- |
+| Connection              | 30 seconds | Normal   | TLS handshake must complete                                                   |
+| Download directory scan | 50 seconds | Normal   | Server-side scan before `FileDownloadResponse` must complete                  |
+| Download response wait  | 60 seconds | Normal   | Client wait for initial `FileDownloadResponse`                                |
+| Control-frame idle      | 30 seconds | Idle     | Time waiting for the next expected non-`FileData` frame to start              |
+| Control-frame read      | 30-60 sec  | Normal   | Small JSON control replies use whole-frame waits; large initial scan gets 60s |
+| Control-frame write     | 30-60 sec  | Progress | Post-login control writes must make socket progress, not finish in one window |
+| `FileData` payload      | 60 seconds | Progress | Raw file bytes must keep flowing; the timeout resets on byte progress         |
 
 **Note:** Unlike port 7500, port 7501 does not allow indefinite idle connections.
 

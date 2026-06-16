@@ -32,6 +32,12 @@ const STREAM_BUFFER_SIZE: usize = 64 * 1024;
 /// the exact allocation hazard the context system exists to prevent.
 const ERR_STREAMING_READER_CONTEXT: &str = "STREAMING is not a reader context; FileData is read via read_frame_header() + payload streaming";
 
+#[derive(Clone, Copy)]
+enum ReadMode {
+    Plain,
+    Progress(Duration),
+}
+
 /// Frame header information returned by `read_frame_header()`
 ///
 /// This allows callers to inspect the frame metadata before deciding how to
@@ -156,6 +162,61 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         }
     }
 
+    /// Read the next context-checked frame with progress timeout after the first byte.
+    ///
+    /// This waits indefinitely for the frame to start. Once the first byte arrives,
+    /// each subsequent socket read must make progress within `progress_timeout`.
+    /// This permits large frames on slow links without allowing a partially-started
+    /// frame to stall forever.
+    pub async fn read_frame_in_context_with_progress_timeout(
+        &mut self,
+        progress_timeout: Duration,
+        context: FrameContexts,
+    ) -> Result<Option<RawFrame>, FrameError> {
+        debug_assert!(
+            !context.intersects(FrameContexts::STREAMING),
+            "{ERR_STREAMING_READER_CONTEXT}"
+        );
+        let first_byte = match self.read_byte_allow_eof().await? {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+
+        self.read_frame_after_first_byte_in_context_with_progress_timeout(
+            first_byte,
+            Some(context),
+            progress_timeout,
+        )
+        .await
+    }
+
+    /// Read the next context-checked frame with idle timeout before the first byte
+    /// and progress timeout after the frame starts.
+    pub async fn read_frame_in_context_with_idle_progress_timeout(
+        &mut self,
+        idle_timeout: Duration,
+        progress_timeout: Duration,
+        context: FrameContexts,
+    ) -> Result<Option<RawFrame>, FrameError> {
+        debug_assert!(
+            !context.intersects(FrameContexts::STREAMING),
+            "{ERR_STREAMING_READER_CONTEXT}"
+        );
+        let first_byte = match timeout(idle_timeout, self.read_byte_allow_eof()).await {
+            Ok(Ok(Some(b))) => b,
+            Ok(Ok(None)) => return Ok(None),
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Err(FrameError::IdleTimeout),
+        };
+
+        self.read_frame_after_first_byte_in_context_with_progress_timeout(
+            first_byte,
+            Some(context),
+            progress_timeout,
+        )
+        .await
+    }
+
     /// Read just the frame header, leaving the payload unread
     ///
     /// This method reads and validates the frame header (magic, type, message_id,
@@ -186,29 +247,8 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         &mut self,
         header: &FrameHeader,
     ) -> Result<Vec<u8>, FrameError> {
-        let payload_len = usize::try_from(header.payload_length).map_err(|_| {
-            FrameError::PayloadAllocationFailed {
-                message_type: header.message_type.clone(),
-                length: header.payload_length,
-            }
-        })?;
-        let mut payload = Vec::new();
-        payload.try_reserve_exact(payload_len).map_err(|_| {
-            FrameError::PayloadAllocationFailed {
-                message_type: header.message_type.clone(),
-                length: header.payload_length,
-            }
-        })?;
-        payload.resize(payload_len, 0);
-        self.reader.read_exact(&mut payload).await?;
-
-        // Read terminator
-        let terminator = self.read_byte().await?;
-        if terminator != TERMINATOR {
-            return Err(FrameError::MissingTerminator);
-        }
-
-        Ok(payload)
+        self.read_payload_into_vec_with_mode(header, ReadMode::Plain)
+            .await
     }
 
     /// Stream the payload directly to a writer with progress-based timeout
@@ -292,23 +332,39 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         first_byte: u8,
         required_context: Option<FrameContexts>,
     ) -> Result<Option<FrameHeader>, FrameError> {
+        self.read_frame_header_after_first_byte_in_context_with_mode(
+            first_byte,
+            required_context,
+            ReadMode::Plain,
+        )
+        .await
+    }
+
+    async fn read_frame_header_after_first_byte_in_context_with_mode(
+        &mut self,
+        first_byte: u8,
+        required_context: Option<FrameContexts>,
+        read_mode: ReadMode,
+    ) -> Result<Option<FrameHeader>, FrameError> {
         // Step 1: Complete reading magic bytes (we already have the first one)
         if first_byte != MAGIC[0] {
             return Err(FrameError::InvalidMagic);
         }
 
         let mut magic_rest = [0u8; 2];
-        self.reader.read_exact(&mut magic_rest).await?;
+        self.read_exact_with_mode(&mut magic_rest, read_mode)
+            .await?;
         if magic_rest != MAGIC[1..] {
             return Err(FrameError::InvalidMagic);
         }
 
         // Step 2: Read type length
         let type_length = self
-            .read_length_field(
+            .read_length_field_with_mode(
                 MAX_TYPE_LENGTH_DIGITS,
                 FrameError::InvalidTypeLength,
                 FrameError::TypeLengthTooManyDigits,
+                read_mode,
             )
             .await?;
         if type_length == 0 || type_length > MAX_TYPE_LENGTH as u64 {
@@ -317,7 +373,8 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
 
         // Step 3: Read message type
         let mut type_bytes = vec![0u8; type_length as usize];
-        self.reader.read_exact(&mut type_bytes).await?;
+        self.read_exact_with_mode(&mut type_bytes, read_mode)
+            .await?;
         let message_type = String::from_utf8(type_bytes)
             .map_err(|_| FrameError::UnknownMessageType("<invalid utf8>".to_string()))?;
 
@@ -333,28 +390,30 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         }
 
         // Step 5: Read delimiter
-        let delimiter = self.read_byte().await?;
+        let delimiter = self.read_byte_with_mode(read_mode).await?;
         if delimiter != DELIMITER {
             return Err(FrameError::MissingDelimiter);
         }
 
         // Step 6: Read message ID
         let mut msg_id_bytes = [0u8; MSG_ID_LENGTH];
-        self.reader.read_exact(&mut msg_id_bytes).await?;
+        self.read_exact_with_mode(&mut msg_id_bytes, read_mode)
+            .await?;
         let message_id = MessageId::from_bytes(&msg_id_bytes)?;
 
         // Step 7: Read delimiter
-        let delimiter = self.read_byte().await?;
+        let delimiter = self.read_byte_with_mode(read_mode).await?;
         if delimiter != DELIMITER {
             return Err(FrameError::MissingDelimiter);
         }
 
         // Step 8: Read payload length
         let payload_length = self
-            .read_length_field(
+            .read_length_field_with_mode(
                 MAX_PAYLOAD_LENGTH_DIGITS,
                 FrameError::InvalidPayloadLength,
                 FrameError::PayloadLengthTooManyDigits,
+                read_mode,
             )
             .await?;
         // Validate payload length against per-type maximum (0 = unlimited)
@@ -378,24 +437,87 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
         first_byte: u8,
         required_context: Option<FrameContexts>,
     ) -> Result<Option<RawFrame>, FrameError> {
+        self.read_frame_after_first_byte_in_context_with_mode(
+            first_byte,
+            required_context,
+            ReadMode::Plain,
+        )
+        .await
+    }
+
+    async fn read_frame_after_first_byte_in_context_with_progress_timeout(
+        &mut self,
+        first_byte: u8,
+        required_context: Option<FrameContexts>,
+        progress_timeout: Duration,
+    ) -> Result<Option<RawFrame>, FrameError> {
+        self.read_frame_after_first_byte_in_context_with_mode(
+            first_byte,
+            required_context,
+            ReadMode::Progress(progress_timeout),
+        )
+        .await
+    }
+
+    async fn read_frame_after_first_byte_in_context_with_mode(
+        &mut self,
+        first_byte: u8,
+        required_context: Option<FrameContexts>,
+        read_mode: ReadMode,
+    ) -> Result<Option<RawFrame>, FrameError> {
         // Read the header first; the context check happens during the header
         // read so rejection precedes any payload allocation.
         let header = match self
-            .read_frame_header_after_first_byte_in_context(first_byte, required_context)
+            .read_frame_header_after_first_byte_in_context_with_mode(
+                first_byte,
+                required_context,
+                read_mode,
+            )
             .await?
         {
             Some(h) => h,
             None => return Ok(None),
         };
 
-        // Read the payload into memory
-        let payload = self.read_payload_into_vec(&header).await?;
+        // Read the payload into memory.
+        let payload = self
+            .read_payload_into_vec_with_mode(&header, read_mode)
+            .await?;
 
         Ok(Some(RawFrame::new(
             header.message_id,
             header.message_type,
             payload,
         )))
+    }
+
+    async fn read_payload_into_vec_with_mode(
+        &mut self,
+        header: &FrameHeader,
+        read_mode: ReadMode,
+    ) -> Result<Vec<u8>, FrameError> {
+        let payload_len = usize::try_from(header.payload_length).map_err(|_| {
+            FrameError::PayloadAllocationFailed {
+                message_type: header.message_type.clone(),
+                length: header.payload_length,
+            }
+        })?;
+        let mut payload = Vec::new();
+        payload.try_reserve_exact(payload_len).map_err(|_| {
+            FrameError::PayloadAllocationFailed {
+                message_type: header.message_type.clone(),
+                length: header.payload_length,
+            }
+        })?;
+        payload.resize(payload_len, 0);
+        self.read_exact_with_mode(&mut payload, read_mode).await?;
+
+        let terminator = self.read_byte_with_mode(read_mode).await?;
+        if terminator != TERMINATOR {
+            return Err(FrameError::MissingTerminator);
+        }
+
+        Ok(payload)
     }
 
     /// Read a single byte, returning None on clean EOF
@@ -410,28 +532,57 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
 
     /// Read a single byte
     async fn read_byte(&mut self) -> Result<u8, FrameError> {
+        self.read_byte_with_mode(ReadMode::Plain).await
+    }
+
+    async fn read_byte_with_mode(&mut self, read_mode: ReadMode) -> Result<u8, FrameError> {
         let mut buf = [0u8; 1];
-        self.reader.read_exact(&mut buf).await?;
+        self.read_exact_with_mode(&mut buf, read_mode).await?;
         Ok(buf[0])
     }
 
-    /// Read a length field (digits terminated by delimiter)
-    ///
-    /// # Arguments
-    ///
-    /// * `max_digits` - Maximum number of digits allowed
-    /// * `invalid_err` - Error to return if the field is invalid (empty, non-digit, unparseable)
-    /// * `too_many_err` - Error to return if the field exceeds max_digits
-    async fn read_length_field(
+    async fn read_exact_with_mode(
+        &mut self,
+        mut buf: &mut [u8],
+        read_mode: ReadMode,
+    ) -> Result<(), FrameError> {
+        match read_mode {
+            ReadMode::Plain => {
+                self.reader.read_exact(buf).await?;
+                Ok(())
+            }
+            ReadMode::Progress(progress_timeout) => {
+                while !buf.is_empty() {
+                    let bytes_read = match timeout(progress_timeout, self.reader.read(buf)).await {
+                        Ok(Ok(bytes_written)) => bytes_written,
+                        Ok(Err(err)) => return Err(err.into()),
+                        Err(_) => return Err(FrameError::FrameTimeout),
+                    };
+
+                    if bytes_read == 0 {
+                        return Err(FrameError::ConnectionClosed);
+                    }
+
+                    let remaining = buf;
+                    buf = &mut remaining[bytes_read..];
+                }
+
+                Ok(())
+            }
+        }
+    }
+
+    async fn read_length_field_with_mode(
         &mut self,
         max_digits: usize,
         invalid_err: FrameError,
         too_many_err: FrameError,
+        read_mode: ReadMode,
     ) -> Result<u64, FrameError> {
         let mut digits = Vec::with_capacity(max_digits);
 
         for _ in 0..=max_digits {
-            let byte = self.read_byte().await?;
+            let byte = self.read_byte_with_mode(read_mode).await?;
 
             if byte == DELIMITER {
                 // Parse the accumulated digits
@@ -457,8 +608,90 @@ impl<R: AsyncReadExt + Unpin> FrameReader<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
     use std::io::Cursor;
-    use tokio::io::{AsyncWriteExt, BufReader};
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tokio::io::{AsyncRead, AsyncWriteExt, BufReader};
+
+    struct OneByteReader {
+        bytes: Vec<u8>,
+        offset: usize,
+    }
+
+    impl OneByteReader {
+        fn new(bytes: &[u8]) -> Self {
+            Self {
+                bytes: bytes.to_vec(),
+                offset: 0,
+            }
+        }
+    }
+
+    impl AsyncRead for OneByteReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            if self.offset >= self.bytes.len() {
+                return Poll::Ready(Ok(()));
+            }
+
+            let byte = self.bytes[self.offset];
+            self.offset += 1;
+            buf.put_slice(&[byte]);
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    struct DelayedByteReader {
+        bytes: Vec<u8>,
+        offset: usize,
+        delay: Duration,
+        sleep: Option<Pin<Box<tokio::time::Sleep>>>,
+    }
+
+    impl DelayedByteReader {
+        fn new(bytes: &[u8], delay: Duration) -> Self {
+            Self {
+                bytes: bytes.to_vec(),
+                offset: 0,
+                delay,
+                sleep: None,
+            }
+        }
+    }
+
+    impl AsyncRead for DelayedByteReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            if buf.remaining() == 0 || self.offset >= self.bytes.len() {
+                return Poll::Ready(Ok(()));
+            }
+
+            if self.sleep.is_none() {
+                let delay = self.delay;
+                self.sleep = Some(Box::pin(tokio::time::sleep(delay)));
+            }
+
+            let Some(sleep) = self.sleep.as_mut() else {
+                return Poll::Ready(Ok(()));
+            };
+            if sleep.as_mut().poll(cx).is_pending() {
+                return Poll::Pending;
+            }
+
+            self.sleep = None;
+            let byte = self.bytes[self.offset];
+            self.offset += 1;
+            buf.put_slice(&[byte]);
+            Poll::Ready(Ok(()))
+        }
+    }
 
     #[tokio::test]
     async fn test_frame_reader_valid_frame() {
@@ -516,6 +749,143 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(frame2.message_type, "UserList");
+    }
+
+    #[tokio::test]
+    async fn progress_timeout_reader_allows_one_byte_progress() {
+        let data = b"NX|4|Pong|a1b2c3d4e5f6|15|{\"type\":\"Pong\"}\n";
+        let one_byte_reader = OneByteReader::new(data);
+        let mut reader = FrameReader::new(one_byte_reader);
+
+        let frame = reader
+            .read_frame_in_context_with_progress_timeout(
+                Duration::from_secs(30),
+                FrameContexts::BBS_SERVER,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(frame.message_type, "Pong");
+        assert_eq!(frame.payload, b"{\"type\":\"Pong\"}");
+    }
+
+    #[tokio::test]
+    async fn progress_timeout_reader_allows_delayed_progress_past_total_timeout() {
+        let data = b"NX|4|Pong|a1b2c3d4e5f6|15|{\"type\":\"Pong\"}\n";
+        let progress_timeout = Duration::from_millis(100);
+        let delayed_reader = DelayedByteReader::new(data, Duration::from_millis(5));
+        let mut reader = FrameReader::new(delayed_reader);
+        let start = tokio::time::Instant::now();
+
+        let frame = reader
+            .read_frame_in_context_with_progress_timeout(
+                progress_timeout,
+                FrameContexts::BBS_SERVER,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(start.elapsed() >= progress_timeout);
+        assert_eq!(frame.message_type, "Pong");
+        assert_eq!(frame.payload, b"{\"type\":\"Pong\"}");
+    }
+
+    #[tokio::test]
+    async fn progress_timeout_reader_rejects_wrong_context_before_payload() {
+        let data = b"NX|8|ChatSend|a1b2c3d4e5f6|2|{}\n";
+        let cursor = Cursor::new(data.as_slice());
+        let mut reader = FrameReader::new(cursor);
+
+        let err = reader
+            .read_frame_in_context_with_progress_timeout(
+                Duration::from_secs(30),
+                FrameContexts::BBS_SERVER,
+            )
+            .await
+            .expect_err("wrong-context progress read must reject");
+
+        assert!(matches!(
+            err,
+            FrameError::UnexpectedMessageType(message_type) if message_type == "ChatSend"
+        ));
+    }
+
+    #[tokio::test]
+    async fn progress_timeout_reader_rejects_oversized_payload_before_allocation() {
+        let data = b"NX|8|ChatSend|a1b2c3d4e5f6|8000|";
+        let cursor = Cursor::new(data.as_slice());
+        let mut reader = FrameReader::new(cursor);
+
+        let err = reader
+            .read_frame_in_context_with_progress_timeout(
+                Duration::from_secs(30),
+                FrameContexts::BBS_CLIENT,
+            )
+            .await
+            .expect_err("oversized progress read must reject before payload");
+
+        assert!(matches!(
+            err,
+            FrameError::PayloadLengthExceedsTypeMax {
+                message_type,
+                length: 8000,
+                ..
+            } if message_type == "ChatSend"
+        ));
+    }
+
+    #[tokio::test]
+    async fn progress_timeout_reader_maps_eof_after_partial_frame_to_connection_closed() {
+        let (mut tx, rx) = tokio::io::duplex(8);
+        tx.write_all(b"N").await.unwrap();
+        drop(tx);
+        let mut reader = FrameReader::new(rx);
+
+        let err = reader
+            .read_frame_in_context_with_progress_timeout(
+                Duration::from_secs(30),
+                FrameContexts::BBS_SERVER,
+            )
+            .await
+            .expect_err("partial frame EOF must be connection closed");
+
+        assert_eq!(err, FrameError::ConnectionClosed);
+    }
+
+    #[tokio::test]
+    async fn progress_timeout_reader_times_out_after_partial_frame_stalls() {
+        let (mut tx, rx) = tokio::io::duplex(8);
+        tx.write_all(b"N").await.unwrap();
+        let mut reader = FrameReader::new(rx);
+
+        let err = reader
+            .read_frame_in_context_with_progress_timeout(
+                Duration::from_millis(1),
+                FrameContexts::BBS_SERVER,
+            )
+            .await
+            .expect_err("partial frame with no progress must time out");
+
+        assert_eq!(err, FrameError::FrameTimeout);
+    }
+
+    #[tokio::test]
+    async fn idle_progress_reader_times_out_before_first_byte() {
+        let (_tx, rx) = tokio::io::duplex(8);
+        let mut reader = FrameReader::new(rx);
+
+        let err = reader
+            .read_frame_in_context_with_idle_progress_timeout(
+                Duration::from_millis(1),
+                Duration::from_secs(30),
+                FrameContexts::BBS_SERVER,
+            )
+            .await
+            .expect_err("idle reader with no first byte must time out");
+
+        assert_eq!(err, FrameError::IdleTimeout);
     }
 
     #[tokio::test]

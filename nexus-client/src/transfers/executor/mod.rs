@@ -38,7 +38,6 @@ use uuid::Uuid;
 
 use nexus_common::framing::FrameError;
 use nexus_common::hash::StreamingHasher;
-use nexus_common::io::send_client_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{FALLBACK_FILE_NAME, PART_SUFFIX};
 
@@ -53,7 +52,7 @@ use file_utils::{
 };
 use streaming::{
     ServerFileFrame, StreamError, read_file_data_or_file_hash, read_message_with_timeout,
-    stream_file_to_server, stream_payload_to_file_with_progress,
+    send_transfer_control_message, stream_file_to_server, stream_payload_to_file_with_progress,
 };
 
 // =============================================================================
@@ -66,12 +65,22 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 /// Idle timeout waiting for a frame to start
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Whole-operation timeout for transfer handshake/login writes.
+const TRANSFER_SETUP_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Progress timeout for non-payload transfer control writes.
+const TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Error text for a stalled transfer control writer.
+const ERR_TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT: &str =
+    "transfer control writer made no progress before timeout";
+
 /// Directory downloads may need to scan the tree before the server can report
 /// total size and file count in FileDownloadResponse.
 const DOWNLOAD_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Progress timeout for FileData (must receive some bytes within this time)
-const PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
+/// Progress timeout for FileData (must receive/send some bytes within this time)
+const TRANSFER_FILE_DATA_PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Buffer size for file I/O operations (streaming)
 const BUFFER_SIZE: usize = 64 * 1024; // 64KB
@@ -234,9 +243,7 @@ where
         path: transfer.remote_path.clone(),
         root: transfer.remote_root,
     };
-    send_client_message(writer, &download_request)
-        .await
-        .map_err(|_| TransferError::ConnectionError)?;
+    send_transfer_control_message(writer, &download_request).await?;
 
     // Read FileDownloadResponse
     let response = read_message_with_timeout(reader, DOWNLOAD_RESPONSE_TIMEOUT).await?;
@@ -458,9 +465,7 @@ where
             size: local_size,
             blake3: local_hash,
         };
-        send_client_message(writer, &start_response)
-            .await
-            .map_err(|_| TransferError::ConnectionError)?;
+        send_transfer_control_message(writer, &start_response).await?;
 
         // Read next frame from server: FileData or FileHash
         // FileHashing keepalives are skipped automatically
@@ -575,7 +580,7 @@ where
                     reader,
                     &header,
                     &mut file,
-                    PROGRESS_TIMEOUT,
+                    TRANSFER_FILE_DATA_PROGRESS_TIMEOUT,
                     cancel_flag,
                     Some(&mut hasher),
                     |bytes_written| {
@@ -731,9 +736,7 @@ where
         total_size,
         root: transfer.remote_root,
     };
-    send_client_message(writer, &upload_request)
-        .await
-        .map_err(|_| TransferError::ConnectionError)?;
+    send_transfer_control_message(writer, &upload_request).await?;
 
     // Read FileUploadResponse
     let response = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
@@ -806,9 +809,7 @@ where
             path: file_info.relative_path.clone(),
             size: file_info.size,
         };
-        send_client_message(writer, &file_start)
-            .await
-            .map_err(|_| TransferError::ConnectionError)?;
+        send_transfer_control_message(writer, &file_start).await?;
 
         // Read FileStartResponse
         let start_response = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
@@ -859,9 +860,7 @@ where
                     let file_hash = ClientMessage::FileHash {
                         blake3: h.finalize(),
                     };
-                    send_client_message(writer, &file_hash)
-                        .await
-                        .map_err(|_| TransferError::ConnectionError)?;
+                    send_transfer_control_message(writer, &file_hash).await?;
 
                     transferred_bytes += file_info.size;
                     files_completed += 1;
@@ -934,7 +933,7 @@ where
                 writer,
                 &mut file,
                 bytes_to_send,
-                PROGRESS_TIMEOUT,
+                TRANSFER_FILE_DATA_PROGRESS_TIMEOUT,
                 cancel_flag,
                 Some(&mut hasher),
                 |bytes_written| {
@@ -990,9 +989,7 @@ where
         let file_hash = ClientMessage::FileHash {
             blake3: hasher.finalize(),
         };
-        send_client_message(writer, &file_hash)
-            .await
-            .map_err(|_| TransferError::ConnectionError)?;
+        send_transfer_control_message(writer, &file_hash).await?;
 
         files_completed += 1;
 

@@ -63,12 +63,31 @@ pub async fn send_client_message_with_id<W>(
 where
     W: AsyncWriteExt + Unpin,
 {
+    let frame = client_message_to_raw_frame(message, message_id)?;
+    writer.write_frame(&frame).await.map_err(Into::into)
+}
+
+/// Serialize a `ClientMessage` into complete BBS frame bytes.
+///
+/// This uses the same message-type and JSON payload encoding as
+/// [`send_client_message_with_id`].
+pub fn client_message_to_frame_bytes(
+    message: &ClientMessage,
+    message_id: MessageId,
+) -> io::Result<Arc<[u8]>> {
+    let frame = client_message_to_raw_frame(message, message_id)?;
+    Ok(Arc::from(frame.to_bytes()))
+}
+
+fn client_message_to_raw_frame(
+    message: &ClientMessage,
+    message_id: MessageId,
+) -> io::Result<RawFrame> {
     let message_type = client_message_type(message);
     let payload =
         serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let frame = RawFrame::new(message_id, message_type, payload);
-    writer.write_frame(&frame).await.map_err(Into::into)
+    Ok(RawFrame::new(message_id, message_type, payload))
 }
 
 /// Send a `ServerMessage` to a client
@@ -382,6 +401,27 @@ where
     R: AsyncReadExt + Unpin,
 {
     read_server_message_in_context(reader, FrameContexts::BBS_SERVER).await
+}
+
+/// Read a logged-in BBS `ServerMessage`, waiting indefinitely for a frame to
+/// start but requiring progress once bytes are flowing.
+pub async fn read_server_message_with_progress_timeout<R>(
+    reader: &mut FrameReader<R>,
+    progress_timeout: Duration,
+) -> Result<Option<ReceivedServerMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let Some(frame) = reader
+        .read_frame_in_context_with_progress_timeout(progress_timeout, FrameContexts::BBS_SERVER)
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_server_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
 }
 
 /// Read the handshake response (`HandshakeResponse` or `Error` only).
@@ -761,6 +801,38 @@ where
         .map_err(|e| FrameError::InvalidJson(e.to_string()))
 }
 
+/// Read a `TrackerServerMessage` with idle timeout before the frame starts and
+/// progress timeout after bytes are flowing.
+///
+/// This is appropriate for large trusted tracker responses: the frame may take
+/// longer than a fixed total deadline, but each socket read must keep moving.
+pub async fn read_tracker_server_message_with_progress_timeout<R>(
+    reader: &mut FrameReader<R>,
+    idle_timeout: Option<Duration>,
+    progress_timeout: Option<Duration>,
+) -> Result<Option<ReceivedTrackerServerMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+    let progress = progress_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+
+    let Some(frame) = reader
+        .read_frame_in_context_with_idle_progress_timeout(
+            idle,
+            progress,
+            FrameContexts::TRACKER_SERVER,
+        )
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_tracker_server_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+}
+
 /// Parse a raw frame into a `ReceivedTrackerServerMessage`.
 fn parse_tracker_server_frame(frame: RawFrame) -> io::Result<ReceivedTrackerServerMessage> {
     let message: TrackerServerMessage = serde_json::from_slice(&frame.payload)
@@ -872,10 +944,43 @@ mod tests {
         buffer
     }
 
+    async fn sent_client_frame_bytes(message: &ClientMessage, message_id: MessageId) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let mut writer = FrameWriter::new(cursor);
+            send_client_message_with_id(&mut writer, message, message_id)
+                .await
+                .unwrap();
+        }
+        buffer
+    }
+
     async fn assert_server_frame_bytes_match_writer(message: ServerMessage, message_id: MessageId) {
         let serialized = server_message_to_frame_bytes(&message, message_id).unwrap();
         let sent = sent_server_frame_bytes(&message, message_id).await;
         assert_eq!(serialized.as_ref(), sent.as_slice());
+    }
+
+    async fn assert_client_frame_bytes_match_writer(message: ClientMessage, message_id: MessageId) {
+        let serialized = client_message_to_frame_bytes(&message, message_id).unwrap();
+        let sent = sent_client_frame_bytes(&message, message_id).await;
+        assert_eq!(serialized.as_ref(), sent.as_slice());
+    }
+
+    #[tokio::test]
+    async fn client_message_to_frame_bytes_matches_writer() {
+        let message_id = MessageId::from_bytes(b"000000000000").unwrap();
+
+        assert_client_frame_bytes_match_writer(
+            ClientMessage::ChatSend {
+                message: "Hello, world!".to_string(),
+                action: ChatAction::Normal,
+                channel: DEFAULT_CHANNEL.to_string(),
+            },
+            message_id,
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -944,6 +1049,54 @@ mod tests {
         }
 
         assert_eq!(serialized.as_ref(), buffer.as_slice());
+    }
+
+    #[tokio::test]
+    async fn read_server_message_with_progress_timeout_reads_bbs_server_frame() {
+        let message_id = MessageId::from_bytes(b"000000000005").unwrap();
+        let bytes = server_message_to_frame_bytes(&ServerMessage::Pong, message_id).unwrap();
+        let cursor = Cursor::new(bytes.as_ref().to_vec());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let received =
+            read_server_message_with_progress_timeout(&mut reader, Duration::from_secs(30))
+                .await
+                .unwrap()
+                .unwrap();
+
+        assert_eq!(received.message_id, message_id);
+        assert!(matches!(received.message, ServerMessage::Pong));
+    }
+
+    #[tokio::test]
+    async fn read_tracker_server_message_with_progress_timeout_reads_tracker_server_frame() {
+        let message_id = MessageId::from_bytes(b"000000000006").unwrap();
+        let message = TrackerServerMessage::TrackerServerListResponse {
+            success: true,
+            servers: Vec::new(),
+            error: None,
+            error_kind: None,
+        };
+        let bytes = tracker_server_message_to_frame_bytes(&message, message_id).unwrap();
+        let cursor = Cursor::new(bytes.as_ref().to_vec());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let received = read_tracker_server_message_with_progress_timeout(
+            &mut reader,
+            Some(Duration::from_secs(30)),
+            Some(Duration::from_secs(30)),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(received.message_id, message_id);
+        assert!(matches!(
+            received.message,
+            TrackerServerMessage::TrackerServerListResponse { success: true, .. }
+        ));
     }
 
     #[tokio::test]

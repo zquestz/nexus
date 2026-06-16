@@ -15,13 +15,35 @@ use tokio::time::timeout;
 
 use nexus_common::framing::{FrameError, FrameHeader, FrameReader, FrameWriter, MessageId};
 use nexus_common::io::read_transfer_server_message;
-use nexus_common::protocol::ServerMessage;
+use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use super::file_utils::is_cancelled;
-use super::{BUFFER_SIZE, IDLE_TIMEOUT, TransferError};
+use super::{
+    BUFFER_SIZE, ERR_TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT, IDLE_TIMEOUT,
+    TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT, TransferError,
+};
+use crate::network::write_timeout::send_client_message_with_progress_timeout;
 
 /// Minimum interval between progress updates (250ms = 4 updates/second)
 const PROGRESS_UPDATE_INTERVAL: Duration = Duration::from_millis(250);
+
+pub(super) async fn send_transfer_control_message<W>(
+    writer: &mut FrameWriter<W>,
+    message: &ClientMessage,
+) -> Result<(), TransferError>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    send_client_message_with_progress_timeout(
+        writer,
+        message,
+        MessageId::new(),
+        TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT,
+        ERR_TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT,
+    )
+    .await
+    .map_err(|_| TransferError::ConnectionError)
+}
 
 /// Error type for streaming operations
 #[derive(Debug)]

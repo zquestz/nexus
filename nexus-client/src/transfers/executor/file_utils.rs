@@ -17,9 +17,9 @@ use tokio::io::{AsyncSeekExt, SeekFrom};
 use nexus_common::FALLBACK_FILE_NAME;
 use nexus_common::framing::FrameWriter;
 use nexus_common::hash::StreamingHasher;
-use nexus_common::io::send_client_message;
 use nexus_common::protocol::ClientMessage;
 
+use super::streaming::send_transfer_control_message;
 use super::{PART_SUFFIX, TransferError};
 
 // =============================================================================
@@ -134,7 +134,7 @@ where
             let msg = ClientMessage::FileHashing {
                 file: file_name.clone(),
             };
-            let _ = send_client_message(writer, &msg).await;
+            let _ = send_transfer_control_message(writer, &msg).await;
             last_keepalive = Instant::now();
         }
     }

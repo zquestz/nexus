@@ -21,7 +21,7 @@ use nexus_common::io::{
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, PROTOCOL_VERSION, SNI_SERVER_NAME};
 
-use super::{CONNECTION_TIMEOUT, IDLE_TIMEOUT, TransferError};
+use super::{CONNECTION_TIMEOUT, IDLE_TIMEOUT, TRANSFER_SETUP_WRITE_TIMEOUT, TransferError};
 use crate::network::{DNS_LOOKUP_TIMEOUT, ProxyConfig};
 use crate::types::ConnectionInfo;
 
@@ -185,9 +185,13 @@ pub async fn connect_and_authenticate(
     let handshake = ClientMessage::Handshake {
         version: PROTOCOL_VERSION.to_string(),
     };
-    send_client_message(&mut writer, &handshake)
-        .await
-        .map_err(|_| TransferError::ConnectionError)?;
+    timeout(
+        TRANSFER_SETUP_WRITE_TIMEOUT,
+        send_client_message(&mut writer, &handshake),
+    )
+    .await
+    .map_err(|_| TransferError::ConnectionError)?
+    .map_err(|_| TransferError::ConnectionError)?;
 
     let handshake_response = timeout(IDLE_TIMEOUT, read_server_handshake_response(&mut reader))
         .await
@@ -236,9 +240,13 @@ pub async fn connect_and_authenticate(
             Some(conn_info.nickname.clone())
         },
     };
-    send_client_message(&mut writer, &login)
-        .await
-        .map_err(|_| TransferError::ConnectionError)?;
+    timeout(
+        TRANSFER_SETUP_WRITE_TIMEOUT,
+        send_client_message(&mut writer, &login),
+    )
+    .await
+    .map_err(|_| TransferError::ConnectionError)?
+    .map_err(|_| TransferError::ConnectionError)?;
 
     let login_response = timeout(IDLE_TIMEOUT, read_server_login_response(&mut reader))
         .await

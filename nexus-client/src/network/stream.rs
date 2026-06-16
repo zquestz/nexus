@@ -8,19 +8,24 @@ use std::time::{Duration, Instant};
 use iced::futures::{SinkExt, Stream};
 use iced::stream;
 use once_cell::sync::Lazy;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, mpsc};
 
 use nexus_common::framing::MessageId;
-use nexus_common::io::{read_server_message, send_client_message_with_id};
+use nexus_common::io::read_server_message_with_progress_timeout;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::i18n::t;
 use crate::types::connection::CommandSender;
 use crate::types::{ConnectionInfo, Message, NetworkConnection};
 
-use super::constants::{PING_INTERVAL, STREAM_CHANNEL_SIZE};
+use super::constants::{
+    BBS_READ_PROGRESS_TIMEOUT, BBS_WRITE_PROGRESS_TIMEOUT, ERR_BBS_WRITE_PROGRESS_TIMEOUT,
+    PING_INTERVAL, STREAM_CHANNEL_SIZE,
+};
 use super::types::{LoginInfo, Reader, Writer};
+use super::write_timeout::{
+    send_client_message_with_progress_timeout, shutdown_writer_with_progress_timeout,
+};
 
 /// Type alias for the connection registry
 /// The tuple is (message_id, message, receive_timestamp) where timestamp is Some for Pong messages
@@ -158,8 +163,10 @@ async fn spawn_reader_task(
             break;
         }
 
-        // Read the next message - this is now cancel-safe since we're not in a select!
-        match read_server_message(&mut reader).await {
+        // Wait indefinitely for the next frame, then require progress once it starts.
+        match read_server_message_with_progress_timeout(&mut reader, BBS_READ_PROGRESS_TIMEOUT)
+            .await
+        {
             Ok(Some(received)) => {
                 // Timestamp Pong messages for accurate ping latency measurement
                 // This captures the time in tokio-land, before Iced's event loop delay
@@ -213,14 +220,28 @@ async fn spawn_writer_task(
         // Check if reader signaled us to stop
         if stop_flag.load(Ordering::Relaxed) {
             // Gracefully close the TLS connection
-            let _ = writer.get_mut().shutdown().await;
+            let _ = shutdown_writer_with_progress_timeout(
+                writer.get_mut(),
+                BBS_WRITE_PROGRESS_TIMEOUT,
+                ERR_BBS_WRITE_PROGRESS_TIMEOUT,
+            )
+            .await;
             break;
         }
 
         tokio::select! {
             // Send to server using the message ID provided by caller
             Some((message_id, msg)) = cmd_rx.recv() => {
-                if send_client_message_with_id(&mut writer, &msg, message_id).await.is_err() {
+                if send_client_message_with_progress_timeout(
+                    &mut writer,
+                    &msg,
+                    message_id,
+                    BBS_WRITE_PROGRESS_TIMEOUT,
+                    ERR_BBS_WRITE_PROGRESS_TIMEOUT,
+                )
+                .await
+                .is_err()
+                {
                     // Error sending, signal reader to stop
                     stop_flag.store(true, Ordering::Relaxed);
                     break;
@@ -231,7 +252,16 @@ async fn spawn_writer_task(
             // Periodic ping to keep NAT mappings alive
             _ = ping_interval.tick() => {
                 let ping_id = MessageId::new();
-                if send_client_message_with_id(&mut writer, &ClientMessage::Ping, ping_id).await.is_err() {
+                if send_client_message_with_progress_timeout(
+                    &mut writer,
+                    &ClientMessage::Ping,
+                    ping_id,
+                    BBS_WRITE_PROGRESS_TIMEOUT,
+                    ERR_BBS_WRITE_PROGRESS_TIMEOUT,
+                )
+                .await
+                .is_err()
+                {
                     // Error sending ping, signal reader to stop
                     stop_flag.store(true, Ordering::Relaxed);
                     break;
@@ -242,13 +272,23 @@ async fn spawn_writer_task(
                 // Signal reader to stop
                 stop_flag.store(true, Ordering::Relaxed);
                 // Gracefully close the TLS connection
-                let _ = writer.get_mut().shutdown().await;
+                let _ = shutdown_writer_with_progress_timeout(
+                    writer.get_mut(),
+                    BBS_WRITE_PROGRESS_TIMEOUT,
+                    ERR_BBS_WRITE_PROGRESS_TIMEOUT,
+                )
+                .await;
                 break;
             }
             // Channel closed (UI dropped the command sender)
             else => {
                 stop_flag.store(true, Ordering::Relaxed);
-                let _ = writer.get_mut().shutdown().await;
+                let _ = shutdown_writer_with_progress_timeout(
+                    writer.get_mut(),
+                    BBS_WRITE_PROGRESS_TIMEOUT,
+                    ERR_BBS_WRITE_PROGRESS_TIMEOUT,
+                )
+                .await;
                 break;
             }
         }

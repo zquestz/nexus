@@ -21,7 +21,7 @@ use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
-    read_server_handshake_response, read_tracker_server_message_with_full_timeout,
+    read_server_handshake_response, read_tracker_server_message_with_progress_timeout,
     send_client_message, send_tracker_client_message,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -210,26 +210,15 @@ pub async fn query_tracker(
     .map_err(|_| TrackerQueryError::Protocol(t("err-tracker-timeout-sending-server-list")))?
     .map_err(|e| TrackerQueryError::Protocol(e.to_string()))?;
 
-    // Phase 7: read TrackerServerListResponse. The inner method applies
-    // idle and frame timeouts in series (worst case 2× the constant);
-    // the outer wrap caps the whole leg at `TRACKER_RESPONSE_TIMEOUT`
-    // so the constant's name and behaviour line up. Mirrors the
-    // BBS-side server tracker task pattern.
-    let response = tokio::time::timeout(
-        TRACKER_RESPONSE_TIMEOUT,
-        read_tracker_server_message_with_full_timeout(
-            &mut reader,
-            Some(TRACKER_RESPONSE_TIMEOUT),
-            Some(TRACKER_RESPONSE_TIMEOUT),
-        ),
+    // Phase 7: read TrackerServerListResponse. The response can be large, so
+    // keep a 30s wait-for-first-byte bound but use a progress timeout once the
+    // frame starts instead of a whole-frame deadline.
+    let response = read_tracker_server_message_with_progress_timeout(
+        &mut reader,
+        Some(TRACKER_RESPONSE_TIMEOUT),
+        Some(TRACKER_RESPONSE_TIMEOUT),
     )
     .await
-    .map_err(|_| {
-        TrackerQueryError::Protocol(t_args(
-            "err-connection-timeout",
-            &[("seconds", &TRACKER_RESPONSE_TIMEOUT.as_secs().to_string())],
-        ))
-    })?
     .map_err(|e| TrackerQueryError::Protocol(translate_frame_error(&e)))?;
 
     match response {

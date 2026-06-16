@@ -6,6 +6,7 @@ mod stream;
 pub mod tls;
 mod tracker_query;
 pub mod types;
+pub(crate) mod write_timeout;
 
 pub use connect::connect_to_server;
 pub use constants::{

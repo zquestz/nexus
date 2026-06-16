@@ -18,6 +18,25 @@ pub const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
 /// so the two flows share a single liveness expectation.
 pub const BBS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Post-login BBS writer progress timeout (30 seconds).
+///
+/// Large client-originated frames, such as news or server image updates,
+/// may take longer than 30 seconds on slow uplinks. The writer therefore
+/// applies this as a per-write progress timeout rather than a whole-frame
+/// deadline: the connection closes only if the socket makes no write or
+/// flush progress for the full window.
+pub const BBS_WRITE_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Error text for a stalled post-login BBS writer.
+pub const ERR_BBS_WRITE_PROGRESS_TIMEOUT: &str = "BBS writer made no progress before timeout";
+
+/// Post-login BBS reader progress timeout (30 seconds).
+///
+/// The connected BBS reader may idle forever while waiting for the next frame.
+/// Once a frame starts, each socket read must make progress within this window
+/// so a partially-started frame cannot park the reader task indefinitely.
+pub const BBS_READ_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub use nexus_common::{FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS, FEATURE_VOICE};
 
 /// Buffer size for the Iced stream channel
