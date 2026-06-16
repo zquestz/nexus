@@ -172,20 +172,13 @@ impl NexusApp {
 
     /// Handle network error or connection closure
     pub fn handle_network_error(&mut self, connection_id: usize, error: String) -> Task<Message> {
-        // Clean up voice session first (before removing connection)
-        self.cleanup_voice_session(connection_id);
+        let Some(conn) = self.connections.get(&connection_id) else {
+            return Task::none();
+        };
 
         // Get server name and pending terminal error before removing connection
-        let (server_name, pending_disconnect) = self
-            .connections
-            .get(&connection_id)
-            .map(|c| {
-                (
-                    c.connection_info.server_name.clone(),
-                    c.pending_disconnect_error.clone(),
-                )
-            })
-            .unwrap_or((String::new(), None));
+        let server_name = conn.connection_info.server_name.clone();
+        let pending_disconnect = conn.pending_disconnect_error.clone();
 
         let display_name = if server_name.is_empty() {
             t("unknown-server")
@@ -213,37 +206,7 @@ impl NexusApp {
                 .with_message(&disconnect_message),
         );
 
-        if let Some(conn) = self.connections.remove(&connection_id) {
-            // Clean up receiver and signal shutdown in a single spawn
-            let registry = crate::network::NETWORK_RECEIVERS.clone();
-            let shutdown_arc = conn.shutdown_handle.clone();
-            tokio::spawn(async move {
-                // Clean up the receiver from the global registry
-                let mut receivers = registry.lock().await;
-                receivers.remove(&connection_id);
-
-                // Signal the network task to shutdown
-                let mut guard = shutdown_arc.lock().await;
-                if let Some(shutdown) = guard.take() {
-                    shutdown.shutdown();
-                }
-            });
-
-            // Clean up text editor content for this connection
-            self.news_body_content.remove(&connection_id);
-
-            // Clean up history key mapping (but keep the manager - it may be shared)
-            self.connection_history_keys.remove(&connection_id);
-
-            // If this was the active connection, clear it
-            if self.active_connection == Some(connection_id) {
-                self.active_connection = None;
-            }
-
-            // Update tray icon state (Windows/Linux only)
-            #[cfg(not(target_os = "macos"))]
-            self.update_tray_state();
-
+        if self.cleanup_connection_resources(connection_id) {
             // Same disconnected-default-state focus rule as
             // `handle_disconnect_from_server`: if the layout now shows
             // the connection form as its fallback, auto-focus the
@@ -301,9 +264,14 @@ impl NexusApp {
         if let Err(error_msg) =
             self.request_initial_userlist(ctx.connection_id, reg.should_request_userlist)
         {
-            self.connections.remove(&ctx.connection_id);
-            self.active_connection = None;
+            let cleaned = self.cleanup_connection_resources(ctx.connection_id);
             self.report_connection_error(source, ctx.bookmark_id, error_msg);
+            if cleaned
+                && self.active_connection.is_none()
+                && self.active_panel() == ActivePanel::None
+            {
+                return self.focus_field(InputId::ServerName);
+            }
             return Task::none();
         }
 
@@ -776,11 +744,15 @@ impl NexusApp {
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use std::time::Duration;
 
+    use nexus_common::framing::MessageId;
+    use nexus_common::protocol::ServerMessage;
     use nexus_common::validators::PasswordStrength;
-    use tokio::sync::{Mutex, mpsc};
+    use tokio::sync::{Mutex, mpsc, oneshot};
 
     use crate::config::Config;
+    use crate::config::events::EventType;
     use crate::network::ShutdownHandle;
     use crate::network::types::ProxyConfig;
     use crate::types::ConnectionInfo;
@@ -821,7 +793,7 @@ mod tests {
 
     fn network_connection(params: &ConnectionParams, server_nickname: &str) -> NetworkConnection {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
+        let (shutdown_tx, _shutdown_rx) = oneshot::channel();
         NetworkConnection {
             tx,
             connection_id: params.connection_id,
@@ -861,6 +833,50 @@ mod tests {
                 nickname: params.nickname.clone().unwrap_or_default(),
             },
         }
+    }
+
+    async fn register_dummy_receiver(connection_id: usize) {
+        let (_tx, rx) =
+            mpsc::unbounded_channel::<(MessageId, ServerMessage, Option<std::time::Instant>)>();
+        crate::network::NETWORK_RECEIVERS
+            .lock()
+            .await
+            .insert(connection_id, rx);
+    }
+
+    async fn assert_receiver_removed(connection_id: usize) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if !crate::network::NETWORK_RECEIVERS
+                    .lock()
+                    .await
+                    .contains_key(&connection_id)
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("receiver registry entry should be removed");
+    }
+
+    fn enable_connection_lost_toast(app: &mut NexusApp) {
+        let config = app
+            .config
+            .settings
+            .event_settings
+            .get_mut(EventType::ConnectionLost);
+        config.show_notification = false;
+        config.show_toast = true;
+        config.play_sound = false;
+    }
+
+    async fn clear_receiver(connection_id: usize) {
+        crate::network::NETWORK_RECEIVERS
+            .lock()
+            .await
+            .remove(&connection_id);
     }
 
     #[test]
@@ -1016,5 +1032,85 @@ mod tests {
         let bookmark = app.config.bookmarks.first().expect("bookmark saved");
         assert_eq!(bookmark.username, "shared");
         assert_eq!(bookmark.nickname, "ServerNick");
+    }
+
+    #[tokio::test]
+    async fn initial_userlist_send_failure_cleans_registered_connection_resources() {
+        const CONNECTION_ID: usize = 98_321;
+        clear_receiver(CONNECTION_ID).await;
+        register_dummy_receiver(CONNECTION_ID).await;
+
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+        let params = connection_params(CONNECTION_ID, "bbs.example", "alice", None);
+        let mut conn = network_connection(&params, "alice");
+        conn.permissions.push(PERMISSION_USER_LIST.to_string());
+        let ctx = ConnectionContext {
+            bookmark_id: None,
+            display_name: "Test Server".to_string(),
+            certificate_fingerprint: TEST_FINGERPRINT.to_string(),
+            connection_id: CONNECTION_ID,
+        };
+
+        let task = app.handle_successful_connection(
+            conn,
+            ctx,
+            ConnectionSource::Manual {
+                intent: manual_intent("", "", false),
+            },
+        );
+        drop(task);
+
+        assert!(!app.connections.contains_key(&CONNECTION_ID));
+        assert_eq!(app.active_connection, None);
+        assert!(!app.connection_history_keys.contains_key(&CONNECTION_ID));
+        assert!(
+            app.connection_form
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains(&t("err-connection-broken")))
+        );
+        assert_receiver_removed(CONNECTION_ID).await;
+    }
+
+    #[tokio::test]
+    async fn late_network_error_after_setup_failure_is_noop() {
+        const CONNECTION_ID: usize = 98_322;
+        clear_receiver(CONNECTION_ID).await;
+        register_dummy_receiver(CONNECTION_ID).await;
+
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+        enable_connection_lost_toast(&mut app);
+        let params = connection_params(CONNECTION_ID, "bbs.example", "alice", None);
+        let mut conn = network_connection(&params, "alice");
+        conn.permissions.push(PERMISSION_USER_LIST.to_string());
+        let ctx = ConnectionContext {
+            bookmark_id: None,
+            display_name: "Test Server".to_string(),
+            certificate_fingerprint: TEST_FINGERPRINT.to_string(),
+            connection_id: CONNECTION_ID,
+        };
+
+        let task = app.handle_successful_connection(
+            conn,
+            ctx,
+            ConnectionSource::Manual {
+                intent: manual_intent("", "", false),
+            },
+        );
+        drop(task);
+        assert_receiver_removed(CONNECTION_ID).await;
+        let toasts_before = format!("{:?}", app.toasts);
+
+        let task = app.handle_network_error(CONNECTION_ID, "late error".to_string());
+        drop(task);
+
+        assert_eq!(format!("{:?}", app.toasts), toasts_before);
+        assert!(!app.connections.contains_key(&CONNECTION_ID));
     }
 }

@@ -304,39 +304,7 @@ impl NexusApp {
 
     /// Disconnect from a server and clean up resources
     pub fn handle_disconnect_from_server(&mut self, connection_id: usize) -> Task<Message> {
-        // Clean up voice session first (before removing connection)
-        self.cleanup_voice_session(connection_id);
-
-        if let Some(conn) = self.connections.remove(&connection_id) {
-            let shutdown_arc = conn.shutdown_handle.clone();
-            tokio::spawn(async move {
-                let mut guard = shutdown_arc.lock().await;
-                if let Some(shutdown) = guard.take() {
-                    shutdown.shutdown();
-                }
-            });
-
-            let conn_id = conn.connection_id;
-            let registry = network::NETWORK_RECEIVERS.clone();
-            tokio::spawn(async move {
-                let mut receivers = registry.lock().await;
-                receivers.remove(&conn_id);
-            });
-
-            // Clean up text editor content for this connection
-            self.news_body_content.remove(&connection_id);
-
-            // Clean up history key mapping (but keep the manager - it may be shared)
-            self.connection_history_keys.remove(&connection_id);
-
-            if self.active_connection == Some(connection_id) {
-                self.active_connection = None;
-            }
-
-            // Update tray icon state (Windows/Linux only)
-            #[cfg(not(target_os = "macos"))]
-            self.update_tray_state();
-
+        if self.cleanup_connection_resources(connection_id) {
             // If we just landed on the disconnected default state (no
             // active connection, no panel), the layout falls back to
             // the connection form. Auto-focus its first field so the
@@ -346,6 +314,48 @@ impl NexusApp {
             }
         }
         Task::none()
+    }
+
+    /// Remove a connection and release all per-connection resources.
+    ///
+    /// Returns `true` only when this call removed a live connection. Duplicate
+    /// teardown events for an already-cleaned connection are no-ops.
+    pub(crate) fn cleanup_connection_resources(&mut self, connection_id: usize) -> bool {
+        // Clean up voice session first (before removing connection).
+        self.cleanup_voice_session(connection_id);
+
+        let Some(conn) = self.connections.remove(&connection_id) else {
+            return false;
+        };
+
+        let registry = network::NETWORK_RECEIVERS.clone();
+        let shutdown_arc = conn.shutdown_handle.clone();
+        tokio::spawn(async move {
+            let mut receivers = registry.lock().await;
+            receivers.remove(&connection_id);
+            drop(receivers);
+
+            let mut guard = shutdown_arc.lock().await;
+            if let Some(shutdown) = guard.take() {
+                shutdown.shutdown();
+            }
+        });
+
+        // Clean up text editor content for this connection.
+        self.news_body_content.remove(&connection_id);
+
+        // Clean up history key mapping (but keep the manager - it may be shared).
+        self.connection_history_keys.remove(&connection_id);
+
+        if self.active_connection == Some(connection_id) {
+            self.active_connection = None;
+        }
+
+        // Update tray icon state (Windows/Linux only).
+        #[cfg(not(target_os = "macos"))]
+        self.update_tray_state();
+
+        true
     }
 
     /// Switch active view to a different connection
