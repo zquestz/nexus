@@ -1,5 +1,7 @@
 //! User account database operations
 
+use std::fmt;
+
 use nexus_common::names::fold_name;
 use nexus_common::validators;
 use nexus_common::validators::{DEFAULT_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
@@ -127,7 +129,7 @@ pub enum UpdateUserResult {
 }
 
 /// User account stored in database.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct UserAccount {
     pub id: i64,
     pub username: String,
@@ -139,6 +141,22 @@ pub struct UserAccount {
     pub group_id: Option<i64>,
     /// Raw stored weight (`None` = inherit from group or system default).
     pub bandwidth_weight: Option<u16>,
+}
+
+impl fmt::Debug for UserAccount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserAccount")
+            .field("id", &self.id)
+            .field("username", &self.username)
+            .field("hashed_password", &"<REDACTED>")
+            .field("is_admin", &self.is_admin)
+            .field("is_shared", &self.is_shared)
+            .field("enabled", &self.enabled)
+            .field("created_at", &self.created_at)
+            .field("group_id", &self.group_id)
+            .field("bandwidth_weight", &self.bandwidth_weight)
+            .finish()
+    }
 }
 
 /// Row type for user queries (matches `SQL_SELECT_USER_BY_*`).
@@ -1236,6 +1254,31 @@ mod tests {
             tx.commit().await?;
             Ok(())
         }
+    }
+
+    #[test]
+    fn user_account_debug_redacts_hashed_password() {
+        let account = UserAccount {
+            id: 1,
+            username: "alice".to_string(),
+            hashed_password: "argon-secret-value".to_string(),
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            created_at: 0,
+            group_id: None,
+            bandwidth_weight: None,
+        };
+
+        let dbg = format!("{account:?}");
+        assert!(
+            !dbg.contains("argon-secret-value"),
+            "raw password hash leaked into Debug output: {dbg}"
+        );
+        assert!(
+            dbg.contains("<REDACTED>"),
+            "expected redaction marker, got: {dbg}"
+        );
     }
 
     #[tokio::test]

@@ -297,6 +297,11 @@ pub const ERR_GROUP_DELETE_EMPTY_RETRY_FAILED: &str =
     "group delete failed for existing empty group";
 pub const ERR_USER_UPDATE_NON_ADMIN_SCOPE_REQUIRED: &str =
     "non-admin update_user caller must supply OwnedSubset scope and requester_bandwidth_max";
+pub const ERR_TRACKER_PORT_OUT_OF_RANGE: &str = "trackers.port out of u16 range";
+
+pub const CONFIG_READ_SCOPE_ALL: &str = "<all>";
+pub const LOG_CONFIG_DB_READ_DEFAULT: &str = "Config read failed; using default";
+pub const LOG_CONFIG_PARSE_DEFAULT: &str = "Config value invalid; using default";
 
 // `files::index::FileIndex` prefixes, composed `format!("{}{}", PREFIX, err)`.
 pub const ERR_FILE_INDEX_CREATE_TEMP: &str = "Failed to create temp index: ";

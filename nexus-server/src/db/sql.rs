@@ -200,8 +200,8 @@ pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";
 
 /// `ORDER BY name_lower` (the folded key) sorts case-insensitively; no
 /// tiebreaker needed because two rows can't have case-equivalent names. `port`
-/// is stored as INTEGER but always fits in `u16` (protocol-layer validation
-/// rejects out-of-range ports before insert).
+/// is stored as INTEGER and expected to fit in `u16`; corrupt rows are rejected
+/// during row mapping instead of panicking.
 pub const SQL_SELECT_ALL_TRACKERS: &str = "
     SELECT id, address, port, fingerprint, password, name, enabled,
            created_at, updated_at

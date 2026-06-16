@@ -10,6 +10,7 @@ use chrono::Utc;
 use nexus_common::names::fold_name;
 use sqlx::sqlite::SqlitePool;
 
+use crate::constants::ERR_TRACKER_PORT_OUT_OF_RANGE;
 use crate::db::sql;
 
 /// SQLite extended result code for `SQLITE_CONSTRAINT_UNIQUE`.
@@ -149,9 +150,9 @@ impl From<sqlx::Error> for TrackerDbError {
 ///
 /// `port` is stored as INTEGER in SQLite but mapped to `u16` in Rust
 /// because protocol-layer validation rejects out-of-range values
-/// before insert. A stored value outside `u16` range would indicate
+/// before insert. A stored value outside `u16` range indicates
 /// database corruption (manual edit, broken migration); the row
-/// mapping panics with a descriptive message in that case.
+/// mapping returns a protocol error instead of panicking.
 #[derive(Clone, PartialEq, Eq)]
 pub struct TrackerRecord {
     pub id: i64,
@@ -209,13 +210,14 @@ type TrackerRow = (
     i64,
 );
 
-impl From<TrackerRow> for TrackerRecord {
-    fn from(row: TrackerRow) -> Self {
-        let port: u16 = row
-            .2
-            .try_into()
-            .expect("trackers.port out of u16 range — database corruption");
-        Self {
+impl TryFrom<TrackerRow> for TrackerRecord {
+    type Error = sqlx::Error;
+
+    fn try_from(row: TrackerRow) -> Result<Self, Self::Error> {
+        let port: u16 = row.2.try_into().map_err(|_| {
+            sqlx::Error::Protocol(format!("{ERR_TRACKER_PORT_OUT_OF_RANGE}: {}", row.2))
+        })?;
+        Ok(Self {
             id: row.0,
             address: row.1,
             port,
@@ -225,7 +227,7 @@ impl From<TrackerRow> for TrackerRecord {
             enabled: row.6,
             created_at: row.7,
             updated_at: row.8,
-        }
+        })
     }
 }
 
@@ -269,7 +271,7 @@ impl TrackerDb {
         let rows: Vec<TrackerRow> = sqlx::query_as(sql::SQL_SELECT_ALL_TRACKERS)
             .fetch_all(&self.pool)
             .await?;
-        Ok(rows.into_iter().map(TrackerRecord::from).collect())
+        rows.into_iter().map(TrackerRecord::try_from).collect()
     }
 
     /// Fetch a single tracker by id.
@@ -278,7 +280,7 @@ impl TrackerDb {
             .bind(id)
             .fetch_optional(&self.pool)
             .await?;
-        Ok(row.map(TrackerRecord::from))
+        row.map(TrackerRecord::try_from).transpose()
     }
 
     /// Insert a new tracker row. Returns the created record.
@@ -448,6 +450,27 @@ mod tests {
         assert!(
             dbg.contains("password: None"),
             "expected `password: None`, got: {dbg}"
+        );
+    }
+
+    #[test]
+    fn corrupt_port_row_returns_protocol_error() {
+        let row = (
+            1,
+            "tracker.example.com".to_string(),
+            i64::from(u16::MAX) + 1,
+            None,
+            None,
+            "Tracker".to_string(),
+            true,
+            0,
+            0,
+        );
+
+        let err = TrackerRecord::try_from(row).expect_err("corrupt port must fail");
+        assert!(
+            matches!(err, sqlx::Error::Protocol(ref msg) if msg.contains(ERR_TRACKER_PORT_OUT_OF_RANGE)),
+            "expected protocol error for corrupt port, got: {err:?}"
         );
     }
 

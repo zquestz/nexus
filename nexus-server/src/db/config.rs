@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::str::FromStr;
 
 use nexus_common::validators::{
     BandwidthChunkSizeError, ChannelListError, DEFAULT_BANDWIDTH_CHUNK_SIZE,
@@ -19,26 +20,28 @@ use crate::constants::{
     CONFIG_KEY_MAX_OUTBOUND_RATE, CONFIG_KEY_MAX_TRANSFERS_PER_IP,
     CONFIG_KEY_MIN_PASSWORD_STRENGTH, CONFIG_KEY_PERSISTENT_CHANNELS, CONFIG_KEY_PUBLIC_ADDRESS,
     CONFIG_KEY_SCHEDULER_CHUNK_SIZE, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
-    CONFIG_KEY_SERVER_NAME, DEFAULT_AUTO_JOIN_CHANNELS, DEFAULT_CHAT_BURST_LIMIT,
-    DEFAULT_CHAT_RATE_LIMIT, DEFAULT_FILE_REINDEX_INTERVAL, DEFAULT_MAX_CONNECTIONS_PER_IP,
-    DEFAULT_MAX_OUTBOUND_RATE, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_MIN_PASSWORD_STRENGTH,
-    DEFAULT_PERSISTENT_CHANNELS, DEFAULT_PUBLIC_ADDRESS, DEFAULT_SERVER_DESCRIPTION,
-    DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_AUTO_JOIN_CHANNELS_INVALID_CHARS,
-    ERR_AUTO_JOIN_CHANNELS_NEWLINES, ERR_AUTO_JOIN_CHANNELS_TOO_LONG,
-    ERR_PERSISTENT_CHANNELS_INVALID_CHARS, ERR_PERSISTENT_CHANNELS_NEWLINES,
-    ERR_PERSISTENT_CHANNELS_TOO_LONG, ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS,
-    ERR_PUBLIC_ADDRESS_CONTAINS_PATH, ERR_PUBLIC_ADDRESS_CONTAINS_PORT,
-    ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME, ERR_PUBLIC_ADDRESS_CONTAINS_USERINFO,
-    ERR_PUBLIC_ADDRESS_CONTAINS_WHITESPACE, ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID,
-    ERR_PUBLIC_ADDRESS_INVALID_FORMAT, ERR_PUBLIC_ADDRESS_TOO_LONG,
-    ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE, ERR_SCHEDULER_CHUNK_SIZE_TOO_SMALL,
-    ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG,
-    ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNDECODABLE,
-    ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_IMAGE_VALIDATE_TASK_FAILED,
-    ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES,
-    ERR_SERVER_NAME_TOO_LONG,
+    CONFIG_KEY_SERVER_NAME, CONFIG_READ_SCOPE_ALL, DEFAULT_AUTO_JOIN_CHANNELS,
+    DEFAULT_CHAT_BURST_LIMIT, DEFAULT_CHAT_RATE_LIMIT, DEFAULT_FILE_REINDEX_INTERVAL,
+    DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_OUTBOUND_RATE, DEFAULT_MAX_TRANSFERS_PER_IP,
+    DEFAULT_MIN_PASSWORD_STRENGTH, DEFAULT_PERSISTENT_CHANNELS, DEFAULT_PUBLIC_ADDRESS,
+    DEFAULT_SERVER_DESCRIPTION, DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME,
+    ERR_AUTO_JOIN_CHANNELS_INVALID_CHARS, ERR_AUTO_JOIN_CHANNELS_NEWLINES,
+    ERR_AUTO_JOIN_CHANNELS_TOO_LONG, ERR_PERSISTENT_CHANNELS_INVALID_CHARS,
+    ERR_PERSISTENT_CHANNELS_NEWLINES, ERR_PERSISTENT_CHANNELS_TOO_LONG,
+    ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS, ERR_PUBLIC_ADDRESS_CONTAINS_PATH,
+    ERR_PUBLIC_ADDRESS_CONTAINS_PORT, ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME,
+    ERR_PUBLIC_ADDRESS_CONTAINS_USERINFO, ERR_PUBLIC_ADDRESS_CONTAINS_WHITESPACE,
+    ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID, ERR_PUBLIC_ADDRESS_INVALID_FORMAT,
+    ERR_PUBLIC_ADDRESS_TOO_LONG, ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE,
+    ERR_SCHEDULER_CHUNK_SIZE_TOO_SMALL, ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES,
+    ERR_SERVER_DESC_TOO_LONG, ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE,
+    ERR_SERVER_IMAGE_UNDECODABLE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
+    ERR_SERVER_IMAGE_VALIDATE_TASK_FAILED, ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS,
+    ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG, LOG_CONFIG_DB_READ_DEFAULT,
+    LOG_CONFIG_PARSE_DEFAULT,
 };
 use crate::db::sql;
+use tracing::{error, warn};
 
 /// Configuration fields the tracker task needs to build
 /// `TrackerServerRegister` payloads. Subset of [`ServerConfig`] —
@@ -112,18 +115,62 @@ impl From<sqlx::Error> for ConfigDbError {
     }
 }
 
+fn log_config_read_error(key: &str, err: &sqlx::Error) {
+    error!(config_key = key, err = %err, "{}", LOG_CONFIG_DB_READ_DEFAULT);
+}
+
+fn parse_config_value<T>(key: &str, value: String, default: T) -> T
+where
+    T: FromStr,
+    T::Err: fmt::Display,
+{
+    match value.parse() {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            warn!(
+                config_key = key,
+                value = %value,
+                err = %err,
+                "{}",
+                LOG_CONFIG_PARSE_DEFAULT
+            );
+            default
+        }
+    }
+}
+
 impl ConfigDb {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
+    async fn get_config_value(&self, key: &'static str) -> Option<String> {
+        match sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                log_config_read_error(key, &err);
+                None
+            }
+        }
+    }
+
     /// All server configuration values in a single query, using
     /// defaults for any missing keys.
     pub async fn get_all(&self) -> ServerConfig {
-        let rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_GET_ALL_CONFIG)
+        let rows: Vec<(String, String)> = match sqlx::query_as(sql::SQL_GET_ALL_CONFIG)
             .fetch_all(&self.pool)
             .await
-            .unwrap_or_default();
+        {
+            Ok(rows) => rows,
+            Err(err) => {
+                log_config_read_error(CONFIG_READ_SCOPE_ALL, &err);
+                Vec::new()
+            }
+        };
 
         let mut map: HashMap<String, String> = rows.into_iter().collect();
 
@@ -142,15 +189,33 @@ impl ConfigDb {
                 .unwrap_or_else(|| DEFAULT_PUBLIC_ADDRESS.to_string()),
             max_connections_per_ip: map
                 .remove(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
-                .and_then(|v| v.parse().ok())
+                .map(|v| {
+                    parse_config_value(
+                        CONFIG_KEY_MAX_CONNECTIONS_PER_IP,
+                        v,
+                        DEFAULT_MAX_CONNECTIONS_PER_IP as u32,
+                    )
+                })
                 .unwrap_or(DEFAULT_MAX_CONNECTIONS_PER_IP as u32),
             max_transfers_per_ip: map
                 .remove(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
-                .and_then(|v| v.parse().ok())
+                .map(|v| {
+                    parse_config_value(
+                        CONFIG_KEY_MAX_TRANSFERS_PER_IP,
+                        v,
+                        DEFAULT_MAX_TRANSFERS_PER_IP as u32,
+                    )
+                })
                 .unwrap_or(DEFAULT_MAX_TRANSFERS_PER_IP as u32),
             file_reindex_interval: map
                 .remove(CONFIG_KEY_FILE_REINDEX_INTERVAL)
-                .and_then(|v| v.parse().ok())
+                .map(|v| {
+                    parse_config_value(
+                        CONFIG_KEY_FILE_REINDEX_INTERVAL,
+                        v,
+                        DEFAULT_FILE_REINDEX_INTERVAL,
+                    )
+                })
                 .unwrap_or(DEFAULT_FILE_REINDEX_INTERVAL),
             persistent_channels: map
                 .remove(CONFIG_KEY_PERSISTENT_CHANNELS)
@@ -160,24 +225,40 @@ impl ConfigDb {
                 .unwrap_or_else(|| DEFAULT_AUTO_JOIN_CHANNELS.to_string()),
             min_password_strength: map
                 .remove(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
-                .and_then(|v| v.parse::<u8>().ok())
+                .map(|v| {
+                    parse_config_value(
+                        CONFIG_KEY_MIN_PASSWORD_STRENGTH,
+                        v,
+                        DEFAULT_MIN_PASSWORD_STRENGTH.score(),
+                    )
+                })
                 .map(PasswordStrength::from)
                 .unwrap_or(DEFAULT_MIN_PASSWORD_STRENGTH),
             chat_burst_limit: map
                 .remove(CONFIG_KEY_CHAT_BURST_LIMIT)
-                .and_then(|v| v.parse().ok())
+                .map(|v| {
+                    parse_config_value(CONFIG_KEY_CHAT_BURST_LIMIT, v, DEFAULT_CHAT_BURST_LIMIT)
+                })
                 .unwrap_or(DEFAULT_CHAT_BURST_LIMIT),
             chat_rate_limit: map
                 .remove(CONFIG_KEY_CHAT_RATE_LIMIT)
-                .and_then(|v| v.parse().ok())
+                .map(|v| parse_config_value(CONFIG_KEY_CHAT_RATE_LIMIT, v, DEFAULT_CHAT_RATE_LIMIT))
                 .unwrap_or(DEFAULT_CHAT_RATE_LIMIT),
             max_outbound_rate: map
                 .remove(CONFIG_KEY_MAX_OUTBOUND_RATE)
-                .and_then(|v| v.parse().ok())
+                .map(|v| {
+                    parse_config_value(CONFIG_KEY_MAX_OUTBOUND_RATE, v, DEFAULT_MAX_OUTBOUND_RATE)
+                })
                 .unwrap_or(DEFAULT_MAX_OUTBOUND_RATE),
             scheduler_chunk_size: map
                 .remove(CONFIG_KEY_SCHEDULER_CHUNK_SIZE)
-                .and_then(|v| v.parse().ok())
+                .map(|v| {
+                    parse_config_value(
+                        CONFIG_KEY_SCHEDULER_CHUNK_SIZE,
+                        v,
+                        DEFAULT_BANDWIDTH_CHUNK_SIZE,
+                    )
+                })
                 .unwrap_or(DEFAULT_BANDWIDTH_CHUNK_SIZE),
         }
     }
@@ -250,12 +331,15 @@ impl ConfigDb {
     }
 
     pub async fn get_max_connections_per_ip(&self) -> usize {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
-            .fetch_one(&self.pool)
+        self.get_config_value(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
             .await
-            .ok()
-            .and_then(|v| v.parse().ok())
+            .map(|v| {
+                parse_config_value(
+                    CONFIG_KEY_MAX_CONNECTIONS_PER_IP,
+                    v,
+                    DEFAULT_MAX_CONNECTIONS_PER_IP,
+                )
+            })
             .unwrap_or(DEFAULT_MAX_CONNECTIONS_PER_IP)
     }
 
@@ -273,12 +357,15 @@ impl ConfigDb {
     }
 
     pub async fn get_max_transfers_per_ip(&self) -> usize {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
-            .fetch_one(&self.pool)
+        self.get_config_value(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
             .await
-            .ok()
-            .and_then(|v| v.parse().ok())
+            .map(|v| {
+                parse_config_value(
+                    CONFIG_KEY_MAX_TRANSFERS_PER_IP,
+                    v,
+                    DEFAULT_MAX_TRANSFERS_PER_IP,
+                )
+            })
             .unwrap_or(DEFAULT_MAX_TRANSFERS_PER_IP)
     }
 
@@ -391,12 +478,15 @@ impl ConfigDb {
 
     /// A value of 0 means automatic reindexing is disabled.
     pub async fn get_file_reindex_interval(&self) -> u32 {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_FILE_REINDEX_INTERVAL)
-            .fetch_one(&self.pool)
+        self.get_config_value(CONFIG_KEY_FILE_REINDEX_INTERVAL)
             .await
-            .ok()
-            .and_then(|v| v.parse().ok())
+            .map(|v| {
+                parse_config_value(
+                    CONFIG_KEY_FILE_REINDEX_INTERVAL,
+                    v,
+                    DEFAULT_FILE_REINDEX_INTERVAL,
+                )
+            })
             .unwrap_or(DEFAULT_FILE_REINDEX_INTERVAL)
     }
 
@@ -415,11 +505,9 @@ impl ConfigDb {
 
     /// Space-separated string of channel names that survive restart.
     pub async fn get_persistent_channels(&self) -> String {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
-            .fetch_one(&self.pool)
+        self.get_config_value(CONFIG_KEY_PERSISTENT_CHANNELS)
             .await
-            .unwrap_or_else(|_| DEFAULT_PERSISTENT_CHANNELS.to_string())
+            .unwrap_or_else(|| DEFAULT_PERSISTENT_CHANNELS.to_string())
     }
 
     pub async fn set_persistent_channels_in_tx(
@@ -469,12 +557,15 @@ impl ConfigDb {
     }
 
     pub async fn get_min_password_strength(&self) -> PasswordStrength {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
-            .fetch_one(&self.pool)
+        self.get_config_value(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
             .await
-            .ok()
-            .and_then(|v| v.parse::<u8>().ok())
+            .map(|v| {
+                parse_config_value(
+                    CONFIG_KEY_MIN_PASSWORD_STRENGTH,
+                    v,
+                    DEFAULT_MIN_PASSWORD_STRENGTH.score(),
+                )
+            })
             .map(PasswordStrength::from)
             .unwrap_or(DEFAULT_MIN_PASSWORD_STRENGTH)
     }
@@ -494,12 +585,9 @@ impl ConfigDb {
 
     /// A value of 0 means no burst allowance (capacity is 1).
     pub async fn get_chat_burst_limit(&self) -> u32 {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_CHAT_BURST_LIMIT)
-            .fetch_one(&self.pool)
+        self.get_config_value(CONFIG_KEY_CHAT_BURST_LIMIT)
             .await
-            .ok()
-            .and_then(|v| v.parse().ok())
+            .map(|v| parse_config_value(CONFIG_KEY_CHAT_BURST_LIMIT, v, DEFAULT_CHAT_BURST_LIMIT))
             .unwrap_or(DEFAULT_CHAT_BURST_LIMIT)
     }
 
@@ -517,12 +605,9 @@ impl ConfigDb {
 
     /// Messages per minute; a value of 0 disables flood protection.
     pub async fn get_chat_rate_limit(&self) -> u32 {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_CHAT_RATE_LIMIT)
-            .fetch_one(&self.pool)
+        self.get_config_value(CONFIG_KEY_CHAT_RATE_LIMIT)
             .await
-            .ok()
-            .and_then(|v| v.parse().ok())
+            .map(|v| parse_config_value(CONFIG_KEY_CHAT_RATE_LIMIT, v, DEFAULT_CHAT_RATE_LIMIT))
             .unwrap_or(DEFAULT_CHAT_RATE_LIMIT)
     }
 
@@ -695,6 +780,48 @@ mod tests {
             config_db.set_max_connections_per_ip(10).await,
             Err(ConfigDbError::Db(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn config_read_errors_fall_back_to_defaults() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool.clone());
+        pool.close().await;
+
+        assert_eq!(
+            config_db.get_max_connections_per_ip().await,
+            DEFAULT_MAX_CONNECTIONS_PER_IP
+        );
+        assert_eq!(
+            config_db.get_persistent_channels().await,
+            DEFAULT_PERSISTENT_CHANNELS
+        );
+        assert_eq!(
+            config_db.get_all().await.max_connections_per_ip,
+            DEFAULT_MAX_CONNECTIONS_PER_IP as u32
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupt_numeric_config_values_fall_back_to_defaults() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool.clone());
+
+        sqlx::query(sql::SQL_SET_CONFIG)
+            .bind("not-a-number")
+            .bind(CONFIG_KEY_CHAT_RATE_LIMIT)
+            .execute(&pool)
+            .await
+            .expect("write corrupt config value");
+
+        assert_eq!(
+            config_db.get_chat_rate_limit().await,
+            DEFAULT_CHAT_RATE_LIMIT
+        );
+        assert_eq!(
+            config_db.get_all().await.chat_rate_limit,
+            DEFAULT_CHAT_RATE_LIMIT
+        );
     }
 
     #[tokio::test]
