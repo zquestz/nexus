@@ -31,6 +31,90 @@ fn send_shared_frame(user: &UserSession, frame: &Arc<[u8]>, disconnected: &mut V
     }
 }
 
+#[derive(Default)]
+enum CachedServerInfoFrame {
+    #[default]
+    Vacant,
+    Failed,
+    Ready(Arc<[u8]>),
+}
+
+impl CachedServerInfoFrame {
+    fn get_or_build(
+        &mut self,
+        values: &ServerInfoValues,
+        options: ServerInfoOptions,
+    ) -> Option<&Arc<[u8]>> {
+        if matches!(self, Self::Vacant) {
+            *self = match server_info_updated_frame(values, &options) {
+                Some(frame) => Self::Ready(frame),
+                None => Self::Failed,
+            };
+        }
+
+        match self {
+            Self::Ready(frame) => Some(frame),
+            Self::Vacant | Self::Failed => None,
+        }
+    }
+}
+
+struct ServerInfoUpdatedFrames<'a> {
+    values: &'a ServerInfoValues,
+    admin: CachedServerInfoFrame,
+    non_admin: [CachedServerInfoFrame; 4],
+}
+
+impl<'a> ServerInfoUpdatedFrames<'a> {
+    fn new(values: &'a ServerInfoValues) -> Self {
+        Self {
+            values,
+            admin: CachedServerInfoFrame::default(),
+            non_admin: std::array::from_fn(|_| CachedServerInfoFrame::default()),
+        }
+    }
+
+    fn for_session(&mut self, user: &UserSession) -> Option<&Arc<[u8]>> {
+        if user.is_admin {
+            return self.admin.get_or_build(
+                self.values,
+                ServerInfoOptions {
+                    is_admin: true,
+                    has_file_reindex: false,
+                    has_chat_join: false,
+                    include_image: true,
+                },
+            );
+        }
+
+        let has_file_reindex = user.has_permission(Permission::FileReindex);
+        let has_chat_join =
+            user.has_feature(FEATURE_CHAT) && user.has_permission(Permission::ChatJoin);
+        self.non_admin[server_info_variant_index(has_file_reindex, has_chat_join)].get_or_build(
+            self.values,
+            ServerInfoOptions {
+                is_admin: false,
+                has_file_reindex,
+                has_chat_join,
+                include_image: true,
+            },
+        )
+    }
+}
+
+fn server_info_updated_frame(
+    values: &ServerInfoValues,
+    options: &ServerInfoOptions,
+) -> Option<Arc<[u8]>> {
+    let server_info = build_server_info(values, options);
+    let message = ServerMessage::ServerInfoUpdated { server_info };
+    shared_broadcast_frame(&message)
+}
+
+fn server_info_variant_index(has_file_reindex: bool, has_chat_join: bool) -> usize {
+    usize::from(has_file_reindex) * 2 + usize::from(has_chat_join)
+}
+
 impl UserManager {
     /// Send a message to a specific session. Returns false if the session
     /// doesn't exist or the channel is closed.
@@ -245,25 +329,17 @@ impl UserManager {
     /// Broadcast ServerInfoUpdated to all users. Everyone gets full server info;
     /// gated fields are filtered per receiving session.
     pub async fn broadcast_server_info_updated(&self, values: ServerInfoValues) {
+        let mut frames = ServerInfoUpdatedFrames::new(&values);
         let mut disconnected = Vec::new();
 
         {
             let users = self.users.read().await;
             for user in users.values() {
-                let options = ServerInfoOptions {
-                    is_admin: user.is_admin,
-                    has_file_reindex: user.has_permission(Permission::FileReindex),
-                    has_chat_join: user.has_feature(FEATURE_CHAT)
-                        && user.has_permission(Permission::ChatJoin),
-                    include_image: true,
+                let Some(frame) = frames.for_session(user) else {
+                    continue;
                 };
 
-                let server_info = build_server_info(&values, &options);
-                let message = ServerMessage::ServerInfoUpdated { server_info };
-
-                if user.tx.send_message(message, None).is_err() {
-                    disconnected.push(user.session_id);
-                }
+                send_shared_frame(user, frame, &mut disconnected);
             }
         }
 
@@ -324,6 +400,64 @@ mod tests {
             max_outbound_rate: 0,
             scheduler_chunk_size: 65_536,
         }
+    }
+
+    #[test]
+    fn server_info_updated_frames_are_built_lazily() {
+        let values = server_info_values();
+        let mut frames = ServerInfoUpdatedFrames::new(&values);
+
+        assert!(matches!(&frames.admin, CachedServerInfoFrame::Vacant));
+        assert!(
+            frames
+                .non_admin
+                .iter()
+                .all(|slot| matches!(slot, CachedServerInfoFrame::Vacant))
+        );
+
+        let (tx_basic, _rx_basic) = ConnectionWriter::channel();
+        let basic = UserSession::new(session_params(1, "basic", tx_basic));
+        let basic_frame = Arc::clone(
+            frames
+                .for_session(&basic)
+                .expect("basic visibility frame should build"),
+        );
+
+        assert!(matches!(&frames.admin, CachedServerInfoFrame::Vacant));
+        assert!(matches!(
+            &frames.non_admin[0],
+            CachedServerInfoFrame::Ready(frame) if Arc::ptr_eq(frame, &basic_frame)
+        ));
+        assert!(
+            frames.non_admin[1..]
+                .iter()
+                .all(|slot| matches!(slot, CachedServerInfoFrame::Vacant))
+        );
+
+        let (tx_same, _rx_same) = ConnectionWriter::channel();
+        let same_visibility = UserSession::new(session_params(2, "same", tx_same));
+        let same_frame = Arc::clone(
+            frames
+                .for_session(&same_visibility)
+                .expect("cached basic visibility frame should be reused"),
+        );
+        assert!(Arc::ptr_eq(&basic_frame, &same_frame));
+
+        let (tx_admin, _rx_admin) = ConnectionWriter::channel();
+        let mut admin_params = session_params(3, "admin", tx_admin);
+        admin_params.is_admin = true;
+        let admin = UserSession::new(admin_params);
+        let admin_frame = Arc::clone(
+            frames
+                .for_session(&admin)
+                .expect("admin visibility frame should build"),
+        );
+
+        assert!(matches!(
+            &frames.admin,
+            CachedServerInfoFrame::Ready(frame) if Arc::ptr_eq(frame, &admin_frame)
+        ));
+        assert!(!Arc::ptr_eq(&basic_frame, &admin_frame));
     }
 
     #[tokio::test]
@@ -437,6 +571,76 @@ mod tests {
         match chat_msg {
             ServerMessage::ServerInfoUpdated { server_info } => {
                 assert_eq!(server_info.auto_join_channels, Some("#general".to_string()));
+            }
+            other => panic!("Expected ServerInfoUpdated, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_updated_reuses_preframed_visibility_variants() {
+        let manager = UserManager::new();
+
+        let (tx_alice, mut rx_alice) = ConnectionWriter::channel();
+        let (tx_bob, mut rx_bob) = ConnectionWriter::channel();
+        let (tx_reindex, mut rx_reindex) = ConnectionWriter::channel();
+
+        manager
+            .add_user(session_params(1, "alice", tx_alice))
+            .await
+            .unwrap();
+        manager
+            .add_user(session_params(2, "bob", tx_bob))
+            .await
+            .unwrap();
+
+        let mut reindex = session_params(3, "reindex", tx_reindex);
+        reindex.permissions.insert(Permission::FileReindex);
+        manager.add_user(reindex).await.unwrap();
+
+        manager
+            .broadcast_server_info_updated(server_info_values())
+            .await;
+
+        let alice_frame = match rx_alice
+            .try_recv()
+            .expect("alice should receive server info")
+        {
+            SessionEvent::Frame(frame) => frame,
+            other => panic!("expected preframed server info, got {other:?}"),
+        };
+        let bob_frame = match rx_bob.try_recv().expect("bob should receive server info") {
+            SessionEvent::Frame(frame) => frame,
+            other => panic!("expected preframed server info, got {other:?}"),
+        };
+        let reindex_frame = match rx_reindex
+            .try_recv()
+            .expect("file-reindex holder should receive server info")
+        {
+            SessionEvent::Frame(frame) => frame,
+            other => panic!("expected preframed server info, got {other:?}"),
+        };
+
+        assert!(
+            Arc::ptr_eq(&alice_frame, &bob_frame),
+            "sessions with identical visibility should share one frame"
+        );
+        assert!(
+            !Arc::ptr_eq(&alice_frame, &reindex_frame),
+            "different visibility should use a distinct preframed payload"
+        );
+
+        let (alice_msg, _) = SessionEvent::Frame(alice_frame).expect_message();
+        let (reindex_msg, _) = SessionEvent::Frame(reindex_frame).expect_message();
+
+        match alice_msg {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(server_info.file_reindex_interval, None);
+            }
+            other => panic!("Expected ServerInfoUpdated, got {other:?}"),
+        }
+        match reindex_msg {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(server_info.file_reindex_interval, Some(0));
             }
             other => panic!("Expected ServerInfoUpdated, got {other:?}"),
         }
