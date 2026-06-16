@@ -106,40 +106,47 @@ fn get_host() -> Host {
 ///
 /// Returns a list of output devices with "System Default" as the first entry.
 pub fn list_output_devices() -> Vec<AudioDevice> {
-    let mut devices = vec![AudioDevice::system_default()];
     let host = get_host();
+    let mut names = Vec::new();
 
     if let Ok(output_devices) = host.output_devices() {
         for device in output_devices {
             if let Ok(desc) = device.description() {
-                let name = desc.name().to_string();
-                // Skip adding if it's already in the list
-                if !devices.iter().any(|d| d.name == name) {
-                    devices.push(AudioDevice::new(name, false));
-                }
+                names.push(desc.name().to_string());
             }
         }
     }
 
-    devices
+    audio_device_list_from_names(names)
 }
 
 /// List available audio input devices
 ///
 /// Returns a list of input devices with "System Default" as the first entry.
 pub fn list_input_devices() -> Vec<AudioDevice> {
-    let mut devices = vec![AudioDevice::system_default()];
     let host = get_host();
+    let mut names = Vec::new();
 
     if let Ok(input_devices) = host.input_devices() {
         for device in input_devices {
             if let Ok(desc) = device.description() {
-                let name = desc.name().to_string();
-                // Skip adding if it's already in the list
-                if !devices.iter().any(|d| d.name == name) {
-                    devices.push(AudioDevice::new(name, false));
-                }
+                names.push(desc.name().to_string());
             }
+        }
+    }
+
+    audio_device_list_from_names(names)
+}
+
+fn audio_device_list_from_names<I>(names: I) -> Vec<AudioDevice>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut devices = vec![AudioDevice::system_default()];
+
+    for name in names {
+        if !devices.iter().any(|d| d.name == name) {
+            devices.push(AudioDevice::new(name, false));
         }
     }
 
@@ -1355,19 +1362,25 @@ mod tests {
     }
 
     #[test]
-    fn test_list_output_devices_includes_default() {
-        let devices = list_output_devices();
+    fn test_audio_device_list_from_names_includes_default() {
+        let devices = audio_device_list_from_names(Vec::new());
         assert!(!devices.is_empty());
         assert!(devices[0].is_default);
         assert_eq!(devices[0].name, SYSTEM_DEFAULT_DEVICE_NAME);
     }
 
     #[test]
-    fn test_list_input_devices_includes_default() {
-        let devices = list_input_devices();
-        assert!(!devices.is_empty());
-        assert!(devices[0].is_default);
-        assert_eq!(devices[0].name, SYSTEM_DEFAULT_DEVICE_NAME);
+    fn test_audio_device_list_from_names_deduplicates_devices() {
+        let devices = audio_device_list_from_names([
+            "Mic A".to_string(),
+            "Mic B".to_string(),
+            "Mic A".to_string(),
+        ]);
+
+        assert_eq!(devices.len(), 3);
+        assert_eq!(devices[0], AudioDevice::system_default());
+        assert_eq!(devices[1], AudioDevice::new("Mic A".to_string(), false));
+        assert_eq!(devices[2], AudioDevice::new("Mic B".to_string(), false));
     }
 
     #[test]
