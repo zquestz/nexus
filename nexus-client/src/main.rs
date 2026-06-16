@@ -91,6 +91,167 @@ fn get_ipc_socket_path() -> String {
 /// IPC command sent when no URI is available — asks existing instance to focus
 const IPC_FOCUS_COMMAND: &str = "FOCUS";
 
+/// Owner-only security descriptor for the Windows IPC named pipe.
+#[cfg(windows)]
+fn windows_ipc_pipe_security_descriptor()
+-> std::io::Result<interprocess::os::windows::security_descriptor::SecurityDescriptor> {
+    use interprocess::os::windows::security_descriptor::SecurityDescriptor;
+    use widestring::U16CString;
+
+    // Protected DACL, full access for LocalSystem, Administrators, and the
+    // object owner. This is the Windows equivalent of the Unix 0600 IPC socket.
+    const OWNER_ONLY_PIPE_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)";
+
+    let sddl = U16CString::from_str(OWNER_ONLY_PIPE_SDDL)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    SecurityDescriptor::deserialize(&sddl)
+}
+
+#[cfg(windows)]
+type WindowsIpcPipeStream = interprocess::os::windows::named_pipe::DuplexPipeStream<
+    interprocess::os::windows::named_pipe::pipe_mode::Bytes,
+>;
+
+/// Owned Windows handle closed on drop.
+#[cfg(windows)]
+struct WinHandle(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl WinHandle {
+    fn new(handle: windows_sys::Win32::Foundation::HANDLE) -> std::io::Result<Self> {
+        if handle.is_null() || handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(Self(handle))
+        }
+    }
+
+    fn raw(&self) -> windows_sys::Win32::Foundation::HANDLE {
+        self.0
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WinHandle {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn token_user_sid(token: windows_sys::Win32::Foundation::HANDLE) -> std::io::Result<Vec<u8>> {
+    use windows_sys::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError};
+    use windows_sys::Win32::Security::{GetTokenInformation, TOKEN_USER, TokenUser};
+
+    let mut needed = 0;
+    unsafe {
+        let _ = GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut needed);
+    }
+    if needed == 0 || unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let mut buffer = vec![0_u8; needed as usize];
+    let ok = unsafe {
+        GetTokenInformation(
+            token,
+            TokenUser,
+            buffer.as_mut_ptr().cast(),
+            needed,
+            &mut needed,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if buffer.len() < std::mem::size_of::<TOKEN_USER>() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "token buffer too small",
+        ));
+    }
+
+    let token_user = unsafe { std::ptr::read_unaligned(buffer.as_ptr().cast::<TOKEN_USER>()) };
+    let sid = token_user.User.Sid;
+    if sid.is_null() {
+        return Err(std::io::Error::other("token has no user SID"));
+    }
+
+    Ok(buffer)
+}
+
+#[cfg(windows)]
+fn current_user_sid() -> std::io::Result<Vec<u8>> {
+    use windows_sys::Win32::Security::TOKEN_QUERY;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    let mut token = std::ptr::null_mut();
+    let ok = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let token = WinHandle::new(token)?;
+    token_user_sid(token.raw())
+}
+
+#[cfg(windows)]
+fn process_user_sid(process_id: u32) -> std::io::Result<Vec<u8>> {
+    use windows_sys::Win32::Security::TOKEN_QUERY;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) };
+    let process = WinHandle::new(process)?;
+
+    let mut token = std::ptr::null_mut();
+    let ok = unsafe { OpenProcessToken(process.raw(), TOKEN_QUERY, &mut token) };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let token = WinHandle::new(token)?;
+    token_user_sid(token.raw())
+}
+
+#[cfg(windows)]
+fn token_sid_ptr(buffer: &[u8]) -> std::io::Result<windows_sys::Win32::Security::PSID> {
+    use windows_sys::Win32::Security::TOKEN_USER;
+
+    if buffer.len() < std::mem::size_of::<TOKEN_USER>() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "token buffer too small",
+        ));
+    }
+
+    let token_user = unsafe { std::ptr::read_unaligned(buffer.as_ptr().cast::<TOKEN_USER>()) };
+    let sid = token_user.User.Sid;
+    if sid.is_null() {
+        Err(std::io::Error::other("token has no user SID"))
+    } else {
+        Ok(sid)
+    }
+}
+
+#[cfg(windows)]
+fn same_user_sid(left: &[u8], right: &[u8]) -> std::io::Result<bool> {
+    let left_sid = token_sid_ptr(left)?;
+    let right_sid = token_sid_ptr(right)?;
+    Ok(unsafe { windows_sys::Win32::Security::EqualSid(left_sid, right_sid) != 0 })
+}
+
+#[cfg(windows)]
+fn pipe_server_is_current_user(stream: &WindowsIpcPipeStream) -> std::io::Result<bool> {
+    // Best-effort identity check for the connected pipe server. If the server
+    // exits before OpenProcess, or the PID cannot be verified, callers fail
+    // closed and do not write the forwarded URI.
+    let server_sid = process_user_sid(stream.server_process_id()?)?;
+    let current_sid = current_user_sid()?;
+    same_user_sid(&server_sid, &current_sid)
+}
+
 /// Try to contact an existing instance
 ///
 /// If `uri` is provided, sends it to the existing instance.
@@ -142,13 +303,15 @@ fn try_send_to_existing_instance(uri: Option<&str>) -> Result<bool, Box<dyn std:
 
     #[cfg(windows)]
     {
-        use interprocess::os::windows::named_pipe::{DuplexPipeStream, pipe_mode};
         use std::io::Write;
 
         let pipe_name = get_ipc_socket_path();
 
-        match DuplexPipeStream::<pipe_mode::Bytes>::connect_by_path(pipe_name.as_str()) {
+        match WindowsIpcPipeStream::connect_by_path(pipe_name.as_str()) {
             Ok(mut stream) => {
+                if !pipe_server_is_current_user(&stream).unwrap_or(false) {
+                    return Ok(false);
+                }
                 // Note: interprocess named pipes don't support timeouts directly,
                 // but the operations are typically fast. If this becomes an issue,
                 // we could spawn a thread with a timeout wrapper.
@@ -1900,9 +2063,14 @@ fn ipc_listener_stream() -> impl iced::futures::Stream<Item = Message> {
             let listener: WinPipeListener = match listener_state {
                 Some(l) => l,
                 None => {
+                    let security_descriptor = match windows_ipc_pipe_security_descriptor() {
+                        Ok(sd) => sd,
+                        Err(_) => return None,
+                    };
                     match PipeListenerOptions::new()
                         .path(pipe_name.as_str())
                         .mode(PipeMode::Bytes)
+                        .security_descriptor(Some(security_descriptor))
                         .create_tokio::<pipe_mode::Bytes, pipe_mode::Bytes>()
                     {
                         Ok(l) => l,
@@ -1945,4 +2113,69 @@ fn ipc_listener_stream() -> impl iced::futures::Stream<Item = Message> {
             None
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(windows)]
+    fn token_user_buffer_for_well_known_sid(
+        sid_type: windows_sys::Win32::Security::WELL_KNOWN_SID_TYPE,
+    ) -> Vec<u8> {
+        use windows_sys::Win32::Security::{
+            CreateWellKnownSid, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES, TOKEN_USER,
+        };
+
+        let token_user_size = std::mem::size_of::<TOKEN_USER>();
+        let mut sid_size = SECURITY_MAX_SID_SIZE;
+        let mut buffer = vec![0_u8; token_user_size + sid_size as usize];
+        let sid_ptr = unsafe { buffer.as_mut_ptr().add(token_user_size).cast() };
+
+        let ok =
+            unsafe { CreateWellKnownSid(sid_type, std::ptr::null_mut(), sid_ptr, &mut sid_size) };
+        assert_ne!(ok, 0, "well-known SID should be constructible");
+
+        let token_user = TOKEN_USER {
+            User: SID_AND_ATTRIBUTES {
+                Sid: sid_ptr,
+                Attributes: 0,
+            },
+        };
+        unsafe {
+            std::ptr::write_unaligned(buffer.as_mut_ptr().cast::<TOKEN_USER>(), token_user);
+        }
+        buffer.truncate(token_user_size + sid_size as usize);
+        buffer
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_ipc_pipe_security_descriptor_constructs() {
+        super::windows_ipc_pipe_security_descriptor()
+            .expect("Windows IPC pipe security descriptor should be valid");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_current_user_sid_compares_equal_to_itself() {
+        let sid = super::current_user_sid().expect("current user SID should be available");
+        let same_user = super::same_user_sid(&sid, &sid).expect("SID comparison should succeed");
+        assert!(same_user);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_sid_comparison_rejects_different_sids() {
+        use windows_sys::Win32::Security::{WinBuiltinAdministratorsSid, WinLocalSystemSid};
+
+        let system = token_user_buffer_for_well_known_sid(WinLocalSystemSid);
+        let administrators = token_user_buffer_for_well_known_sid(WinBuiltinAdministratorsSid);
+
+        assert!(
+            super::same_user_sid(&system, &system).expect("same SID comparison should succeed")
+        );
+        assert!(
+            !super::same_user_sid(&system, &administrators)
+                .expect("different SID comparison should succeed")
+        );
+    }
 }
