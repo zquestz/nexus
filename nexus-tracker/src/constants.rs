@@ -118,11 +118,11 @@ pub const MSG_SHUTDOWN_RECEIVED: &str = "Shutdown signal received";
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 
 /// Spec §Timeouts: TLS accepted, awaiting Handshake — 30 seconds.
-pub const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub const HANDSHAKE_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Max wait for the first role-establishing message (`TrackerServerRegister`
 /// or `TrackerServerList`) after handshake. Spec §Timeouts: 30 seconds.
-pub const ROLE_ESTABLISH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+pub const ROLE_ESTABLISH_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Max interval without write progress while sending a tracker response.
 /// The response is written in chunks so slow readers are allowed as long

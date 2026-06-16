@@ -30,10 +30,10 @@ use crate::connection_io::{
     send_server_message_with_write_timeout, send_tracker_server_message_with_write_timeout,
 };
 use crate::constants::{
-    DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED, LOG_HANDSHAKE_REQUIRED,
+    DEFAULT_LOCALE, HANDSHAKE_IDLE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED, LOG_HANDSHAKE_REQUIRED,
     LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, REASON_DISCONNECT_CLEAN_CLOSE,
     REASON_DISCONNECT_FRAME_ERROR, REASON_DISCONNECT_REJECTED, REASON_DISCONNECT_ROLE_VIOLATION,
-    REASON_DISCONNECT_STALE_TIMEOUT, ROLE_ESTABLISH_TIMEOUT, STALE_TIMEOUT_REFRESH_MULTIPLIER,
+    REASON_DISCONNECT_STALE_TIMEOUT, ROLE_ESTABLISH_IDLE_TIMEOUT, STALE_TIMEOUT_REFRESH_MULTIPLIER,
 };
 use crate::errors::{
     err_tracker_frame_error, err_tracker_handshake_required, err_tracker_malformed_message,
@@ -110,7 +110,7 @@ where
 {
     let received = match read_client_handshake_message_with_full_timeout(
         reader,
-        Some(HANDSHAKE_TIMEOUT),
+        Some(HANDSHAKE_IDLE_TIMEOUT),
         None,
     )
     .await
@@ -162,7 +162,7 @@ where
 {
     let received = match read_tracker_client_message_with_full_timeout(
         reader,
-        Some(ROLE_ESTABLISH_TIMEOUT),
+        Some(ROLE_ESTABLISH_IDLE_TIMEOUT),
         None,
     )
     .await
