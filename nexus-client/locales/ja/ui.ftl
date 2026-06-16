@@ -1075,6 +1075,7 @@ err-voice-no-token = ボイスチャットに参加しましたが、トーク�
 err-voice-already-active = 別のサーバーでボイスチャットに参加中です
 err-chat-feature-not-enabled = チャット機能が有効になっていません
 err-files-feature-not-enabled = ファイル機能が有効になっていません
+err-files-invalid-path = 無効なパス
 err-news-feature-not-enabled = ニュース機能が有効になっていません
 err-voice-feature-not-enabled = ボイス機能が有効になっていません
 err-voice-no-permission = ボイスチャットに参加する権限がありません

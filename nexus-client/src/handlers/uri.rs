@@ -278,7 +278,7 @@ impl NexusApp {
                 self.handle_show_chat_view()
             }
 
-            NexusPath::Files { path } => {
+            NexusPath::Files { segments } => {
                 let Some(conn) = self.connections.get(&connection_id) else {
                     return Task::none();
                 };
@@ -288,6 +288,9 @@ impl NexusApp {
                         .show_chat_uri_error(connection_id, t("err-files-feature-not-enabled"));
                 }
 
+                let Some(path) = (NexusPath::Files { segments }).file_path() else {
+                    return self.show_chat_uri_error(connection_id, t("err-files-invalid-path"));
+                };
                 if path.is_empty() {
                     self.handle_toggle_files(FilesOpenIntent::Toolbar)
                 } else {
@@ -674,7 +677,7 @@ mod tests {
         let _ = app.navigate_to_path(
             1,
             NexusPath::Files {
-                path: "Music/song.mp3".to_string(),
+                segments: vec!["Music".to_string(), "song.mp3".to_string()],
             },
         );
 
@@ -726,7 +729,7 @@ mod tests {
         let _ = app.navigate_to_path(
             1,
             NexusPath::Files {
-                path: String::new(),
+                segments: Vec::new(),
             },
         );
 
@@ -734,6 +737,35 @@ mod tests {
         assert_eq!(conn.active_panel, ActivePanel::Files);
         assert_eq!(conn.files_management.active_tab().current_path, "Documents");
         assert!(app.connection_form.connect_origin.is_some());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_files_encoded_separator_is_invalid_path() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (conn, mut rx) = test_connection_with_receiver_and_features(
+            1,
+            vec![FEATURE_CHAT.to_string(), FEATURE_FILES.to_string()],
+        );
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Files {
+                segments: vec!["Music/Hidden".to_string(), "song.mp3".to_string()],
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::None);
+        assert_eq!(conn.console_messages.len(), 1);
+        assert_eq!(
+            conn.console_messages[0].message,
+            t("err-files-invalid-path")
+        );
         assert!(rx.try_recv().is_err());
     }
 
@@ -1003,7 +1035,7 @@ mod tests {
         let _ = app.navigate_to_path(
             1,
             NexusPath::Files {
-                path: "uploads/readme.txt".to_string(),
+                segments: vec!["uploads".to_string(), "readme.txt".to_string()],
             },
         );
 

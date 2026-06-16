@@ -1170,6 +1170,7 @@ err-voice-no-token = Voice join succeeded but no token received
 err-voice-already-active = You are already in a voice session on another server
 err-chat-feature-not-enabled = Chat feature not enabled
 err-files-feature-not-enabled = Files feature not enabled
+err-files-invalid-path = Invalid path
 err-news-feature-not-enabled = News feature not enabled
 err-voice-feature-not-enabled = Voice feature not enabled
 err-voice-no-permission = You don't have permission to join voice chat

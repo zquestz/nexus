@@ -1129,6 +1129,7 @@ err-voice-no-token = Spraakchat gestart maar geen token ontvangen
 err-voice-already-active = Je bent al in een spraakchat op een andere server
 err-chat-feature-not-enabled = Chatfunctie niet ingeschakeld
 err-files-feature-not-enabled = Bestandsfunctie niet ingeschakeld
+err-files-invalid-path = Ongeldig pad
 err-news-feature-not-enabled = Nieuwsfunctie niet ingeschakeld
 err-voice-feature-not-enabled = Spraakfunctie niet ingeschakeld
 err-voice-no-permission = Je hebt geen toestemming om deel te nemen aan spraakchat

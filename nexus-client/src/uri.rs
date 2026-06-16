@@ -99,8 +99,8 @@ pub enum NexusPath {
     },
     /// Open Files panel to a path
     Files {
-        /// Path within the file area
-        path: String,
+        /// Decoded path segments within the file area.
+        segments: Vec<String>,
     },
     /// Open News panel
     News,
@@ -108,15 +108,39 @@ pub enum NexusPath {
     Info,
 }
 
+impl NexusPath {
+    /// Return the file-area path string expected by the BBS file protocol.
+    ///
+    /// Returns `None` when any decoded segment contains a path separator.
+    /// Such paths can only come from percent-encoded separators in a URI
+    /// segment, and collapsing them with `join("/")` would change the path
+    /// structure.
+    pub fn file_path(&self) -> Option<String> {
+        match self {
+            NexusPath::Files { segments } => segments
+                .iter()
+                .all(|segment| !segment.contains('/') && !segment.contains('\\'))
+                .then(|| segments.join("/")),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for NexusPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NexusPath::Chat { target, is_channel } => match target {
-                Some(t) if *is_channel => write!(f, "/chat/#{}", t),
-                Some(t) => write!(f, "/chat/{}", t),
+                Some(t) if *is_channel => write!(f, "/chat/#{}", url_encode_path_segment(t)),
+                Some(t) => write!(f, "/chat/{}", url_encode_path_segment(t)),
                 None => write!(f, "/chat"),
             },
-            NexusPath::Files { path } => write!(f, "/files/{}", path),
+            NexusPath::Files { segments } => {
+                write!(f, "/files")?;
+                if !segments.is_empty() {
+                    write!(f, "/{}", encode_path_segments(segments))?;
+                }
+                Ok(())
+            }
             NexusPath::News => write!(f, "/news"),
             NexusPath::Info => write!(f, "/info"),
         }
@@ -260,14 +284,11 @@ fn parse_path(path: &str) -> Result<Option<NexusPath>, ParseError> {
         return Ok(None);
     }
 
-    // URL-decode the path
-    let path = url_decode(path);
-
     // Split path into segments
-    let path = path.strip_prefix('/').unwrap_or(&path);
+    let path = path.strip_prefix('/').unwrap_or(path);
     let mut segments = path.splitn(2, '/');
 
-    let first = segments.next().unwrap_or("");
+    let first = url_decode(segments.next().unwrap_or(""));
     let rest = segments.next().unwrap_or("");
 
     match first.to_lowercase().as_str() {
@@ -279,6 +300,8 @@ fn parse_path(path: &str) -> Result<Option<NexusPath>, ParseError> {
                     is_channel: false,
                 }));
             }
+
+            let rest = url_decode(rest);
 
             // Check for channel prefix (#)
             let (target, is_channel) = if let Some(channel) = rest.strip_prefix('#') {
@@ -300,10 +323,12 @@ fn parse_path(path: &str) -> Result<Option<NexusPath>, ParseError> {
             }))
         }
         "files" => {
-            // rest can be empty (root) or a path
-            Ok(Some(NexusPath::Files {
-                path: rest.to_string(),
-            }))
+            let segments = if rest.is_empty() {
+                Vec::new()
+            } else {
+                rest.split('/').map(url_decode).collect()
+            };
+            Ok(Some(NexusPath::Files { segments }))
         }
         "news" => Ok(Some(NexusPath::News)),
         "info" => Ok(Some(NexusPath::Info)),
@@ -346,6 +371,18 @@ fn url_encode_userinfo(s: &str) -> String {
 /// Percent-encode a string for use in URI path
 pub fn url_encode_path(s: &str) -> String {
     percent_encode(s.as_bytes(), PATH_ENCODE_SET).to_string()
+}
+
+fn url_encode_path_segment(s: &str) -> String {
+    percent_encode(s.as_bytes(), USERINFO_ENCODE_SET).to_string()
+}
+
+fn encode_path_segments(segments: &[String]) -> String {
+    segments
+        .iter()
+        .map(|segment| url_encode_path_segment(segment))
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Check if a string looks like a nexus:// URI
@@ -511,7 +548,7 @@ mod tests {
         assert_eq!(
             uri.path,
             Some(NexusPath::Files {
-                path: "".to_string()
+                segments: Vec::new()
             })
         );
     }
@@ -572,7 +609,7 @@ mod tests {
         assert_eq!(
             uri.path,
             Some(NexusPath::Files {
-                path: "Music/song.mp3".to_string()
+                segments: vec!["Music".to_string(), "song.mp3".to_string()]
             })
         );
 
@@ -581,7 +618,7 @@ mod tests {
         assert_eq!(
             uri.path,
             Some(NexusPath::Files {
-                path: "".to_string()
+                segments: Vec::new()
             })
         );
 
@@ -590,8 +627,38 @@ mod tests {
         assert_eq!(
             uri.path,
             Some(NexusPath::Files {
-                path: "".to_string()
+                segments: Vec::new()
             })
+        );
+    }
+
+    #[test]
+    fn test_parse_files_splits_before_percent_decoding() {
+        let uri = parse("nexus://example.com/files/a%2Fb/c").unwrap();
+        assert_eq!(
+            uri.path,
+            Some(NexusPath::Files {
+                segments: vec!["a/b".to_string(), "c".to_string()]
+            })
+        );
+
+        let path = uri.path.as_ref().expect("path");
+        assert_eq!(path.to_string(), "/files/a%2Fb/c");
+    }
+
+    #[test]
+    fn test_parse_chat_splits_before_percent_decoding() {
+        let uri = parse("nexus://example.com/chat/alice%2Fbob").unwrap();
+        assert_eq!(
+            uri.path,
+            Some(NexusPath::Chat {
+                target: Some("alice/bob".to_string()),
+                is_channel: false
+            })
+        );
+        assert_eq!(
+            uri.path.as_ref().expect("path").to_string(),
+            "/chat/alice%2Fbob"
         );
     }
 
@@ -633,7 +700,7 @@ mod tests {
         assert_eq!(
             uri.path,
             Some(NexusPath::Files {
-                path: "Música".to_string()
+                segments: vec!["Música".to_string()]
             })
         );
     }
@@ -957,8 +1024,8 @@ mod tests {
         // UTF-8 path components
         let uri =
             parse("nexus://example.com/files/M%C3%BAsica/%E6%97%A5%E6%9C%AC%E8%AA%9E").unwrap();
-        if let Some(NexusPath::Files { path }) = uri.path {
-            assert_eq!(path, "Música/日本語");
+        if let Some(NexusPath::Files { segments }) = uri.path {
+            assert_eq!(segments, vec!["Música".to_string(), "日本語".to_string()]);
         } else {
             panic!("Expected Files path");
         }
@@ -999,19 +1066,31 @@ mod tests {
             host: "::1".to_string(),
             port: 8500,
             path: Some(NexusPath::Files {
-                path: "Música/日本語 file.mp3".to_string(),
+                segments: vec![
+                    "Música".to_string(),
+                    "日本語 file.mp3".to_string(),
+                    "literal/slash.txt".to_string(),
+                ],
             }),
         };
 
         let encoded = uri.to_string();
+        assert!(encoded.contains("literal%2Fslash.txt"), "{encoded}");
         let parsed = parse(&encoded).unwrap();
 
         assert_eq!(parsed.user, Some("用户".to_string()));
         assert_eq!(parsed.password, Some("密码".to_string()));
         assert_eq!(parsed.host, "::1");
         assert_eq!(parsed.port, 8500);
-        if let Some(NexusPath::Files { path }) = parsed.path {
-            assert_eq!(path, "Música/日本語 file.mp3");
+        if let Some(NexusPath::Files { segments }) = parsed.path {
+            assert_eq!(
+                segments,
+                vec![
+                    "Música".to_string(),
+                    "日本語 file.mp3".to_string(),
+                    "literal/slash.txt".to_string(),
+                ]
+            );
         } else {
             panic!("Expected Files path");
         }

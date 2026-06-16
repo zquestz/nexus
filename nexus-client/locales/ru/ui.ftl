@@ -1151,6 +1151,7 @@ err-voice-no-token = Подключение к голосовому чату в�
 err-voice-already-active = Вы уже находитесь в голосовом чате на другом сервере
 err-chat-feature-not-enabled = Функция чата не включена
 err-files-feature-not-enabled = Функция файлов не включена
+err-files-invalid-path = Недопустимый путь
 err-news-feature-not-enabled = Функция новостей не включена
 err-voice-feature-not-enabled = Функция голосового чата не включена
 err-voice-no-permission = У вас нет разрешения на подключение к голосовому чату

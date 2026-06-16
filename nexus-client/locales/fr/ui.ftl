@@ -1128,6 +1128,7 @@ err-voice-no-token = Connexion au chat vocal réussie mais aucun jeton reçu
 err-voice-already-active = Vous êtes déjà dans une session vocale sur un autre serveur
 err-chat-feature-not-enabled = La fonctionnalité de chat n'est pas activée
 err-files-feature-not-enabled = La fonctionnalité fichiers n'est pas activée
+err-files-invalid-path = Chemin invalide
 err-news-feature-not-enabled = La fonctionnalité actualités n'est pas activée
 err-voice-feature-not-enabled = La fonctionnalité vocale n'est pas activée
 err-voice-no-permission = Vous n'avez pas la permission de rejoindre le chat vocal

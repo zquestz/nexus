@@ -1134,6 +1134,7 @@ err-voice-no-token = Entrada no chat de voz bem-sucedida, mas nenhum token receb
 err-voice-already-active = Você já está em uma sessão de voz em outro servidor
 err-chat-feature-not-enabled = Recurso de chat não habilitado
 err-files-feature-not-enabled = Recurso de arquivos não habilitado
+err-files-invalid-path = Caminho inválido
 err-news-feature-not-enabled = Recurso de notícias não habilitado
 err-voice-feature-not-enabled = Recurso de voz não habilitado
 err-voice-no-permission = Você não tem permissão para entrar no chat de voz

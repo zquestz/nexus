@@ -1076,6 +1076,7 @@ err-voice-no-token = 成功加入语音聊天但未收到令牌
 err-voice-already-active = 您已在另一个服务器的语音聊天中
 err-chat-feature-not-enabled = 聊天功能未启用
 err-files-feature-not-enabled = 文件功能未启用
+err-files-invalid-path = 无效路径
 err-news-feature-not-enabled = 新闻功能未启用
 err-voice-feature-not-enabled = 语音功能未启用
 err-voice-no-permission = 您没有加入语音聊天的权限

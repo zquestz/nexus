@@ -1132,6 +1132,7 @@ err-voice-no-token = Sprachchat beigetreten, aber kein Token erhalten
 err-voice-already-active = Du bist bereits in einem Sprachchat auf einem anderen Server
 err-chat-feature-not-enabled = Chat-Funktion nicht aktiviert
 err-files-feature-not-enabled = Dateien-Funktion nicht aktiviert
+err-files-invalid-path = Ungültiger Pfad
 err-news-feature-not-enabled = News-Funktion nicht aktiviert
 err-voice-feature-not-enabled = Voice-Funktion nicht aktiviert
 err-voice-no-permission = Du hast keine Berechtigung, dem Sprachchat beizutreten
