@@ -47,6 +47,7 @@ use crate::ip_rule_cache::IpRuleState;
 use crate::users::UserManager;
 
 use super::demux::{PendingVoiceConnection, VoiceUdpConnHandle, VoiceUdpListener};
+use super::registry::BindUdpAddrOutcome;
 use super::{VoiceRegistry, send_voice_leave_notifications};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -364,8 +365,27 @@ impl VoiceUdpServer {
         let target_key = session.target_key();
         let session_id = session.session_id;
 
-        if session.udp_addr.is_none() {
-            self.registry.set_udp_addr(packet.token, remote_addr).await;
+        match session.udp_addr {
+            Some(bound_addr) if bound_addr == remote_addr => {}
+            Some(_) => {
+                debug!(ip = %remote_addr, "{}", LOG_VOICE_SESSION_ADDR_MISMATCH);
+                return false;
+            }
+            None => match self.registry.bind_udp_addr(packet.token, remote_addr).await {
+                BindUdpAddrOutcome::Bound => {}
+                BindUdpAddrOutcome::TokenNotFound => {
+                    debug!(ip = %remote_addr, "{}", LOG_VOICE_SESSION_NOT_FOUND);
+                    return false;
+                }
+                BindUdpAddrOutcome::TokenAlreadyBound => {
+                    debug!(ip = %remote_addr, "{}", LOG_VOICE_SESSION_ADDR_MISMATCH);
+                    return false;
+                }
+                BindUdpAddrOutcome::AddrInUse => {
+                    debug!(ip = %remote_addr, "{}", LOG_VOICE_SESSION_ADDR_IN_USE);
+                    return false;
+                }
+            },
         }
 
         // Update idle tracking only on speaking transitions, not every 10ms
@@ -674,8 +694,8 @@ mod tests {
     use crate::voice::demux::{VoiceUdpConnHandle, VoiceUdpListener};
 
     use super::{
-        DtlsClient, VoiceControlCommand, VoiceControlHandle, VoiceListener, VoiceUdpServer,
-        relayed_speaking_stopped_bytes,
+        BindUdpAddrOutcome, DtlsClient, VoiceControlCommand, VoiceControlHandle, VoiceListener,
+        VoiceUdpServer, relayed_speaking_stopped_bytes,
     };
 
     const TEST_TIMEOUT: Duration = Duration::from_millis(500);
@@ -845,6 +865,107 @@ mod tests {
         )
     }
 
+    #[tokio::test]
+    async fn udp_packet_closes_on_address_binding_conflict() {
+        let mut test_ctx = create_test_context().await;
+        let alice_session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen, Permission::VoiceTalk],
+            false,
+        )
+        .await;
+        let bob_session_id = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen, Permission::VoiceTalk],
+            false,
+        )
+        .await;
+        let server = test_voice_server(&test_ctx).await;
+
+        let alice_voice = VoiceSession::new(
+            "alice".to_string(),
+            vec!["#general".to_string()],
+            alice_session_id,
+        );
+        let alice_token = alice_voice.token;
+        test_ctx
+            .voice_registry
+            .add(alice_voice)
+            .await
+            .expect("alice voice session is unique");
+
+        let bob_voice = VoiceSession::new(
+            "bob".to_string(),
+            vec!["#general".to_string()],
+            bob_session_id,
+        );
+        let bob_token = bob_voice.token;
+        test_ctx
+            .voice_registry
+            .add(bob_voice)
+            .await
+            .expect("bob voice session is unique");
+
+        let alice_addr: SocketAddr = "127.0.0.1:43000".parse().unwrap();
+        let rebound_addr: SocketAddr = "127.0.0.1:43001".parse().unwrap();
+        assert_eq!(
+            test_ctx
+                .voice_registry
+                .bind_udp_addr(alice_token, alice_addr)
+                .await,
+            BindUdpAddrOutcome::Bound
+        );
+
+        let alice_packet_from_other_addr = VoicePacket::keepalive(alice_token, 1).to_bytes();
+        assert!(
+            !server
+                .handle_packet_for_test(rebound_addr, &alice_packet_from_other_addr)
+                .await,
+            "same token from a different address should close that connection"
+        );
+        assert_eq!(
+            test_ctx
+                .voice_registry
+                .get_by_token(alice_token)
+                .await
+                .expect("alice session must remain")
+                .udp_addr,
+            Some(alice_addr),
+            "collision must not mutate the established binding"
+        );
+
+        let bob_packet_from_alice_addr = VoicePacket::keepalive(bob_token, 1).to_bytes();
+        assert!(
+            !server
+                .handle_packet_for_test(alice_addr, &bob_packet_from_alice_addr)
+                .await,
+            "another token using an owned address should close that connection"
+        );
+        assert_eq!(
+            test_ctx
+                .voice_registry
+                .get_by_token(alice_token)
+                .await
+                .expect("alice session must remain")
+                .udp_addr,
+            Some(alice_addr)
+        );
+        assert_eq!(
+            test_ctx
+                .voice_registry
+                .get_by_token(bob_token)
+                .await
+                .expect("bob session must remain")
+                .udp_addr,
+            None,
+            "rejected collision must not bind the second session"
+        );
+    }
+
     #[test]
     fn voice_control_handle_queues_speaking_stopped() {
         let (handle, mut rx) = VoiceControlHandle::channel();
@@ -924,8 +1045,9 @@ mod tests {
         assert!(
             test_ctx
                 .voice_registry
-                .set_udp_addr(bob_token, bob_addr)
+                .bind_udp_addr(bob_token, bob_addr)
                 .await
+                == BindUdpAddrOutcome::Bound
         );
 
         let (sent_tx, mut sent_rx) = mpsc::unbounded_channel();
@@ -1037,8 +1159,9 @@ mod tests {
         assert!(
             test_ctx
                 .voice_registry
-                .set_udp_addr(alice_token, alice_addr)
+                .bind_udp_addr(alice_token, alice_addr)
                 .await
+                == BindUdpAddrOutcome::Bound
         );
 
         let closing_conn: Arc<dyn Conn + Send + Sync> = Arc::new(ClosingConn {

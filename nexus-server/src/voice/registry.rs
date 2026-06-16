@@ -17,6 +17,19 @@ pub struct AddOutcome {
     pub broadcast_joined: bool,
 }
 
+/// Result of binding a voice session to a UDP remote address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindUdpAddrOutcome {
+    /// The token exists and the address is now bound to that session.
+    Bound,
+    /// The token does not match any active voice session.
+    TokenNotFound,
+    /// The token is already bound to a different UDP socket address.
+    TokenAlreadyBound,
+    /// Another active voice session already owns this exact socket address.
+    AddrInUse,
+}
+
 /// Notification context returned from a voice-session removal.
 pub struct VoiceLeaveInfo {
     pub session: VoiceSession,
@@ -258,15 +271,38 @@ impl VoiceRegistry {
             .collect()
     }
 
-    /// Called when the first UDP packet arrives from a client.
-    pub async fn set_udp_addr(&self, token: Uuid, addr: std::net::SocketAddr) -> bool {
+    /// Bind a token-authenticated voice session to a UDP remote address.
+    ///
+    /// The key is the full socket address (IP + port), so multiple users behind
+    /// the same NAT remain distinct. A single socket address cannot belong to
+    /// two active sessions at once; allowing that would make relay and
+    /// disconnect cleanup ambiguous.
+    pub async fn bind_udp_addr(&self, token: Uuid, addr: SocketAddr) -> BindUdpAddrOutcome {
         let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(&token) {
-            session.set_udp_addr(addr);
-            true
-        } else {
-            false
+        let Some(current_addr) = sessions.get(&token).map(|session| session.udp_addr) else {
+            return BindUdpAddrOutcome::TokenNotFound;
+        };
+
+        if let Some(current_addr) = current_addr {
+            return if current_addr == addr {
+                BindUdpAddrOutcome::Bound
+            } else {
+                BindUdpAddrOutcome::TokenAlreadyBound
+            };
         }
+
+        let addr_owner = sessions.iter().find_map(|(candidate_token, session)| {
+            (session.udp_addr == Some(addr)).then_some(*candidate_token)
+        });
+        if addr_owner.is_some_and(|owner| owner != token) {
+            return BindUdpAddrOutcome::AddrInUse;
+        }
+
+        sessions
+            .get_mut(&token)
+            .expect("token existence checked above")
+            .set_udp_addr(addr);
+        BindUdpAddrOutcome::Bound
     }
 
     /// Apply a nickname change across all voice state in one write-lock pass:
@@ -524,7 +560,10 @@ mod tests {
             .add(session)
             .await
             .expect("test setup: session_id is unique");
-        assert!(registry.set_udp_addr(token, addr).await);
+        assert_eq!(
+            registry.bind_udp_addr(token, addr).await,
+            BindUdpAddrOutcome::Bound
+        );
 
         let removed = registry.remove_by_udp_addr(addr).await;
         assert!(removed.is_some());
@@ -553,8 +592,14 @@ mod tests {
             .add(second)
             .await
             .expect("test setup: session_id 2 is unique");
-        assert!(registry.set_udp_addr(first_token, first_addr).await);
-        assert!(registry.set_udp_addr(second_token, second_addr).await);
+        assert_eq!(
+            registry.bind_udp_addr(first_token, first_addr).await,
+            BindUdpAddrOutcome::Bound
+        );
+        assert_eq!(
+            registry.bind_udp_addr(second_token, second_addr).await,
+            BindUdpAddrOutcome::Bound
+        );
 
         let first_removed = registry
             .remove_by_udp_addr(first_addr)
@@ -691,7 +736,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_set_udp_addr() {
+    async fn test_bind_udp_addr() {
         let registry = VoiceRegistry::new();
         let session = create_test_session("alice", "#general", 1);
         let token = session.token;
@@ -702,12 +747,75 @@ mod tests {
             .expect("test setup: session_id is unique");
 
         let addr: std::net::SocketAddr = "192.168.1.1:12345".parse().unwrap();
-        assert!(registry.set_udp_addr(token, addr).await);
+        assert_eq!(
+            registry.bind_udp_addr(token, addr).await,
+            BindUdpAddrOutcome::Bound
+        );
 
         let updated = registry.get_by_token(token).await.unwrap();
         assert_eq!(updated.udp_addr, Some(addr));
 
-        assert!(!registry.set_udp_addr(Uuid::new_v4(), addr).await);
+        assert_eq!(
+            registry.bind_udp_addr(token, addr).await,
+            BindUdpAddrOutcome::Bound,
+            "same-token rebinding to the same socket address is idempotent"
+        );
+        let other_addr: std::net::SocketAddr = "192.168.1.2:12345".parse().unwrap();
+        assert_eq!(
+            registry.bind_udp_addr(token, other_addr).await,
+            BindUdpAddrOutcome::TokenAlreadyBound,
+            "true source-address migration is not supported by the current DTLS demux"
+        );
+        let updated = registry.get_by_token(token).await.unwrap();
+        assert_eq!(updated.udp_addr, Some(addr));
+        assert_eq!(
+            registry.bind_udp_addr(Uuid::new_v4(), addr).await,
+            BindUdpAddrOutcome::TokenNotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bind_udp_addr_rejects_address_owned_by_other_session() {
+        let registry = VoiceRegistry::new();
+        let first = create_test_session("alice", "#general", 1);
+        let first_token = first.token;
+        let second = create_test_session("bob", "#general", 2);
+        let second_token = second.token;
+        let addr: std::net::SocketAddr = "192.168.1.1:12345".parse().unwrap();
+
+        registry
+            .add(first)
+            .await
+            .expect("test setup: first session_id is unique");
+        registry
+            .add(second)
+            .await
+            .expect("test setup: second session_id is unique");
+
+        assert_eq!(
+            registry.bind_udp_addr(first_token, addr).await,
+            BindUdpAddrOutcome::Bound
+        );
+        assert_eq!(
+            registry.bind_udp_addr(second_token, addr).await,
+            BindUdpAddrOutcome::AddrInUse
+        );
+
+        assert_eq!(
+            registry.get_by_token(first_token).await.unwrap().udp_addr,
+            Some(addr)
+        );
+        assert_eq!(
+            registry.get_by_token(second_token).await.unwrap().udp_addr,
+            None
+        );
+
+        let removed = registry
+            .remove_by_udp_addr(addr)
+            .await
+            .expect("address owner should be removed");
+        assert_eq!(removed.session.session_id, 1);
+        assert!(registry.get_by_session_id(2).await.is_some());
     }
 
     #[tokio::test]

@@ -485,6 +485,10 @@ pub const LOG_VOICE_CONNECTION_CLOSED: &str = "Voice DTLS: connection closed";
 pub const LOG_VOICE_READ_ERROR: &str = "Voice DTLS: read error";
 pub const LOG_VOICE_INVALID_PACKET: &str = "Voice DTLS: invalid packet";
 pub const LOG_VOICE_SESSION_NOT_FOUND: &str = "Voice DTLS: session not found, closing connection";
+pub const LOG_VOICE_SESSION_ADDR_MISMATCH: &str =
+    "Voice DTLS: session already bound to another UDP address, closing connection";
+pub const LOG_VOICE_SESSION_ADDR_IN_USE: &str =
+    "Voice DTLS: UDP address already bound to another session, closing connection";
 pub const LOG_VOICE_KEEPALIVE: &str = "Voice DTLS: keepalive";
 pub const LOG_VOICE_NO_PERMISSION: &str =
     "Voice DTLS: lacks voice_talk permission, dropping packet";
