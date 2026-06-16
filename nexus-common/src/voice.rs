@@ -358,6 +358,9 @@ impl RelayedVoicePacket {
         MAX_NICKNAME_LENGTH * 4
     };
 
+    /// Maximum encoded packet size.
+    pub const MAX_PACKET_SIZE: usize = 2 + Self::MAX_SENDER_LEN + 8 + MAX_VOICE_PAYLOAD;
+
     /// Create a new relayed packet from a voice packet and sender nickname
     pub fn from_voice_packet(packet: &VoicePacket, sender: String) -> Self {
         Self {
@@ -434,13 +437,25 @@ impl RelayedVoicePacket {
             return None;
         }
 
+        if bytes.len() > Self::MAX_PACKET_SIZE {
+            return None;
+        }
+
         // Message type (1 byte)
         let msg_type = VoiceMessageType::from_byte(bytes[0])?;
 
         let sender_len = bytes[1] as usize;
+        if sender_len > Self::MAX_SENDER_LEN {
+            return None;
+        }
+
         let min_len = 2 + sender_len + 8; // type + sender_len + sender + seq + ts
 
         if bytes.len() < min_len {
+            return None;
+        }
+
+        if bytes.len() - min_len > MAX_VOICE_PAYLOAD {
             return None;
         }
 
@@ -680,6 +695,53 @@ mod tests {
     fn test_relayed_packet_invalid_type() {
         let bytes = vec![0xFF, 0x00]; // Invalid type, zero sender len
         assert!(RelayedVoicePacket::from_bytes(&bytes).is_none());
+    }
+
+    #[test]
+    fn test_relayed_packet_rejects_sender_over_limit() {
+        let sender_len = RelayedVoicePacket::MAX_SENDER_LEN + 1;
+        let mut bytes = Vec::with_capacity(2 + sender_len + 8);
+        bytes.push(VoiceMessageType::VoiceData.to_byte());
+        bytes.push(sender_len as u8);
+        bytes.extend(std::iter::repeat_n(b'a', sender_len));
+        bytes.extend_from_slice(&1_u32.to_be_bytes());
+        bytes.extend_from_slice(&2_u32.to_be_bytes());
+
+        assert!(RelayedVoicePacket::from_bytes(&bytes).is_none());
+    }
+
+    #[test]
+    fn test_relayed_packet_rejects_payload_over_limit() {
+        let packet = RelayedVoicePacket {
+            msg_type: VoiceMessageType::VoiceData,
+            sender: "alice".to_string(),
+            sequence: 1,
+            timestamp: 2,
+            payload: vec![0; MAX_VOICE_PAYLOAD + 1],
+        };
+
+        assert!(RelayedVoicePacket::from_bytes(&packet.to_bytes()).is_none());
+    }
+
+    #[test]
+    fn test_relayed_packet_accepts_max_sender_and_payload() {
+        let sender = "𐐀".repeat(MAX_USERNAME_LENGTH);
+        assert_eq!(sender.len(), RelayedVoicePacket::MAX_SENDER_LEN);
+        let payload = vec![7; MAX_VOICE_PAYLOAD];
+        let packet = RelayedVoicePacket {
+            msg_type: VoiceMessageType::VoiceData,
+            sender: sender.clone(),
+            sequence: 1,
+            timestamp: 2,
+            payload: payload.clone(),
+        };
+        let bytes = packet.to_bytes();
+
+        assert_eq!(bytes.len(), RelayedVoicePacket::MAX_PACKET_SIZE);
+        let decoded =
+            RelayedVoicePacket::from_bytes(&bytes).expect("max-size packet should decode");
+        assert_eq!(decoded.sender, sender);
+        assert_eq!(decoded.payload, payload);
     }
 
     #[test]

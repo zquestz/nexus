@@ -678,7 +678,7 @@ impl NexusApp {
             } => self.handle_voice_join_response(
                 connection_id,
                 success,
-                token,
+                token.map(Into::into),
                 target,
                 participants,
                 error,

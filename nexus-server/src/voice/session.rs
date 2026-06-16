@@ -1,6 +1,6 @@
 //! A single user's participation in a voice channel or user-message conversation.
 
-use std::net::SocketAddr;
+use std::{fmt, net::SocketAddr};
 
 use nexus_common::names::fold_name;
 
@@ -8,7 +8,7 @@ use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use uuid::Uuid;
 
 /// At most one per user per server (session-rules invariant).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct VoiceSession {
     /// Authenticates UDP voice packets.
     pub token: Uuid,
@@ -21,6 +21,19 @@ pub struct VoiceSession {
     pub udp_addr: Option<SocketAddr>,
     /// Correlates with the BBS connection for permission checks.
     pub session_id: u32,
+}
+
+impl fmt::Debug for VoiceSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VoiceSession")
+            .field("token", &"<REDACTED>")
+            .field("nickname", &self.nickname)
+            .field("target", &self.target)
+            .field("joined_at", &self.joined_at)
+            .field("udp_addr", &self.udp_addr)
+            .field("session_id", &self.session_id)
+            .finish()
+    }
 }
 
 impl VoiceSession {
@@ -75,6 +88,17 @@ mod tests {
         let session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1);
 
         assert_eq!(session.token.get_version_num(), 4);
+    }
+
+    #[test]
+    fn test_debug_redacts_token() {
+        let session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1);
+        let token = session.token.to_string();
+
+        let dbg = format!("{session:?}");
+        assert!(!dbg.contains(&token), "{dbg}");
+        assert!(dbg.contains("<REDACTED>"), "{dbg}");
+        assert!(dbg.contains("alice"), "{dbg}");
     }
 
     #[test]

@@ -225,7 +225,7 @@ where
         } => {
             let response = ServerMessage::VoiceJoinResponse {
                 success: true,
-                token: Some(token),
+                token: Some(token.into()),
                 target: Some(target),
                 participants: Some(participants),
                 error: None,

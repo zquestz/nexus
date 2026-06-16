@@ -638,6 +638,32 @@ pub struct TransferInfo {
     pub started_at: i64,
 }
 
+/// Voice join bearer token.
+///
+/// Serialized as the underlying UUID for wire compatibility, but redacted in
+/// `Debug` output because it authenticates UDP voice packets.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct VoiceJoinToken(Uuid);
+
+impl From<Uuid> for VoiceJoinToken {
+    fn from(value: Uuid) -> Self {
+        Self(value)
+    }
+}
+
+impl From<VoiceJoinToken> for Uuid {
+    fn from(value: VoiceJoinToken) -> Self {
+        value.0
+    }
+}
+
+impl std::fmt::Debug for VoiceJoinToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<REDACTED>")
+    }
+}
+
 /// Server response messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -1358,7 +1384,7 @@ pub enum ServerMessage {
         success: bool,
         /// Voice token for UDP authentication (only on success)
         #[serde(skip_serializing_if = "Option::is_none")]
-        token: Option<Uuid>,
+        token: Option<VoiceJoinToken>,
         /// Target (same as requested, or the other user's nickname for user message voice)
         #[serde(skip_serializing_if = "Option::is_none")]
         target: Option<String>,
@@ -2455,6 +2481,28 @@ mod tests {
         let dbg = format!("{:?}", without_password);
         assert!(dbg.contains("password: None"), "{dbg}");
         assert!(!dbg.contains("<REDACTED>"));
+    }
+
+    #[test]
+    fn test_debug_voice_join_response_redacts_token() {
+        let token = Uuid::new_v4();
+        let msg = ServerMessage::VoiceJoinResponse {
+            success: true,
+            token: Some(token.into()),
+            target: Some("#general".to_string()),
+            participants: Some(vec!["alice".to_string()]),
+            error: None,
+        };
+
+        let dbg = format!("{msg:?}");
+        assert!(!dbg.contains(&token.to_string()), "{dbg}");
+        assert!(dbg.contains("<REDACTED>"), "{dbg}");
+
+        let json = serde_json::to_string(&msg).expect("serialize voice join response");
+        assert!(
+            json.contains(&token.to_string()),
+            "wire JSON must still carry the UUID token: {json}"
+        );
     }
 
     #[test]
