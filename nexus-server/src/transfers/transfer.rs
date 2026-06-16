@@ -18,8 +18,8 @@ use nexus_common::protocol::ServerMessage;
 
 use crate::constants::{
     ERR_TRANSFER_EGRESS_ENQUEUE_FAILED, ERR_TRANSFER_EGRESS_TASK_FAILED,
-    ERR_TRANSFER_MISSING_FRAME_TERMINATOR, ERR_TRANSFER_READ_TIMEOUT, ERR_TRANSFER_WRITE_TIMEOUT,
-    TRANSFER_WRITE_TIMEOUT,
+    ERR_TRANSFER_MISSING_FRAME_TERMINATOR, ERR_TRANSFER_READ_TIMEOUT,
+    ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT, TRANSFER_WRITE_PROGRESS_TIMEOUT,
 };
 use crate::egress;
 use crate::egress::EgressEnqueueError;
@@ -87,7 +87,7 @@ impl TransferWriteError {
 }
 
 fn transfer_write_timeout_error() -> io::Error {
-    io::Error::other(ERR_TRANSFER_WRITE_TIMEOUT)
+    io::Error::other(ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT)
 }
 
 /// Per-transfer context bundled to keep [`Transfer::new`]'s signature narrow.
@@ -226,7 +226,7 @@ where
     }
 
     async fn write_all_interruptible(&mut self, buf: &[u8]) -> Result<(), TransferWriteError> {
-        self.write_all_interruptible_with_timeout(buf, TRANSFER_WRITE_TIMEOUT)
+        self.write_all_interruptible_with_timeout(buf, TRANSFER_WRITE_PROGRESS_TIMEOUT)
             .await
     }
 
@@ -282,7 +282,7 @@ where
     }
 
     async fn flush_interruptible(&mut self) -> Result<(), TransferWriteError> {
-        self.flush_interruptible_with_timeout(TRANSFER_WRITE_TIMEOUT)
+        self.flush_interruptible_with_timeout(TRANSFER_WRITE_PROGRESS_TIMEOUT)
             .await
     }
 
@@ -1196,7 +1196,7 @@ mod tests {
 
         match result {
             Err(TransferWriteError::Io(err)) => {
-                assert_eq!(err.to_string(), ERR_TRANSFER_WRITE_TIMEOUT);
+                assert_eq!(err.to_string(), ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT);
             }
             other => panic!("expected write timeout, got {other:?}"),
         }

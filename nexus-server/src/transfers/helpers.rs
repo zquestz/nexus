@@ -17,7 +17,7 @@ use nexus_common::{
     ERROR_KIND_PROTOCOL_ERROR,
 };
 
-use crate::constants::{ERR_TRANSFER_WRITE_TIMEOUT, TRANSFER_WRITE_TIMEOUT};
+use crate::constants::{ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT, TRANSFER_WRITE_PROGRESS_TIMEOUT};
 use crate::db::Permission;
 use crate::files::path::{PathError, build_and_validate_candidate_path};
 use crate::handlers::{
@@ -291,13 +291,13 @@ where
     W: AsyncWriteExt + Unpin,
 {
     match timeout(
-        TRANSFER_WRITE_TIMEOUT,
+        TRANSFER_WRITE_PROGRESS_TIMEOUT,
         send_server_message_with_id(frame_writer, response, message_id),
     )
     .await
     {
         Ok(result) => result,
-        Err(_) => Err(io::Error::other(ERR_TRANSFER_WRITE_TIMEOUT)),
+        Err(_) => Err(io::Error::other(ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT)),
     }
 }
 
@@ -305,9 +305,14 @@ pub(crate) async fn shutdown_transfer_writer<W>(frame_writer: &mut FrameWriter<W
 where
     W: AsyncWriteExt + Unpin,
 {
-    match timeout(TRANSFER_WRITE_TIMEOUT, frame_writer.get_mut().shutdown()).await {
+    match timeout(
+        TRANSFER_WRITE_PROGRESS_TIMEOUT,
+        frame_writer.get_mut().shutdown(),
+    )
+    .await
+    {
         Ok(result) => result,
-        Err(_) => Err(io::Error::other(ERR_TRANSFER_WRITE_TIMEOUT)),
+        Err(_) => Err(io::Error::other(ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT)),
     }
 }
 
