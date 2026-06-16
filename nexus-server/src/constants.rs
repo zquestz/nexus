@@ -184,6 +184,7 @@ pub const ERR_SET_DATA_DIR_PERMS: &str = "Failed to set data directory permissio
 
 pub const ERR_DATABASE_INIT: &str = "Failed to initialize database: ";
 pub const ERR_TRACKER_BOOTSTRAP_FAILED: &str = "Failed to bootstrap tracker manager: ";
+pub const ERR_TRACKER_REQUEST_WRITE_TIMEOUT: &str = "Tracker request write timed out";
 pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 pub const ERR_BBS_WRITE_TIMEOUT: &str = "BBS message write timed out";

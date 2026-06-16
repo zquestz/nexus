@@ -7,6 +7,7 @@
 //! safe at every await point — drop semantics on the TLS stream and
 //! the status `Arc<RwLock<TrackerStatus>>` handle cleanup.
 
+use std::io;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
@@ -38,8 +39,8 @@ use super::context::TrackerContext;
 use super::status::TrackerStatus;
 use super::tls::TLS_CONNECTOR;
 use crate::constants::{
-    EXPECT_TRACKER_STATUS_LOCK_POISONED, LOG_TRACKER_REGISTRATION_BACKOFF,
-    LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED,
+    ERR_TRACKER_REQUEST_WRITE_TIMEOUT, EXPECT_TRACKER_STATUS_LOCK_POISONED,
+    LOG_TRACKER_REGISTRATION_BACKOFF, LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED,
     LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE, LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE,
     LOG_TRACKER_REGISTRATION_CONNECTED, LOG_TRACKER_REGISTRATION_DNS_FAILED,
     LOG_TRACKER_REGISTRATION_DNS_NO_RECORDS, LOG_TRACKER_REGISTRATION_DNS_TIMEOUT,
@@ -74,6 +75,11 @@ const BACKOFF_JITTER_PCT: f64 = 0.25;
 /// `TrackerServerRegisterResponse`). Recovers from a wedged connection
 /// instead of hanging until the outer 60s frame-completion timeout.
 const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Write timeout for the small tracker request frames (`Handshake` and
+/// `TrackerServerRegister`). These are bounded control messages, so a
+/// whole-operation timeout is the right failure mode.
+const TRACKER_REQUEST_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Timeout for connection establishment phases only: TCP connect and
 /// TLS handshake. The long-lived registration refresh loop is governed
@@ -366,14 +372,7 @@ async fn attempt_connection_cycle(
     let mut reader = FrameReader::new(tokio::io::BufReader::new(read_half));
     let mut writer = FrameWriter::new(write_half);
 
-    if let Err(e) = send_client_message(
-        &mut writer,
-        &ClientMessage::Handshake {
-            version: TRACKER_PROTOCOL_VERSION.to_string(),
-        },
-    )
-    .await
-    {
+    if let Err(e) = send_tracker_handshake(&mut writer).await {
         warn!(
             id = record.id,
             name = %record.name,
@@ -616,7 +615,7 @@ where
             }
         };
 
-        if let Err(e) = send_tracker_client_message(writer, &payload).await {
+        if let Err(e) = send_tracker_register(writer, &payload).await {
             warn!(
                 id = record.id,
                 name = %record.name,
@@ -827,6 +826,40 @@ async fn build_register_payload(
         user_count,
         allows_guest: fields.allows_guest,
     })
+}
+
+async fn send_tracker_handshake<W>(writer: &mut FrameWriter<W>) -> io::Result<()>
+where
+    W: AsyncWriteExt + Unpin,
+{
+    tokio::time::timeout(
+        TRACKER_REQUEST_WRITE_TIMEOUT,
+        send_client_message(
+            writer,
+            &ClientMessage::Handshake {
+                version: TRACKER_PROTOCOL_VERSION.to_string(),
+            },
+        ),
+    )
+    .await
+    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, ERR_TRACKER_REQUEST_WRITE_TIMEOUT))?
+    .map(|_| ())
+}
+
+async fn send_tracker_register<W>(
+    writer: &mut FrameWriter<W>,
+    payload: &TrackerClientMessage,
+) -> io::Result<()>
+where
+    W: AsyncWriteExt + Unpin,
+{
+    tokio::time::timeout(
+        TRACKER_REQUEST_WRITE_TIMEOUT,
+        send_tracker_client_message(writer, payload),
+    )
+    .await
+    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, ERR_TRACKER_REQUEST_WRITE_TIMEOUT))?
+    .map(|_| ())
 }
 
 /// Failure modes for [`read_handshake_response`]. Each variant carries
