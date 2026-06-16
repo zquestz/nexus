@@ -236,19 +236,6 @@ pub(super) fn file_info_dialog(info: &FileInfoDetails) -> Element<'_, Message> {
     };
     content = content.push(info_row(t("files-info-modified"), modified_value));
 
-    // BLAKE3 hash (files only) - use WordOrGlyph wrapping for long hash without spaces
-    if let Some(hash) = &info.blake3 {
-        let sha_row = row![
-            shaped_text(t("files-info-blake3")).size(TEXT_SIZE),
-            Space::new().width(ELEMENT_SPACING),
-            shaped_text(hash.clone())
-                .size(TEXT_SIZE)
-                .wrapping(Wrapping::WordOrGlyph),
-        ]
-        .align_y(Center);
-        content = content.push(sha_row);
-    }
-
     content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
 
     // Close button

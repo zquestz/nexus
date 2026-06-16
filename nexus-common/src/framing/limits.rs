@@ -878,7 +878,7 @@ const NEWS_UPDATE_RESPONSE_SIZE: usize = json_type_base("NewsUpdateResponse")
     + json_close();
 
 /// FileInfoDetails nested object size:
-/// {"name":"...4096...","size":u64,"created":i64,"modified":i64,"is_directory":false,"is_symlink":false,"mime_type":"...128...","item_count":u64,"blake3":"...64..."}
+/// {"name":"...4096...","size":u64,"created":i64,"modified":i64,"is_directory":false,"is_symlink":false,"mime_type":"...128...","item_count":u64}
 const FILE_INFO_DETAILS_SIZE: usize = json_first_string_field("name", MAX_FILE_PATH_LENGTH)
     + json_u64_field("size")
     + json_i64_field("created")
@@ -887,7 +887,6 @@ const FILE_INFO_DETAILS_SIZE: usize = json_first_string_field("name", MAX_FILE_P
     + json_bool_field("is_symlink")
     + json_string_field("mime_type", MAX_MIME_TYPE)
     + json_u64_field("item_count")
-    + json_string_field("blake3", BLAKE3_HEX_LENGTH)
     + 2; // {} braces
 
 /// FileInfoResponse: {"type":"FileInfoResponse","success":false,"error":"...2048...","info":{...}}

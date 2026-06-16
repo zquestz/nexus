@@ -384,7 +384,6 @@ files-info-items = Elementos:
 files-info-mime-type = Tipo MIME:
 files-info-created = Creado:
 files-info-modified = Modificado:
-files-info-blake3 = BLAKE3:
 files-info-file = Archivo
 files-info-directory = Directorio
 files-info-symlink = Enlace simbólico:

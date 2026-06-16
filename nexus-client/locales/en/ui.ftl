@@ -404,7 +404,6 @@ files-info-items = Items:
 files-info-mime-type = MIME Type:
 files-info-created = Created:
 files-info-modified = Modified:
-files-info-blake3 = BLAKE3:
 files-info-file = File
 files-info-directory = Directory
 files-info-symlink = Symlink:

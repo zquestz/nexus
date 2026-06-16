@@ -383,7 +383,6 @@ files-info-items = Elemente:
 files-info-mime-type = MIME-Typ:
 files-info-created = Erstellt:
 files-info-modified = Geändert:
-files-info-blake3 = BLAKE3:
 files-info-file = Datei
 files-info-directory = Verzeichnis
 files-info-symlink = Symlink:

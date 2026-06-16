@@ -34,11 +34,6 @@ async fn count_directory_items_async(path: &Path) -> Option<u64> {
     .ok()?
 }
 
-/// BLAKE3 of a file via nexus-common's hash module (off the async runtime).
-async fn compute_blake3_async(path: &Path) -> Option<String> {
-    nexus_common::hash::compute_blake3(path).await.ok()
-}
-
 /// Detect MIME type from file content, off the async runtime.
 async fn detect_mime_type_async(path: &Path) -> Option<String> {
     let path = path.to_path_buf();
@@ -326,12 +321,6 @@ where
         Some(0)
     };
 
-    let blake3 = if is_directory {
-        None
-    } else {
-        compute_blake3_async(&resolved).await
-    };
-
     let info = FileInfoDetails {
         name,
         size,
@@ -341,7 +330,6 @@ where
         is_symlink,
         mime_type,
         item_count,
-        blake3,
     };
 
     let response = ServerMessage::FileInfoResponse {
@@ -451,11 +439,6 @@ mod tests {
                 assert!(!info.is_symlink);
                 assert_eq!(info.mime_type.as_deref(), Some("text/plain"));
                 assert!(info.item_count.is_none());
-                // BLAKE3 of "Hello, world!"
-                assert_eq!(
-                    info.blake3.as_deref(),
-                    Some("ede5c0b10f2ec4979c69b52f61e42ff5b413519ce09be0f14d098dcfe5f6f98d")
-                );
             }
             _ => panic!("Expected FileInfoResponse"),
         }
@@ -508,7 +491,6 @@ mod tests {
                 assert!(!info.is_symlink);
                 assert!(info.mime_type.is_none());
                 assert_eq!(info.item_count, Some(3)); // 2 files + 1 subdir
-                assert!(info.blake3.is_none()); // Directories don't have BLAKE3
             }
             _ => panic!("Expected FileInfoResponse"),
         }

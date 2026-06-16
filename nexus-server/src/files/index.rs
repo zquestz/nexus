@@ -337,8 +337,8 @@ fn path_is_in_area(path: &str, prefix: &str, prefix_with_slash: &str) -> bool {
     path == prefix || path.starts_with(prefix_with_slash)
 }
 
-/// Parse one CSV index line; returns `None` for malformed lines (fewer than 5
-/// fields or unparseable numerics) so a few bad rows don't fail the search.
+/// Parse one CSV index line; returns `None` for incomplete/malformed lines
+/// (fewer than 5 fields or unparseable numerics) so bad rows don't fail search.
 fn parse_csv_line(line: &str) -> Option<FileSearchResult> {
     let mut reader = ReaderBuilder::new()
         .has_headers(false)
@@ -410,6 +410,11 @@ mod tests {
         let entry = result.unwrap();
         assert_eq!(entry.path, "/shared/file\"quoted\".txt");
         assert_eq!(entry.name, "file\"quoted\".txt");
+    }
+
+    #[test]
+    fn test_parse_csv_line_incomplete_returns_none() {
+        assert!(parse_csv_line("/shared/target.txt,target.txt,100").is_none());
     }
 
     #[test]
@@ -642,6 +647,27 @@ mod tests {
         let results = index.search("target", Some("/shared")).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].path, "/shared/target.txt");
+    }
+
+    #[test]
+    fn test_search_skips_matching_incomplete_csv_line() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let file_root = temp_dir.path().join("files");
+
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::create_dir_all(&file_root).unwrap();
+
+        let index = FileIndex::new(&data_dir, &file_root);
+        fs::write(
+            &index.index_path,
+            "/shared/broken-target.txt,broken-target.txt,100\n/shared/valid-target.txt,valid-target.txt,100,1704567890,0\n",
+        )
+        .unwrap();
+
+        let results = index.search("target", None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "/shared/valid-target.txt");
     }
 
     #[test]

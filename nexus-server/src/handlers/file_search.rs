@@ -128,7 +128,7 @@ where
         Err(response) => return ctx.send_message(&response).await,
     };
 
-    // Perform the search on blocking thread pool (grep-searcher does synchronous I/O)
+    // Perform the search on blocking thread pool (grep-searcher does synchronous I/O).
     let file_index = Arc::clone(&ctx.file_index);
     let query_clone = query.clone();
     let area_prefix_clone = area_prefix.clone();

@@ -390,7 +390,6 @@ files-info-items = Элементов:
 files-info-mime-type = MIME-тип:
 files-info-created = Создан:
 files-info-modified = Изменён:
-files-info-blake3 = BLAKE3:
 files-info-file = Файл
 files-info-directory = Каталог
 files-info-symlink = Симв. ссылка:

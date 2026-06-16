@@ -382,7 +382,6 @@ files-info-items = 項目数：
 files-info-mime-type = MIMEタイプ：
 files-info-created = 作成日時：
 files-info-modified = 更新日時：
-files-info-blake3 = BLAKE3:
 files-info-file = ファイル
 files-info-directory = ディレクトリ
 files-info-symlink = シンボリックリンク：
