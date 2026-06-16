@@ -302,9 +302,43 @@ pub fn is_safe_path(path: &str) -> bool {
         if component == "." {
             return false;
         }
+
+        if is_windows_reserved_name(component) {
+            return false;
+        }
     }
 
     true
+}
+
+fn is_windows_reserved_name(component: &str) -> bool {
+    let basename = component.split('.').next().unwrap_or(component);
+    let upper = basename.to_ascii_uppercase();
+    matches!(
+        upper.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 // =============================================================================
@@ -384,6 +418,33 @@ mod tests {
         assert!(!is_safe_path("foo/./bar"));
         assert!(!is_safe_path("dir/./subdir/file.txt"));
         assert!(!is_safe_path("."));
+    }
+
+    #[test]
+    fn test_is_safe_path_rejects_windows_reserved_names() {
+        assert!(!is_safe_path("CON"));
+        assert!(!is_safe_path("con"));
+        assert!(!is_safe_path("NUL"));
+        assert!(!is_safe_path("COM1"));
+        assert!(!is_safe_path("COM9"));
+        assert!(!is_safe_path("LPT1"));
+        assert!(!is_safe_path("LPT9"));
+    }
+
+    #[test]
+    fn test_is_safe_path_rejects_windows_reserved_names_with_extensions() {
+        assert!(!is_safe_path("CON.txt"));
+        assert!(!is_safe_path("dir/NUL.log"));
+        assert!(!is_safe_path("dir/subdir/LPT1.tar.gz"));
+        assert!(!is_safe_path("com1.backup"));
+    }
+
+    #[test]
+    fn test_is_safe_path_allows_reserved_name_prefixes() {
+        assert!(is_safe_path("CONSOLE.txt"));
+        assert!(is_safe_path("COM10.txt"));
+        assert!(is_safe_path("LPT10.log"));
+        assert!(is_safe_path("NULLED"));
     }
 
     #[tokio::test]
