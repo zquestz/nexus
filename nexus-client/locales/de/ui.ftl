@@ -1380,6 +1380,7 @@ err-tracker-query-refused = Tracker hat die Verbindung abgelehnt: Er begrenzt mÃ
 err-tracker-query-handshake-failed = Tracker-Handshake fehlgeschlagen: { $error }
 err-tracker-query-protocol-error = Tracker-Protokollfehler: { $error }
 err-tracker-query-malformed-response = Tracker-Antwort ist fehlerhaft: { $error }
+err-tracker-fingerprint-save-failed = Tracker-Fingerabdruck konnte nicht gespeichert werden: { $error }
 err-tracker-version-unparseable = Der Tracker lieferte eine nicht analysierbare Version â€ž{ $version }": { $error }
 err-tracker-version-incompatible = Inkompatible Trackerversion { $server_version } (Client { $client_version })
 err-tracker-query-unauthorized = Tracker hat die Anfrage abgelehnt: falsches oder fehlendes Passwort.

@@ -1311,6 +1311,7 @@ err-tracker-query-refused = トラッカーが接続を拒否しました：あ�
 err-tracker-query-handshake-failed = トラッカーのハンドシェイクに失敗しました：{ $error }
 err-tracker-query-protocol-error = トラッカーのプロトコルエラー：{ $error }
 err-tracker-query-malformed-response = トラッカーの応答が不正です：{ $error }
+err-tracker-fingerprint-save-failed = トラッカーのフィンガープリントを保存できませんでした：{ $error }
 err-tracker-version-unparseable = トラッカーが解析できないバージョン「{ $version }」を返しました：{ $error }
 err-tracker-version-incompatible = トラッカーのバージョンに互換性がありません { $server_version }（クライアント { $client_version }）
 err-tracker-query-unauthorized = トラッカーがリクエストを拒否しました：パスワードが間違っているか入力されていません。

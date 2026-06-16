@@ -1403,6 +1403,7 @@ err-tracker-query-refused = Трекер отклонил соединение: 
 err-tracker-query-handshake-failed = Не удалось выполнить рукопожатие с трекером: { $error }
 err-tracker-query-protocol-error = Ошибка протокола трекера: { $error }
 err-tracker-query-malformed-response = Ответ трекера некорректен: { $error }
+err-tracker-fingerprint-save-failed = Не удалось сохранить отпечаток трекера: { $error }
 err-tracker-version-unparseable = Трекер вернул неразборчивую версию «{ $version }»: { $error }
 err-tracker-version-incompatible = Несовместимая версия трекера { $server_version } (клиент { $client_version })
 err-tracker-query-unauthorized = Трекер отклонил запрос: неверный или отсутствующий пароль.

@@ -1311,6 +1311,7 @@ err-tracker-query-refused = 트래커가 연결을 거부했습니다: 당신의
 err-tracker-query-handshake-failed = 트래커 핸드셰이크에 실패했습니다: { $error }
 err-tracker-query-protocol-error = 트래커 프로토콜 오류: { $error }
 err-tracker-query-malformed-response = 트래커 응답 형식이 잘못되었습니다: { $error }
+err-tracker-fingerprint-save-failed = 트래커 지문을 저장하지 못했습니다: { $error }
 err-tracker-version-unparseable = 트래커가 분석할 수 없는 버전 "{ $version }"을(를) 반환했습니다: { $error }
 err-tracker-version-incompatible = 호환되지 않는 트래커 버전 { $server_version } (클라이언트 { $client_version })
 err-tracker-query-unauthorized = 트래커가 요청을 거부했습니다: 비밀번호가 잘못되었거나 누락되었습니다.

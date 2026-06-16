@@ -1382,6 +1382,7 @@ err-tracker-query-refused = O tracker recusou a conexão: pode estar limitando a
 err-tracker-query-handshake-failed = Falha no handshake com o tracker: { $error }
 err-tracker-query-protocol-error = Erro de protocolo do tracker: { $error }
 err-tracker-query-malformed-response = A resposta do tracker está malformada: { $error }
+err-tracker-fingerprint-save-failed = Falha ao salvar a impressão digital do tracker: { $error }
 err-tracker-version-unparseable = O tracker retornou uma versão ilegível "{ $version }": { $error }
 err-tracker-version-incompatible = Versão do tracker incompatível { $server_version } (cliente { $client_version })
 err-tracker-query-unauthorized = O tracker rejeitou a requisição: senha incorreta ou ausente.

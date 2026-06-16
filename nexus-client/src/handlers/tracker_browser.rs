@@ -7,6 +7,7 @@
 use iced::Task;
 use iced::widget::Id;
 use nexus_common::names::fold_name;
+use nexus_common::tracker_protocol::ServerEntry;
 use nexus_common::{
     ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUTHORIZED,
 };
@@ -22,7 +23,7 @@ use crate::network::{
 };
 use crate::types::{
     ActivePanel, ClientTracker, InputId, Message, TrackerBrowserEditInit, TrackerBrowserMode,
-    TrackerBrowserSortColumn, normalize_certificate_fingerprint,
+    TrackerBrowserSortColumn, TrackerCacheEntry, normalize_certificate_fingerprint,
 };
 
 const TRACKER_BROWSER_ADD_CYCLE: &[InputId] = &[
@@ -592,22 +593,14 @@ impl NexusApp {
                 entries,
                 observed_fingerprint,
             }) => {
-                cache.entries = Some(entries);
-                cache.error = None;
-                cache.pending_fingerprint = None;
-
-                // First-connect TOFU: if the configured tracker has no
-                // pin yet, commit the observed fingerprint. Save
-                // failure here logs but doesn't fail the query — the
-                // entries are already in the cache.
-                if let Some(stored) = self.config.get_tracker(tracker_id)
-                    && stored.certificate_fingerprint.is_none()
-                {
-                    let mut updated = stored.clone();
-                    updated.certificate_fingerprint = Some(observed_fingerprint);
-                    self.config.update_tracker(tracker_id, updated);
-                    let _ = save_config(&self.config);
-                }
+                apply_successful_tracker_query(
+                    &mut self.config,
+                    cache,
+                    tracker_id,
+                    entries,
+                    observed_fingerprint,
+                    save_config,
+                );
             }
             Err(TrackerQueryError::Stage1Mismatch { received }) => {
                 cache.error = Some(t("err-tracker-query-stage1-mismatch"));
@@ -918,6 +911,65 @@ fn validate_tracker_bookmark_row(name: &str, address: &str, fingerprint: &str) -
     .err()
 }
 
+/// Apply a successful tracker response to the cache and persist the
+/// first observed TOFU pin when the tracker was previously unpinned.
+fn apply_successful_tracker_query<F>(
+    config: &mut Config,
+    cache: &mut TrackerCacheEntry,
+    tracker_id: Uuid,
+    entries: Vec<ServerEntry>,
+    observed_fingerprint: String,
+    save: F,
+) where
+    F: FnOnce(&Config) -> Result<(), String>,
+{
+    cache.entries = Some(entries);
+    cache.error = None;
+    cache.pending_fingerprint = None;
+
+    if let Err(error) =
+        save_first_connect_tracker_pin(config, tracker_id, observed_fingerprint, save)
+    {
+        cache.error = Some(t_args(
+            "err-tracker-fingerprint-save-failed",
+            &[("error", &error)],
+        ));
+    }
+}
+
+/// Persist the first observed tracker fingerprint for an unpinned
+/// tracker. Returns `Ok(false)` when no write was needed. On save
+/// failure, restores the previous tracker row so memory matches disk.
+fn save_first_connect_tracker_pin<F>(
+    config: &mut Config,
+    tracker_id: Uuid,
+    observed_fingerprint: String,
+    save: F,
+) -> Result<bool, String>
+where
+    F: FnOnce(&Config) -> Result<(), String>,
+{
+    let Some(existing) = config.get_tracker(tracker_id).cloned() else {
+        return Ok(false);
+    };
+    if existing.certificate_fingerprint.is_some() {
+        return Ok(false);
+    }
+
+    let updated = ClientTracker {
+        certificate_fingerprint: Some(observed_fingerprint),
+        ..existing.clone()
+    };
+    config.update_tracker(tracker_id, updated);
+
+    if let Err(error) = save(config) {
+        config.update_tracker(tracker_id, existing);
+        return Err(error);
+    }
+
+    Ok(true)
+}
+
 /// Trim a freeform optional field (password, fingerprint); empty
 /// after trim collapses to `None` so the on-disk / wire shape stays
 /// canonical. Shared with `tracker_management.rs` so both forms
@@ -1022,6 +1074,25 @@ mod tests {
             address: address.to_string(),
             port,
             ..Default::default()
+        }
+    }
+
+    fn canonical_fingerprint() -> String {
+        "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+            .to_string()
+    }
+
+    fn server_entry() -> ServerEntry {
+        ServerEntry {
+            name: "Public".to_string(),
+            description: None,
+            address: "bbs.example".to_string(),
+            port: 7500,
+            websocket_port: None,
+            version: "0.9.2".to_string(),
+            fingerprint: canonical_fingerprint(),
+            user_count: 1,
+            allows_guest: true,
         }
     }
 
@@ -1157,6 +1228,139 @@ mod tests {
         drop(task);
 
         assert!(app.config.bookmarks.is_empty());
+    }
+
+    // =========================================================================
+    // First-connect tracker TOFU pin persistence
+    // =========================================================================
+
+    #[test]
+    fn first_connect_tracker_pin_save_success_stores_observed_pin() {
+        let mut config = Config::default();
+        let tracker_id = Uuid::new_v4();
+        config.add_tracker(ClientTracker {
+            id: tracker_id,
+            name: "Public".to_string(),
+            address: "tracker.example".to_string(),
+            port: 7510,
+            ..Default::default()
+        });
+        let fingerprint = canonical_fingerprint();
+
+        let saved = save_first_connect_tracker_pin(
+            &mut config,
+            tracker_id,
+            fingerprint.clone(),
+            |_| Ok(()),
+        )
+        .expect("save should succeed");
+
+        assert!(saved);
+        assert_eq!(
+            config
+                .get_tracker(tracker_id)
+                .and_then(|t| t.certificate_fingerprint.as_deref()),
+            Some(fingerprint.as_str())
+        );
+    }
+
+    #[test]
+    fn first_connect_tracker_pin_save_failure_rolls_back_observed_pin() {
+        let mut config = Config::default();
+        let tracker_id = Uuid::new_v4();
+        config.add_tracker(ClientTracker {
+            id: tracker_id,
+            name: "Public".to_string(),
+            address: "tracker.example".to_string(),
+            port: 7510,
+            ..Default::default()
+        });
+
+        let error = save_first_connect_tracker_pin(
+            &mut config,
+            tracker_id,
+            canonical_fingerprint(),
+            |_| Err("disk full".to_string()),
+        )
+        .expect_err("save failure should be surfaced");
+
+        assert_eq!(error, "disk full");
+        assert_eq!(
+            config
+                .get_tracker(tracker_id)
+                .and_then(|t| t.certificate_fingerprint.as_deref()),
+            None
+        );
+    }
+
+    #[test]
+    fn first_connect_tracker_pin_skips_already_pinned_tracker() {
+        let mut config = Config::default();
+        let tracker_id = Uuid::new_v4();
+        let existing_pin = canonical_fingerprint();
+        config.add_tracker(ClientTracker {
+            id: tracker_id,
+            name: "Public".to_string(),
+            address: "tracker.example".to_string(),
+            port: 7510,
+            certificate_fingerprint: Some(existing_pin.clone()),
+            ..Default::default()
+        });
+        let mut save_called = false;
+
+        let saved =
+            save_first_connect_tracker_pin(&mut config, tracker_id, "new-pin".to_string(), |_| {
+                save_called = true;
+                Ok(())
+            })
+            .expect("already-pinned tracker should not fail");
+
+        assert!(!saved);
+        assert!(!save_called);
+        assert_eq!(
+            config
+                .get_tracker(tracker_id)
+                .and_then(|t| t.certificate_fingerprint.as_deref()),
+            Some(existing_pin.as_str())
+        );
+    }
+
+    #[test]
+    fn successful_tracker_query_save_failure_keeps_entries_and_surfaces_cache_error() {
+        let mut config = Config::default();
+        let tracker_id = Uuid::new_v4();
+        config.add_tracker(ClientTracker {
+            id: tracker_id,
+            name: "Public".to_string(),
+            address: "tracker.example".to_string(),
+            port: 7510,
+            ..Default::default()
+        });
+        let mut cache = TrackerCacheEntry {
+            error: Some("old error".to_string()),
+            pending_fingerprint: Some("old-pin".to_string()),
+            ..Default::default()
+        };
+
+        apply_successful_tracker_query(
+            &mut config,
+            &mut cache,
+            tracker_id,
+            vec![server_entry()],
+            canonical_fingerprint(),
+            |_| Err("readonly config".to_string()),
+        );
+
+        assert_eq!(cache.entries.as_ref().map(Vec::len), Some(1));
+        assert_eq!(cache.pending_fingerprint, None);
+        let error = cache.error.as_deref().expect("save failure should surface");
+        assert!(error.contains("readonly config"));
+        assert_eq!(
+            config
+                .get_tracker(tracker_id)
+                .and_then(|t| t.certificate_fingerprint.as_deref()),
+            None
+        );
     }
 
     // =========================================================================

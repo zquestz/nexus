@@ -1312,6 +1312,7 @@ err-tracker-query-refused = 追踪器拒绝了连接：它可能正在对你的 
 err-tracker-query-handshake-failed = 追踪器握手失败：{ $error }
 err-tracker-query-protocol-error = 追踪器协议错误：{ $error }
 err-tracker-query-malformed-response = 追踪器响应格式错误：{ $error }
+err-tracker-fingerprint-save-failed = 无法保存追踪器指纹：{ $error }
 err-tracker-version-unparseable = 追踪器返回了无法解析的版本"{ $version }"：{ $error }
 err-tracker-version-incompatible = 追踪器版本不兼容 { $server_version }（客户端 { $client_version }）
 err-tracker-query-unauthorized = 追踪器拒绝了请求：密码错误或缺失。

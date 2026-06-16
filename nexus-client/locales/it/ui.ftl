@@ -1380,6 +1380,7 @@ err-tracker-query-refused = Il tracker ha rifiutato la connessione: potrebbe lim
 err-tracker-query-handshake-failed = Handshake con il tracker fallito: { $error }
 err-tracker-query-protocol-error = Errore di protocollo del tracker: { $error }
 err-tracker-query-malformed-response = La risposta del tracker è malformata: { $error }
+err-tracker-fingerprint-save-failed = Impossibile salvare l'impronta del tracker: { $error }
 err-tracker-version-unparseable = Il tracker ha restituito una versione non analizzabile «{ $version }»: { $error }
 err-tracker-version-incompatible = Versione del tracker incompatibile { $server_version } (client { $client_version })
 err-tracker-query-unauthorized = Il tracker ha rifiutato la richiesta: password errata o mancante.

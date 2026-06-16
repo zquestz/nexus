@@ -1311,6 +1311,7 @@ err-tracker-query-refused = 追蹤器拒絕了連線：可能正在對你的 IP 
 err-tracker-query-handshake-failed = 追蹤器握手失敗：{ $error }
 err-tracker-query-protocol-error = 追蹤器通訊協定錯誤：{ $error }
 err-tracker-query-malformed-response = 追蹤器回應格式錯誤：{ $error }
+err-tracker-fingerprint-save-failed = 無法儲存追蹤器指紋：{ $error }
 err-tracker-version-unparseable = 追蹤器回傳了無法解析的版本「{ $version }」：{ $error }
 err-tracker-version-incompatible = 追蹤器版本不相容 { $server_version }（用戶端 { $client_version }）
 err-tracker-query-unauthorized = 追蹤器拒絕了請求：密碼錯誤或缺漏。

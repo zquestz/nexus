@@ -1461,6 +1461,7 @@ err-tracker-query-refused = Tracker refused connection: it may be rate-limiting 
 err-tracker-query-handshake-failed = Tracker handshake failed: { $error }
 err-tracker-query-protocol-error = Tracker protocol error: { $error }
 err-tracker-query-malformed-response = Tracker response is malformed: { $error }
+err-tracker-fingerprint-save-failed = Failed to save tracker fingerprint: { $error }
 err-tracker-version-unparseable = Tracker returned an unparseable version "{ $version }": { $error }
 err-tracker-version-incompatible = Incompatible tracker version { $server_version } (client { $client_version })
 err-tracker-query-unauthorized = Tracker rejected the request: incorrect or missing password.

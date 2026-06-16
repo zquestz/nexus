@@ -1377,6 +1377,7 @@ err-tracker-query-refused = Tracker heeft de verbinding geweigerd: hij beperkt m
 err-tracker-query-handshake-failed = Trackerhandshake mislukt: { $error }
 err-tracker-query-protocol-error = Trackerprotocolfout: { $error }
 err-tracker-query-malformed-response = Trackerantwoord is misvormd: { $error }
+err-tracker-fingerprint-save-failed = Kan tracker-vingerafdruk niet opslaan: { $error }
 err-tracker-version-unparseable = Tracker gaf een onleesbare versie "{ $version }" terug: { $error }
 err-tracker-version-incompatible = Incompatibele trackerversie { $server_version } (client { $client_version })
 err-tracker-query-unauthorized = Tracker heeft het verzoek geweigerd: wachtwoord onjuist of ontbreekt.
