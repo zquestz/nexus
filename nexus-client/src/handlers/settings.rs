@@ -15,6 +15,7 @@ use nexus_common::voice::VoiceQuality;
 use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
+use crate::config::Config;
 use crate::config::audio::PttMode;
 use crate::config::events::{EventType, NotificationContent, SoundChoice};
 use crate::config::settings::{
@@ -146,15 +147,9 @@ impl NexusApp {
             return Task::none();
         }
 
-        // Clear the snapshot (no need to restore)
-        self.settings_form = None;
-
-        // Save config to disk
-        if let Err(e) = self.config.save() {
-            self.connection_form.error = Some(t_args(
-                "err-failed-save-settings",
-                &[("error", &e.to_string())],
-            ));
+        let saved = persist_settings_config(&self.config, &mut self.settings_form, Config::save);
+        if !saved {
+            return Task::none();
         }
 
         self.handle_show_chat_view()
@@ -983,5 +978,68 @@ impl NexusApp {
             form.mic_error = Some(error);
         }
         Task::none()
+    }
+}
+
+fn persist_settings_config(
+    config: &Config,
+    settings_form: &mut Option<SettingsFormState>,
+    save: impl FnOnce(&Config) -> Result<(), String>,
+) -> bool {
+    match save(config) {
+        Ok(()) => {
+            // Clear the snapshot (no need to restore) only after the write lands.
+            *settings_form = None;
+            true
+        }
+        Err(e) => {
+            if let Some(form) = settings_form {
+                form.error = Some(t_args("err-failed-save-settings", &[("error", &e)]));
+            }
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_save_failure_stores_error_in_visible_form_slot() {
+        let config = Config::default();
+        let mut settings_form = Some(SettingsFormState::new(
+            &config,
+            SettingsTab::General,
+            EventType::default(),
+        ));
+
+        let saved =
+            persist_settings_config(
+                &config,
+                &mut settings_form,
+                |_| Err("disk full".to_string()),
+            );
+
+        assert!(!saved);
+        let form = settings_form.expect("save failure should keep settings form open");
+        let error = form.error.expect("save failure should set form error");
+        assert!(error.contains("Failed to save settings"));
+        assert!(error.contains("disk full"));
+    }
+
+    #[test]
+    fn settings_save_success_reports_saved_without_setting_form_error() {
+        let config = Config::default();
+        let mut settings_form = Some(SettingsFormState::new(
+            &config,
+            SettingsTab::General,
+            EventType::default(),
+        ));
+
+        let saved = persist_settings_config(&config, &mut settings_form, |_| Ok(()));
+
+        assert!(saved);
+        assert!(settings_form.is_none());
     }
 }

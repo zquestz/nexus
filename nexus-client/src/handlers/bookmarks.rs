@@ -6,6 +6,7 @@ use nexus_common::names::fold_name;
 use uuid::Uuid;
 
 use crate::NexusApp;
+use crate::config::Config;
 use crate::i18n::{get_locale, t, t_args};
 use crate::network::{ConnectionParams, ProxyConfig};
 use crate::types::{
@@ -319,20 +320,19 @@ impl NexusApp {
 
     /// Delete a bookmark by ID
     pub fn handle_delete_bookmark(&mut self, id: Uuid) -> Task<Message> {
-        self.config.delete_bookmark(id);
-        if let Err(e) = self.config.save() {
-            self.connection_form.error = Some(t_args(
-                "err-failed-save-config",
-                &[("error", &e.to_string())],
-            ));
+        let deleted = delete_bookmark_with_save(
+            &mut self.config,
+            &mut self.bookmark_errors,
+            &mut self.bookmark_edit,
+            id,
+            Config::save,
+        );
+        if deleted {
+            // Restore chat scroll position when closing bookmark editor
+            self.scroll_chat_if_visible(false)
+        } else {
+            Task::none()
         }
-
-        // Clean up bookmark_errors for deleted bookmark
-        self.bookmark_errors.remove(&id);
-
-        self.bookmark_edit = BookmarkEditState::default();
-        // Restore chat scroll position when closing bookmark editor
-        self.scroll_chat_if_visible(false)
     }
 
     // ==================== Tab Navigation ====================
@@ -359,6 +359,32 @@ impl NexusApp {
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
         self.focus_field(next)
+    }
+}
+
+fn delete_bookmark_with_save(
+    config: &mut Config,
+    bookmark_errors: &mut std::collections::HashMap<Uuid, String>,
+    bookmark_edit: &mut BookmarkEditState,
+    id: Uuid,
+    save: impl FnOnce(&Config) -> Result<(), String>,
+) -> bool {
+    let bookmarks_before = config.bookmarks.clone();
+    config.delete_bookmark(id);
+
+    match save(config) {
+        Ok(()) => {
+            bookmark_errors.remove(&id);
+            *bookmark_edit = BookmarkEditState::default();
+            true
+        }
+        Err(e) => {
+            config.bookmarks = bookmarks_before;
+            bookmark_edit.confirm_delete = false;
+            bookmark_edit.is_submitting = false;
+            bookmark_edit.error = Some(t_args("err-failed-save-config", &[("error", &e)]));
+            false
+        }
     }
 }
 
@@ -449,4 +475,89 @@ pub(super) fn check_bookmark_dedup(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::types::ServerBookmark;
+
+    fn bookmark(name: &str) -> ServerBookmark {
+        ServerBookmark {
+            name: name.to_string(),
+            address: "example.com".to_string(),
+            username: "alice".to_string(),
+            ..ServerBookmark::default()
+        }
+    }
+
+    #[test]
+    fn delete_bookmark_save_failure_rolls_back_and_shows_edit_error() {
+        let first = bookmark("First");
+        let deleted_id = first.id;
+        let second = bookmark("Second");
+        let second_id = second.id;
+        let mut config = Config::default();
+        config.add_bookmark(first.clone());
+        config.add_bookmark(second);
+        let mut bookmark_errors = HashMap::from([(deleted_id, "old error".to_string())]);
+        let mut edit = BookmarkEditState {
+            mode: BookmarkEditMode::Edit(deleted_id),
+            bookmark: first,
+            confirm_delete: true,
+            ..BookmarkEditState::default()
+        };
+
+        let deleted = delete_bookmark_with_save(
+            &mut config,
+            &mut bookmark_errors,
+            &mut edit,
+            deleted_id,
+            |_| Err("permission denied".to_string()),
+        );
+
+        assert!(!deleted);
+        assert_eq!(config.bookmarks.len(), 2);
+        assert_eq!(config.bookmarks[0].id, deleted_id);
+        assert_eq!(config.bookmarks[1].id, second_id);
+        assert!(bookmark_errors.contains_key(&deleted_id));
+        assert_eq!(edit.mode, BookmarkEditMode::Edit(deleted_id));
+        assert!(!edit.confirm_delete);
+        let error = edit.error.expect("save failure should stay visible");
+        assert!(error.contains("Failed to save config"));
+        assert!(error.contains("permission denied"));
+    }
+
+    #[test]
+    fn delete_bookmark_success_removes_error_and_closes_editor() {
+        let first = bookmark("First");
+        let deleted_id = first.id;
+        let mut config = Config::default();
+        config.add_bookmark(first.clone());
+        let mut bookmark_errors = HashMap::from([(deleted_id, "old error".to_string())]);
+        let mut edit = BookmarkEditState {
+            mode: BookmarkEditMode::Edit(deleted_id),
+            bookmark: first,
+            confirm_delete: true,
+            error: Some("old edit error".to_string()),
+            ..BookmarkEditState::default()
+        };
+
+        let deleted = delete_bookmark_with_save(
+            &mut config,
+            &mut bookmark_errors,
+            &mut edit,
+            deleted_id,
+            |_| Ok(()),
+        );
+
+        assert!(deleted);
+        assert!(config.get_bookmark(deleted_id).is_none());
+        assert!(!bookmark_errors.contains_key(&deleted_id));
+        assert_eq!(edit.mode, BookmarkEditMode::None);
+        assert!(edit.error.is_none());
+        assert!(!edit.confirm_delete);
+    }
 }
