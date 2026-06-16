@@ -235,6 +235,34 @@ impl UserManager {
         self.enqueue_dead_sessions(&disconnected);
     }
 
+    /// Broadcast a chat message to channel members who enabled chat and can
+    /// receive chat. The caller supplies membership from ChannelManager so the
+    /// user map is read once for permission/feature filtering.
+    pub async fn broadcast_chat_message_to_members(
+        &self,
+        member_session_ids: &[u32],
+        message: &ServerMessage,
+    ) {
+        let Some(frame) = shared_broadcast_frame(message) else {
+            return;
+        };
+        let mut disconnected = Vec::new();
+
+        {
+            let users = self.users.read().await;
+            for &member_session_id in member_session_ids {
+                if let Some(member) = users.get(&member_session_id)
+                    && member.has_feature(FEATURE_CHAT)
+                    && member.has_permission(Permission::ChatReceive)
+                {
+                    send_shared_frame(member, &frame, &mut disconnected);
+                }
+            }
+        }
+
+        self.enqueue_dead_sessions(&disconnected);
+    }
+
     /// Broadcast to all sessions with `nickname` that activated `feature` and
     /// hold `required_permission`.
     pub async fn broadcast_to_nickname_with_feature_and_permission(
@@ -354,6 +382,7 @@ mod tests {
 
     use super::*;
     use crate::users::user::{ConnectionWriter, NewSessionParams, SessionEvent};
+    use nexus_common::protocol::ChatAction;
 
     fn session_params(user_id: i64, username: &str, tx: ConnectionWriter) -> NewSessionParams {
         NewSessionParams {
@@ -529,6 +558,86 @@ mod tests {
             rx_b.try_recv().is_err(),
             "bob (different user_id) must not receive"
         );
+    }
+
+    #[tokio::test]
+    async fn test_chat_member_broadcast_filters_and_reuses_preframed_event() {
+        let manager = UserManager::new();
+
+        let (tx_alice, mut rx_alice) = ConnectionWriter::channel();
+        let (tx_bob, mut rx_bob) = ConnectionWriter::channel();
+        let (tx_no_feature, mut rx_no_feature) = ConnectionWriter::channel();
+        let (tx_no_permission, mut rx_no_permission) = ConnectionWriter::channel();
+
+        let mut alice = session_params(1, "alice", tx_alice);
+        alice.features.push(FEATURE_CHAT.to_string());
+        alice.permissions.insert(Permission::ChatReceive);
+        let alice_id = manager.add_user(alice).await.unwrap();
+
+        let mut bob = session_params(2, "bob", tx_bob);
+        bob.features.push(FEATURE_CHAT.to_string());
+        bob.permissions.insert(Permission::ChatReceive);
+        let bob_id = manager.add_user(bob).await.unwrap();
+
+        let mut no_feature = session_params(3, "no_feature", tx_no_feature);
+        no_feature.permissions.insert(Permission::ChatReceive);
+        let no_feature_id = manager.add_user(no_feature).await.unwrap();
+
+        let mut no_permission = session_params(4, "no_permission", tx_no_permission);
+        no_permission.features.push(FEATURE_CHAT.to_string());
+        let no_permission_id = manager.add_user(no_permission).await.unwrap();
+
+        let message = ServerMessage::ChatMessage {
+            session_id: alice_id,
+            nickname: "alice".to_string(),
+            is_admin: false,
+            is_shared: false,
+            message: "hello".to_string(),
+            action: ChatAction::Normal,
+            channel: "#general".to_string(),
+            timestamp: 123,
+        };
+
+        manager
+            .broadcast_chat_message_to_members(
+                &[alice_id, bob_id, no_feature_id, no_permission_id, u32::MAX],
+                &message,
+            )
+            .await;
+
+        let alice_frame = match rx_alice.try_recv().expect("alice should receive chat") {
+            SessionEvent::Frame(frame) => frame,
+            other => panic!("expected preframed chat event, got {other:?}"),
+        };
+        let bob_frame = match rx_bob.try_recv().expect("bob should receive chat") {
+            SessionEvent::Frame(frame) => frame,
+            other => panic!("expected preframed chat event, got {other:?}"),
+        };
+
+        assert!(
+            Arc::ptr_eq(&alice_frame, &bob_frame),
+            "chat recipients should share one serialized frame"
+        );
+        assert!(rx_no_feature.try_recv().is_err());
+        assert!(rx_no_permission.try_recv().is_err());
+
+        match SessionEvent::Frame(alice_frame).expect_message().0 {
+            ServerMessage::ChatMessage {
+                session_id,
+                nickname,
+                message,
+                channel,
+                timestamp,
+                ..
+            } => {
+                assert_eq!(session_id, alice_id);
+                assert_eq!(nickname, "alice");
+                assert_eq!(message, "hello");
+                assert_eq!(channel, "#general");
+                assert_eq!(timestamp, 123);
+            }
+            other => panic!("expected chat message, got {other:?}"),
+        }
     }
 
     #[tokio::test]

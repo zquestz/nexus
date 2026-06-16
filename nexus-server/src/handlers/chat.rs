@@ -160,20 +160,9 @@ where
             timestamp,
         };
 
-        // Route only to members with the chat feature and ChatReceive permission.
-        for member_session_id in members {
-            if let Some(member) = ctx
-                .user_manager
-                .get_user_by_session_id(member_session_id)
-                .await
-                && member.has_feature(FEATURE_CHAT)
-                && member.has_permission(Permission::ChatReceive)
-            {
-                ctx.user_manager
-                    .send_to_session(member_session_id, chat_message.clone())
-                    .await;
-            }
-        }
+        ctx.user_manager
+            .broadcast_chat_message_to_members(&members, &chat_message)
+            .await;
 
         ChatSendOutcome::Sent
     };
