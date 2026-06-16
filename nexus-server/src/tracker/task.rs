@@ -16,7 +16,7 @@ use chrono::Utc;
 use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
-    read_server_handshake_response, read_tracker_server_message_with_full_timeout,
+    read_server_handshake_response, read_tracker_server_message_with_progress_timeout,
     send_client_message, send_tracker_client_message,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -102,11 +102,6 @@ const MIN_REFRESH_INTERVAL_SECS: u32 = nexus_common::MIN_REFRESH_INTERVAL_SECS;
 #[cfg(test)]
 const MIN_REFRESH_INTERVAL_SECS: u32 = 1;
 const DEFAULT_REFRESH_INTERVAL_SECS: u32 = nexus_common::DEFAULT_REFRESH_INTERVAL_SECS;
-
-/// Padding so the refresh sleep wins the `select!` on the happy path.
-/// The idle timeout is a backstop: it fires the read arm promptly on
-/// peer close (tracker restart) so we reconnect in seconds, not a full interval.
-const IDLE_READ_PADDING: Duration = Duration::from_secs(15);
 
 /// Test-only tracker task entrypoint without lifecycle serialization.
 ///
@@ -546,19 +541,21 @@ where
     let mut connected_once = false;
 
     loop {
-        // Wait to refresh, OR for any inbound frame — unexpected, since
-        // the tracker only replies to requests, so a frame here means
-        // the connection is closing. The read arm fast-paths
-        // tracker-restart detection (reconnect in seconds, not a full
-        // interval). The idle timeout is padded past `sleep_for` so the
-        // sleep arm wins the happy path; it's only a backstop.
+        // Keep one read future alive across the refresh timer. If the tracker
+        // closes or sends an unexpected frame mid-idle, the read arm reconnects
+        // promptly. If the refresh timer wins after the read consumed partial
+        // frame bytes, the same future is later awaited as the register
+        // response so we never drop a partially-consumed frame on a reused
+        // connection.
+        let pending_read = read_tracker_server_message_with_progress_timeout(
+            reader,
+            Some(TRACKER_RESPONSE_TIMEOUT),
+        );
+        tokio::pin!(pending_read);
+
         tokio::select! {
             _ = tokio::time::sleep(sleep_for) => {}
-            frame = read_tracker_server_message_with_full_timeout(
-                reader,
-                Some(sleep_for + IDLE_READ_PADDING),
-                None,
-            ) => {
+            frame = &mut pending_read => {
                 match frame {
                     Ok(Some(_)) => {
                         // Unexpected mid-idle frame; reconnect.
@@ -629,11 +626,7 @@ where
         }
 
         // Read the response with a tight per-refresh timeout.
-        let response = match tokio::time::timeout(
-            TRACKER_RESPONSE_TIMEOUT,
-            read_tracker_server_message_with_full_timeout(reader, None, None),
-        )
-        .await
+        let response = match tokio::time::timeout(TRACKER_RESPONSE_TIMEOUT, &mut pending_read).await
         {
             Ok(Ok(Some(r))) => r.message,
             Ok(Ok(None)) => {
@@ -1517,6 +1510,46 @@ mod tests {
         })
         .await
         .expect("task should mark the reconnect successful");
+
+        task.abort();
+        let _ = task.await;
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn partial_mid_idle_register_response_is_preserved_for_refresh_response() {
+        let mock = MockTracker::start(MockBehavior {
+            register_response: RegisterPolicy::Success {
+                refresh_interval: 1,
+            },
+            split_second_register_response: Some(RegisterPolicy::Success {
+                refresh_interval: 2,
+            }),
+            ..Default::default()
+        })
+        .await;
+        let captured = Arc::clone(&mock.behavior.captured_registers);
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        wait_for_capture_count(&captured, 2, Duration::from_secs(5))
+            .await
+            .expect("task should send the second register on refresh");
+        let snap = wait_for_status(&status, Duration::from_secs(5), |s| {
+            s.connected && s.refresh_interval == Some(2) && s.last_error_kind.is_none()
+        })
+        .await
+        .expect("task should parse the split second response");
+
+        assert!(snap.connected);
+        assert_eq!(snap.refresh_interval, Some(2));
 
         task.abort();
         let _ = task.await;

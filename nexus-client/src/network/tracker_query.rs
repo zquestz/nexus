@@ -21,7 +21,7 @@ use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
-    read_server_handshake_response, read_tracker_server_message_with_progress_timeout,
+    read_server_handshake_response, read_tracker_server_message_with_idle_progress_timeout,
     send_client_message, send_tracker_client_message,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -213,7 +213,7 @@ pub async fn query_tracker(
     // Phase 7: read TrackerServerListResponse. The response can be large, so
     // keep a 30s wait-for-first-byte bound but use a progress timeout once the
     // frame starts instead of a whole-frame deadline.
-    let response = read_tracker_server_message_with_progress_timeout(
+    let response = read_tracker_server_message_with_idle_progress_timeout(
         &mut reader,
         Some(TRACKER_RESPONSE_TIMEOUT),
         Some(TRACKER_RESPONSE_TIMEOUT),

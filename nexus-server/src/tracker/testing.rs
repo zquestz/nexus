@@ -10,14 +10,15 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use nexus_common::TRACKER_PROTOCOL_VERSION;
-use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{
     read_client_handshake_message_with_full_timeout, read_tracker_client_message_with_full_timeout,
-    send_server_message, send_tracker_server_message,
+    send_server_message, send_tracker_server_message, tracker_server_message_to_frame_bytes,
 };
 use nexus_common::protocol::ServerMessage;
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use rcgen::{CertificateParams, KeyPair};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::{JoinHandle, JoinSet};
@@ -51,6 +52,11 @@ pub struct MockBehavior {
     /// Leaves the listener alive so tests can simulate a tracker restart or
     /// mid-idle drop while allowing the task to reconnect to the same endpoint.
     pub close_after_register_responses: Arc<Mutex<VecDeque<usize>>>,
+    /// Test-only behavior: after the first normal register response, write only
+    /// the prefix of this second response before reading the second register,
+    /// then finish the frame after the register arrives. This exercises
+    /// client-side cancellation safety for mid-idle partial reads.
+    pub split_second_register_response: Option<RegisterPolicy>,
 }
 
 #[derive(Clone)]
@@ -72,6 +78,7 @@ impl Default for MockBehavior {
             captured_registers: Arc::new(Mutex::new(Vec::new())),
             wedge_after_tls: false,
             close_after_register_responses: Arc::new(Mutex::new(VecDeque::new())),
+            split_second_register_response: None,
         }
     }
 }
@@ -207,6 +214,7 @@ async fn handle_connection(
         .expect("mock close queue lock poisoned")
         .pop_front();
     let mut responses_sent = 0usize;
+    let mut pending_split_response: Option<(Arc<[u8]>, usize)> = None;
     loop {
         let received = match read_tracker_client_message_with_full_timeout(
             &mut reader,
@@ -229,6 +237,17 @@ async fn handle_connection(
                 .expect("mock capture lock poisoned")
                 .push(received.message.clone());
         }
+
+        if let Some((bytes, split_at)) = pending_split_response.take() {
+            writer.get_mut().write_all(&bytes[split_at..]).await?;
+            writer.get_mut().flush().await?;
+            responses_sent += 1;
+            if close_after_register_responses.is_some_and(|limit| responses_sent >= limit) {
+                return Ok(());
+            }
+            continue;
+        }
+
         // Queued response wins; otherwise default to `register_response`.
         let policy = behavior
             .queued_responses
@@ -236,28 +255,42 @@ async fn handle_connection(
             .expect("mock queue lock poisoned")
             .pop_front()
             .unwrap_or_else(|| behavior.register_response.clone());
-        let response = match policy {
-            RegisterPolicy::Success { refresh_interval } => {
-                TrackerServerMessage::TrackerServerRegisterResponse {
-                    success: true,
-                    refresh_interval: Some(refresh_interval),
-                    error: None,
-                    error_kind: None,
-                }
-            }
-            RegisterPolicy::Failure { error_kind, error } => {
-                TrackerServerMessage::TrackerServerRegisterResponse {
-                    success: false,
-                    refresh_interval: None,
-                    error: Some(error),
-                    error_kind: Some(error_kind),
-                }
-            }
-        };
+        let response = response_for_policy(policy);
         send_tracker_server_message(&mut writer, &response).await?;
         responses_sent += 1;
         if close_after_register_responses.is_some_and(|limit| responses_sent >= limit) {
             return Ok(());
+        }
+        if responses_sent == 1
+            && let Some(policy) = behavior.split_second_register_response.clone()
+        {
+            let response = response_for_policy(policy);
+            let bytes = tracker_server_message_to_frame_bytes(&response, MessageId::new())?;
+            let split_at = bytes.len().min(8);
+            writer.get_mut().write_all(&bytes[..split_at]).await?;
+            writer.get_mut().flush().await?;
+            pending_split_response = Some((bytes, split_at));
+        }
+    }
+}
+
+fn response_for_policy(policy: RegisterPolicy) -> TrackerServerMessage {
+    match policy {
+        RegisterPolicy::Success { refresh_interval } => {
+            TrackerServerMessage::TrackerServerRegisterResponse {
+                success: true,
+                refresh_interval: Some(refresh_interval),
+                error: None,
+                error_kind: None,
+            }
+        }
+        RegisterPolicy::Failure { error_kind, error } => {
+            TrackerServerMessage::TrackerServerRegisterResponse {
+                success: false,
+                refresh_interval: None,
+                error: Some(error),
+                error_kind: Some(error_kind),
+            }
         }
     }
 }

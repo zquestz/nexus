@@ -770,27 +770,21 @@ fn parse_tracker_client_frame(frame: RawFrame) -> io::Result<ReceivedTrackerClie
     })
 }
 
-/// Read a `TrackerServerMessage` with idle + frame timeouts.
+/// Read a `TrackerServerMessage` with progress timeout after bytes are flowing.
 ///
-/// `idle_timeout` overrides the default wait-for-first-byte (30s);
-/// `frame_timeout` overrides the default frame-completion timeout (60s).
-/// Returns `Ok(None)` if the connection was cleanly closed.
-///
-/// Used by the tracker task in `nexus-server` to read tracker
-/// responses, and by client-side code that queries trackers.
-pub async fn read_tracker_server_message_with_full_timeout<R>(
+/// This is appropriate for persistent tracker registration sockets: idle is
+/// expected between refresh cycles, but a started frame must keep moving.
+pub async fn read_tracker_server_message_with_progress_timeout<R>(
     reader: &mut FrameReader<R>,
-    idle_timeout: Option<Duration>,
-    frame_timeout: Option<Duration>,
+    progress_timeout: Option<Duration>,
 ) -> Result<Option<ReceivedTrackerServerMessage>, FrameError>
 where
     R: AsyncReadExt + Unpin,
 {
-    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
-    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+    let progress = progress_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_in_context_with_full_timeout(idle, frame_time, FrameContexts::TRACKER_SERVER)
+        .read_frame_in_context_with_progress_timeout(progress, FrameContexts::TRACKER_SERVER)
         .await?
     else {
         return Ok(None);
@@ -806,7 +800,7 @@ where
 ///
 /// This is appropriate for large trusted tracker responses: the frame may take
 /// longer than a fixed total deadline, but each socket read must keep moving.
-pub async fn read_tracker_server_message_with_progress_timeout<R>(
+pub async fn read_tracker_server_message_with_idle_progress_timeout<R>(
     reader: &mut FrameReader<R>,
     idle_timeout: Option<Duration>,
     progress_timeout: Option<Duration>,
@@ -865,7 +859,7 @@ mod tests {
     use crate::protocol::ChatAction;
     use crate::validators::DEFAULT_CHANNEL;
     use std::io::Cursor;
-    use tokio::io::BufReader;
+    use tokio::io::{AsyncWriteExt, BufReader};
 
     fn header_only_frame(message_type: &str, payload_length: u64) -> Vec<u8> {
         format!(
@@ -1086,6 +1080,35 @@ mod tests {
         let received = read_tracker_server_message_with_progress_timeout(
             &mut reader,
             Some(Duration::from_secs(30)),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(received.message_id, message_id);
+        assert!(matches!(
+            received.message,
+            TrackerServerMessage::TrackerServerListResponse { success: true, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn read_tracker_server_message_with_idle_progress_timeout_reads_tracker_server_frame() {
+        let message_id = MessageId::from_bytes(b"000000000007").unwrap();
+        let message = TrackerServerMessage::TrackerServerListResponse {
+            success: true,
+            servers: Vec::new(),
+            error: None,
+            error_kind: None,
+        };
+        let bytes = tracker_server_message_to_frame_bytes(&message, message_id).unwrap();
+        let cursor = Cursor::new(bytes.as_ref().to_vec());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let received = read_tracker_server_message_with_idle_progress_timeout(
+            &mut reader,
+            Some(Duration::from_secs(30)),
             Some(Duration::from_secs(30)),
         )
         .await
@@ -1097,6 +1120,40 @@ mod tests {
             received.message,
             TrackerServerMessage::TrackerServerListResponse { success: true, .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn read_tracker_server_message_with_progress_timeout_has_no_idle_deadline() {
+        let message_id = MessageId::from_bytes(b"000000000008").unwrap();
+        let message = TrackerServerMessage::TrackerServerListResponse {
+            success: true,
+            servers: Vec::new(),
+            error: None,
+            error_kind: None,
+        };
+        let bytes = tracker_server_message_to_frame_bytes(&message, message_id).unwrap();
+        let (read_half, mut write_half) = tokio::io::duplex(bytes.len() + 16);
+        let mut reader = FrameReader::new(BufReader::new(read_half));
+
+        let writer = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            write_half.write_all(bytes.as_ref()).await.unwrap();
+        });
+
+        let received = tokio::time::timeout(
+            Duration::from_secs(1),
+            read_tracker_server_message_with_progress_timeout(
+                &mut reader,
+                Some(Duration::from_millis(10)),
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        writer.await.unwrap();
+
+        assert_eq!(received.message_id, message_id);
     }
 
     #[tokio::test]
@@ -1607,53 +1664,6 @@ mod tests {
         assert!(matches!(
             received.message,
             TrackerClientMessage::TrackerServerList { .. }
-        ));
-    }
-
-    #[tokio::test]
-    async fn tracker_server_reader_accepts_tracker_responses() {
-        let mut buffer = Vec::new();
-        {
-            let cursor = Cursor::new(&mut buffer);
-            let mut writer = FrameWriter::new(cursor);
-            send_tracker_server_message(
-                &mut writer,
-                &TrackerServerMessage::TrackerServerRegisterResponse {
-                    success: true,
-                    refresh_interval: Some(300),
-                    error: None,
-                    error_kind: None,
-                },
-            )
-            .await
-            .unwrap();
-        }
-
-        let cursor = Cursor::new(buffer);
-        let buf_reader = BufReader::new(cursor);
-        let mut reader = FrameReader::new(buf_reader);
-
-        let received = read_tracker_server_message_with_full_timeout(&mut reader, None, None)
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(matches!(
-            received.message,
-            TrackerServerMessage::TrackerServerRegisterResponse { .. }
-        ));
-    }
-
-    #[tokio::test]
-    async fn tracker_server_reader_rejects_bbs_response_before_payload() {
-        let cursor = Cursor::new(header_only_frame("UserListResponse", u64::MAX));
-        let buf_reader = BufReader::new(cursor);
-        let mut reader = FrameReader::new(buf_reader);
-
-        let result = read_tracker_server_message_with_full_timeout(&mut reader, None, None).await;
-        assert!(matches!(
-            result,
-            Err(FrameError::UnexpectedMessageType(message_type))
-                if message_type == "UserListResponse"
         ));
     }
 }
