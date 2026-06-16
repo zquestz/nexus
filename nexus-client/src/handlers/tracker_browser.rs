@@ -781,6 +781,10 @@ impl NexusApp {
         port: u16,
         fingerprint: String,
     ) -> Task<Message> {
+        if let Some(error) = validate_tracker_bookmark_row(&name, &address, &fingerprint) {
+            return Task::done(Message::ShowToast(error));
+        }
+
         // Reuse the bookmark form's dedup helper. The four tracker
         // fields plus blank username / nickname form the lookup tuple,
         // matching the convention of every other bookmark-create site.
@@ -897,6 +901,21 @@ fn validate_form(
     }
 
     None
+}
+
+/// Validate tracker-supplied fields before turning a discovery row
+/// into a server bookmark. The row action has no form-local error
+/// area, so callers surface the returned localized error as a toast.
+fn validate_tracker_bookmark_row(name: &str, address: &str, fingerprint: &str) -> Option<String> {
+    super::server_form_errors::translate_server_form_errors(
+        name,
+        address,
+        "",
+        "",
+        "",
+        fingerprint.trim(),
+    )
+    .err()
 }
 
 /// Trim a freeform optional field (password, fingerprint); empty
@@ -1089,6 +1108,55 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    // =========================================================================
+    // Tracker row -> bookmark validation
+    // =========================================================================
+
+    #[test]
+    fn tracker_bookmark_row_validation_rejects_invalid_name() {
+        let err = validate_tracker_bookmark_row("bad\nname", "bbs.example", "")
+            .expect("newline in name should be rejected");
+        assert_eq!(err, t("err-server-name-contains-newlines"));
+    }
+
+    #[test]
+    fn tracker_bookmark_row_validation_rejects_invalid_address() {
+        let err = validate_tracker_bookmark_row("Public", "https://bbs.example", "")
+            .expect("scheme in address should be rejected");
+        assert_eq!(err, t("err-server-address-contains-scheme"));
+    }
+
+    #[test]
+    fn tracker_bookmark_row_validation_rejects_invalid_fingerprint() {
+        let err = validate_tracker_bookmark_row("Public", "bbs.example", "not-a-fingerprint")
+            .expect("invalid fingerprint should be rejected");
+        assert_eq!(err, t("err-fingerprint-invalid"));
+    }
+
+    #[test]
+    fn tracker_bookmark_row_validation_accepts_valid_row() {
+        let fingerprint = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
+        assert!(validate_tracker_bookmark_row("Public", "bbs.example", fingerprint).is_none());
+    }
+
+    #[test]
+    fn tracker_bookmark_row_handler_does_not_add_invalid_bookmark() {
+        let mut app = NexusApp {
+            config: Config::default(),
+            ..NexusApp::default()
+        };
+
+        let task = app.handle_tracker_browser_bookmark_row(
+            "Public".to_string(),
+            "https://bbs.example".to_string(),
+            7500,
+            String::new(),
+        );
+        drop(task);
+
+        assert!(app.config.bookmarks.is_empty());
     }
 
     // =========================================================================
