@@ -31,7 +31,10 @@ use std::time::Duration;
 use clap::Parser;
 use nexus_common::names::fold_name;
 use nexus_common::rate_limiter::RateLimiter;
-use nexus_common::validators::DEFAULT_BANDWIDTH_CHUNK_SIZE;
+use nexus_common::validators::{
+    DEFAULT_BANDWIDTH_CHUNK_SIZE, MAX_BANDWIDTH_CHUNK_SIZE, MIN_BANDWIDTH_CHUNK_SIZE,
+    validate_bandwidth_chunk_size,
+};
 pub(crate) use nexus_server::{egress, scheduler};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
@@ -799,11 +802,19 @@ async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
 }
 
 fn resolve_egress_chunk_size(configured: u32) -> NonZeroUsize {
-    if let Some(chunk_size) = NonZeroUsize::new(configured as usize) {
+    if validate_bandwidth_chunk_size(configured).is_ok()
+        && let Some(chunk_size) = NonZeroUsize::new(configured as usize)
+    {
         return chunk_size;
     }
 
-    warn!("{}", LOG_EGRESS_CHUNK_SIZE_INVALID);
+    warn!(
+        configured,
+        min = MIN_BANDWIDTH_CHUNK_SIZE,
+        max = MAX_BANDWIDTH_CHUNK_SIZE,
+        "{}",
+        LOG_EGRESS_CHUNK_SIZE_INVALID
+    );
     NonZeroUsize::new(DEFAULT_BANDWIDTH_CHUNK_SIZE as usize).unwrap_or(NonZeroUsize::MIN)
 }
 
@@ -1049,6 +1060,37 @@ mod tests {
     fn test_resolve_data_dir_override_returned_verbatim() {
         let override_path = std::path::PathBuf::from("/var/lib/nexusd-custom");
         assert_eq!(resolve_data_dir(Some(override_path.clone())), override_path);
+    }
+
+    #[test]
+    fn resolve_egress_chunk_size_accepts_valid_bounds() {
+        assert_eq!(
+            resolve_egress_chunk_size(MIN_BANDWIDTH_CHUNK_SIZE).get(),
+            MIN_BANDWIDTH_CHUNK_SIZE as usize
+        );
+        assert_eq!(
+            resolve_egress_chunk_size(DEFAULT_BANDWIDTH_CHUNK_SIZE).get(),
+            DEFAULT_BANDWIDTH_CHUNK_SIZE as usize
+        );
+        assert_eq!(
+            resolve_egress_chunk_size(MAX_BANDWIDTH_CHUNK_SIZE).get(),
+            MAX_BANDWIDTH_CHUNK_SIZE as usize
+        );
+    }
+
+    #[test]
+    fn resolve_egress_chunk_size_rejects_invalid_values() {
+        for configured in [
+            0,
+            MIN_BANDWIDTH_CHUNK_SIZE - 1,
+            MAX_BANDWIDTH_CHUNK_SIZE + 1,
+            u32::MAX,
+        ] {
+            assert_eq!(
+                resolve_egress_chunk_size(configured).get(),
+                DEFAULT_BANDWIDTH_CHUNK_SIZE as usize
+            );
+        }
     }
 
     #[cfg(unix)]
