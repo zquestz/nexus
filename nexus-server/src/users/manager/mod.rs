@@ -10,9 +10,12 @@ pub use mutations::AddUserError;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, mpsc};
 
+use crate::db::Permission;
+use crate::flood::{FloodCheck, FloodConfig, FloodKey, FloodState};
 use crate::users::user::UserSession;
 
 #[derive(Debug, Clone)]
@@ -57,6 +60,10 @@ pub struct UserManager {
     dead_session_tx: mpsc::UnboundedSender<u32>,
     /// Handed to the reaper once at startup via `take_dead_session_rx`.
     dead_session_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<u32>>>>,
+    /// Shared chat/DM flood buckets keyed by visible user identity. Lock order:
+    /// users map first, then flood state. Never acquire users while holding a
+    /// flood lock.
+    pub(super) flood_state: FloodState,
 }
 
 impl UserManager {
@@ -69,6 +76,7 @@ impl UserManager {
             server_info_lock: Arc::new(RwLock::new(())),
             dead_session_tx,
             dead_session_rx: Arc::new(Mutex::new(Some(dead_session_rx))),
+            flood_state: FloodState::new(),
         }
     }
 
@@ -115,6 +123,29 @@ impl UserManager {
     /// all are paused while `ServerInfoUpdate` holds the write lock.
     pub async fn read_server_info_state(&self) -> RwLockReadGuard<'_, ()> {
         self.server_info_lock.read().await
+    }
+
+    /// Check chat/DM flood protection for a live session.
+    ///
+    /// The session lookup and key derivation happen under the users read lock,
+    /// then the flood map is locked second. This prevents a removed session from
+    /// recreating an orphan bucket after disconnect pruning.
+    pub async fn check_message_flood(
+        &self,
+        session_id: u32,
+        config: &FloodConfig,
+        now: Instant,
+    ) -> Option<FloodCheck> {
+        let users = self.users.read().await;
+        let session = users.get(&session_id)?;
+        let key = FloodKey::for_session(session);
+        let has_unlimited = session.has_permission(Permission::ChatUnlimited);
+        Some(self.flood_state.check(key, config, has_unlimited, now))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn flood_state_for_test(&self) -> &FloodState {
+        &self.flood_state
     }
 }
 

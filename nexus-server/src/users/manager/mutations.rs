@@ -55,10 +55,15 @@ impl UserManager {
     /// `broadcast_disconnections` (cleanup messages must precede `UserDisconnected`).
     pub async fn remove_users(&self, session_ids: &[u32]) -> Vec<UserSession> {
         let mut users = self.users.write().await;
-        session_ids
+        let removed: Vec<UserSession> = session_ids
             .iter()
             .filter_map(|session_id| users.remove(session_id))
-            .collect()
+            .collect();
+
+        self.flood_state
+            .prune_removed_sessions(removed.iter(), users.values());
+
+        removed
     }
 
     /// Announce a set of just-removed sessions to `user_list` holders: one
@@ -337,6 +342,7 @@ mod tests {
     use std::net::SocketAddr;
 
     use super::*;
+    use crate::flood::{FloodCheck, FloodConfig, FloodKey};
     use crate::users::user::ConnectionWriter;
 
     fn shared_session_params(
@@ -367,6 +373,189 @@ mod tests {
             last_activity: std::time::Instant::now(),
             bandwidth_weight: initial_weight,
         }
+    }
+
+    fn flood_regular_session_params(
+        user_id: i64,
+        username: &str,
+        permissions: &[Permission],
+    ) -> NewSessionParams {
+        let (tx, _rx) = ConnectionWriter::channel();
+        NewSessionParams {
+            session_id: 0,
+            user_id,
+            username: username.to_string(),
+            is_admin: false,
+            is_shared: false,
+            permissions: permissions.iter().copied().collect(),
+            address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+            created_at: 0,
+            tx,
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: username.to_string(),
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            bandwidth_weight_override: None,
+            last_activity: std::time::Instant::now(),
+            bandwidth_weight: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn message_flood_regular_sessions_share_bucket_and_violations() {
+        let manager = UserManager::new();
+        let config = FloodConfig::new(1, 20);
+        let now = std::time::Instant::now();
+
+        let session_one = manager
+            .add_user(flood_regular_session_params(7, "alice", &[]))
+            .await
+            .expect("first session should log in");
+        let session_two = manager
+            .add_user(flood_regular_session_params(7, "alice", &[]))
+            .await
+            .expect("second session should log in");
+
+        assert!(matches!(
+            manager.check_message_flood(session_one, &config, now).await,
+            Some(FloodCheck::Allowed)
+        ));
+        assert!(matches!(
+            manager.check_message_flood(session_two, &config, now).await,
+            Some(FloodCheck::Limited { violation: 1, .. })
+        ));
+        assert!(matches!(
+            manager.check_message_flood(session_one, &config, now).await,
+            Some(FloodCheck::Limited { violation: 2, .. })
+        ));
+        assert!(matches!(
+            manager.check_message_flood(session_two, &config, now).await,
+            Some(FloodCheck::Disconnect)
+        ));
+    }
+
+    #[tokio::test]
+    async fn message_flood_shared_nicknames_have_separate_buckets() {
+        let manager = UserManager::new();
+        let config = FloodConfig::new(1, 20);
+        let now = std::time::Instant::now();
+
+        let guest_one = manager
+            .add_user(shared_session_params(7, "GuestOne", 1))
+            .await
+            .expect("first shared session should log in");
+        let guest_two = manager
+            .add_user(shared_session_params(7, "GuestTwo", 1))
+            .await
+            .expect("second shared session should log in");
+
+        assert!(matches!(
+            manager.check_message_flood(guest_one, &config, now).await,
+            Some(FloodCheck::Allowed)
+        ));
+        assert!(matches!(
+            manager.check_message_flood(guest_one, &config, now).await,
+            Some(FloodCheck::Limited { .. })
+        ));
+        assert!(matches!(
+            manager.check_message_flood(guest_two, &config, now).await,
+            Some(FloodCheck::Allowed)
+        ));
+    }
+
+    #[tokio::test]
+    async fn message_flood_chat_unlimited_resets_identity_violations() {
+        let manager = UserManager::new();
+        let config = FloodConfig::new(1, 20);
+        let now = std::time::Instant::now();
+        let user_id = 7;
+
+        let session_id = manager
+            .add_user(flood_regular_session_params(user_id, "alice", &[]))
+            .await
+            .expect("session should log in");
+
+        assert!(matches!(
+            manager.check_message_flood(session_id, &config, now).await,
+            Some(FloodCheck::Allowed)
+        ));
+        assert!(matches!(
+            manager.check_message_flood(session_id, &config, now).await,
+            Some(FloodCheck::Limited { violation: 1, .. })
+        ));
+        assert!(matches!(
+            manager.check_message_flood(session_id, &config, now).await,
+            Some(FloodCheck::Limited { violation: 2, .. })
+        ));
+
+        let mut unlimited = HashSet::new();
+        unlimited.insert(Permission::ChatUnlimited);
+        manager.update_permissions(user_id, unlimited).await;
+
+        assert!(matches!(
+            manager.check_message_flood(session_id, &config, now).await,
+            Some(FloodCheck::Allowed)
+        ));
+
+        manager.update_permissions(user_id, HashSet::new()).await;
+
+        assert!(matches!(
+            manager.check_message_flood(session_id, &config, now).await,
+            Some(FloodCheck::Limited { violation: 1, .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn message_flood_buckets_prune_when_last_identity_session_leaves() {
+        let manager = UserManager::new();
+        let config = FloodConfig::new(1, 20);
+        let now = std::time::Instant::now();
+        let key = FloodKey::UserId(7);
+
+        let session_one = manager
+            .add_user(flood_regular_session_params(7, "alice", &[]))
+            .await
+            .expect("first session should log in");
+        let session_two = manager
+            .add_user(flood_regular_session_params(7, "alice", &[]))
+            .await
+            .expect("second session should log in");
+
+        assert!(matches!(
+            manager.check_message_flood(session_one, &config, now).await,
+            Some(FloodCheck::Allowed)
+        ));
+        assert!(manager.flood_state_for_test().contains_key_for_test(&key));
+
+        let removed = manager.remove_users(&[session_one]).await;
+        assert_eq!(removed.len(), 1);
+        assert!(
+            manager.flood_state_for_test().contains_key_for_test(&key),
+            "bucket must stay while another session for the identity remains"
+        );
+
+        let removed = manager.remove_users(&[session_two]).await;
+        assert_eq!(removed.len(), 1);
+        assert!(
+            !manager.flood_state_for_test().contains_key_for_test(&key),
+            "bucket should prune when the final identity session leaves"
+        );
+        assert_eq!(manager.flood_state_for_test().tracker_count_for_test(), 0);
+        assert!(
+            manager
+                .check_message_flood(session_two, &config, now)
+                .await
+                .is_none()
+        );
+        assert_eq!(
+            manager.flood_state_for_test().tracker_count_for_test(),
+            0,
+            "removed sessions must not recreate orphan flood buckets"
+        );
     }
 
     /// `update_bandwidth_state` must fan out both fields (override + resolved) to

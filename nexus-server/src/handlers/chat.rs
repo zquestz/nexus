@@ -19,7 +19,7 @@ use crate::constants::{
     LOG_FLOOD_DISCONNECT, LOG_FLOOD_LIMITED,
 };
 use crate::db::Permission;
-use crate::flood::{FloodCheck, FloodTracker};
+use crate::flood::FloodCheck;
 
 enum ChatSendOutcome {
     Disconnect,
@@ -32,7 +32,6 @@ pub async fn handle_chat_send<W>(
     action: ChatAction,
     channel: String,
     session_id: Option<u32>,
-    flood_tracker: &mut FloodTracker,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
 where
@@ -71,38 +70,38 @@ where
             .await;
     }
 
-    // Check flood protection (skip if disabled or user has chat_unlimited)
-    let rate = ctx.flood_config.rate();
-    if rate == 0 || user.has_permission(Permission::ChatUnlimited) {
-        if flood_tracker.has_violations() {
-            flood_tracker.reset_violations();
+    match ctx
+        .user_manager
+        .check_message_flood(id, &ctx.flood_config, Instant::now())
+        .await
+    {
+        Some(FloodCheck::Allowed) => {}
+        Some(FloodCheck::Limited {
+            wait_seconds,
+            violation,
+            max_violations,
+        }) => {
+            warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_FLOOD_LIMITED);
+            return ctx
+                .send_error(
+                    &err_flood_warning(ctx.locale, wait_seconds, violation, max_violations),
+                    Some(HANDLER_CHAT_SEND),
+                )
+                .await;
         }
-    } else {
-        let burst = ctx.flood_config.burst();
-        match flood_tracker.check(burst, rate, Instant::now()) {
-            FloodCheck::Allowed => {}
-            FloodCheck::Limited {
-                wait_seconds,
-                violation,
-                max_violations,
-            } => {
-                warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_FLOOD_LIMITED);
-                return ctx
-                    .send_error(
-                        &err_flood_warning(ctx.locale, wait_seconds, violation, max_violations),
-                        Some(HANDLER_CHAT_SEND),
-                    )
-                    .await;
-            }
-            FloodCheck::Disconnect => {
-                warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_FLOOD_DISCONNECT);
-                return ctx
-                    .send_error_and_disconnect(
-                        &err_flood_disconnect(ctx.locale),
-                        Some(HANDLER_CHAT_SEND),
-                    )
-                    .await;
-            }
+        Some(FloodCheck::Disconnect) => {
+            warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_FLOOD_DISCONNECT);
+            return ctx
+                .send_error_and_disconnect(
+                    &err_flood_disconnect(ctx.locale),
+                    Some(HANDLER_CHAT_SEND),
+                )
+                .await;
+        }
+        None => {
+            return ctx
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_SEND))
+                .await;
         }
     }
 
@@ -182,7 +181,7 @@ mod tests {
     use super::*;
     use crate::channels::JoinPolicy;
     use crate::db;
-    use crate::flood::{FloodConfig, FloodTracker};
+    use crate::flood::FloodConfig;
     use crate::handlers::testing::{
         create_test_context, login_user_with_features, read_server_message,
     };
@@ -197,7 +196,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             session_id,
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -217,7 +215,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             session_id,
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -255,7 +252,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -284,7 +280,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -302,7 +297,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -335,7 +329,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -353,7 +346,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -371,7 +363,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -411,7 +402,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -442,7 +432,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -482,7 +471,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -521,7 +509,6 @@ mod tests {
         let gate_manager = test_ctx.user_manager.clone();
         let update_manager = test_ctx.user_manager.clone();
         let user_state = gate_manager.lock_user_state().await;
-        let mut flood_tracker = FloodTracker::new();
 
         {
             let mut ctx = test_ctx.handler_context();
@@ -530,7 +517,6 @@ mod tests {
                 ChatAction::Normal,
                 "#general".to_string(),
                 Some(session_id),
-                &mut flood_tracker,
                 &mut ctx,
             );
             tokio::pin!(handler);
@@ -575,7 +561,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             invalid_session_id,
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -613,7 +598,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -650,7 +634,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -677,7 +660,6 @@ mod tests {
             ChatAction::Normal,
             "#nonexistent".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -710,7 +692,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -737,7 +718,6 @@ mod tests {
             ChatAction::Normal,
             "".to_string(), // Empty channel name
             Some(session_id),
-            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -779,8 +759,6 @@ mod tests {
             .await
             .unwrap();
 
-        let mut tracker = FloodTracker::new();
-
         // First 2 messages should succeed (burst=2)
         for _ in 0..2 {
             let result = handle_chat_send(
@@ -788,7 +766,6 @@ mod tests {
                 ChatAction::Normal,
                 "#general".to_string(),
                 Some(session_id),
-                &mut tracker,
                 &mut test_ctx.handler_context(),
             )
             .await;
@@ -801,7 +778,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut tracker,
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -842,15 +818,12 @@ mod tests {
             .await
             .unwrap();
 
-        let mut tracker = FloodTracker::new();
-
         // Exhaust the single burst token
         let result = handle_chat_send(
             "First".to_string(),
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut tracker,
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -863,7 +836,6 @@ mod tests {
                 ChatAction::Normal,
                 "#general".to_string(),
                 Some(session_id),
-                &mut tracker,
                 &mut test_ctx.handler_context(),
             )
             .await;
@@ -877,7 +849,6 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
-            &mut tracker,
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -910,15 +881,12 @@ mod tests {
             .await
             .unwrap();
 
-        let mut tracker = FloodTracker::new();
-
         for i in 0..10 {
             let result = handle_chat_send(
                 format!("Message {}", i),
                 ChatAction::Normal,
                 "#general".to_string(),
                 Some(session_id),
-                &mut tracker,
                 &mut test_ctx.handler_context(),
             )
             .await;
@@ -952,15 +920,12 @@ mod tests {
             .await
             .unwrap();
 
-        let mut tracker = FloodTracker::new();
-
         for i in 0..10 {
             let result = handle_chat_send(
                 format!("Message {}", i),
                 ChatAction::Normal,
                 "#general".to_string(),
                 Some(session_id),
-                &mut tracker,
                 &mut test_ctx.handler_context(),
             )
             .await;

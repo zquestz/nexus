@@ -1,10 +1,17 @@
 //! Chat flood protection using a token bucket algorithm.
 //!
 //! `FloodConfig` is shared server-wide (via `Arc`) and configurable at runtime.
-//! `FloodTracker` is per-connection state that tracks the token bucket and violation count.
+//! `FloodState` is shared across live sessions and keys buckets by visible user
+//! identity, so multiple connections cannot multiply the configured limit.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+use nexus_common::names::fold_name;
+
+use crate::users::user::UserSession;
 
 /// Maximum consecutive flood violations before disconnect.
 const MAX_FLOOD_VIOLATIONS: u32 = 3;
@@ -54,7 +61,117 @@ pub enum FloodCheck {
     Disconnect,
 }
 
-/// Per-connection flood tracking state using a token bucket.
+/// Visible-identity key for chat flood buckets.
+///
+/// Regular accounts share one bucket by immutable account id. Shared-account
+/// sessions are visible as distinct nicknames, so they use folded nickname keys.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum FloodKey {
+    UserId(i64),
+    Nickname(String),
+}
+
+impl FloodKey {
+    pub(crate) fn for_session(session: &UserSession) -> Self {
+        if session.is_shared {
+            Self::Nickname(fold_name(&session.nickname))
+        } else {
+            Self::UserId(session.user_id)
+        }
+    }
+}
+
+/// Shared flood tracking state using one token bucket per visible identity.
+#[derive(Debug, Clone, Default)]
+pub struct FloodState {
+    trackers: Arc<Mutex<HashMap<FloodKey, FloodTracker>>>,
+}
+
+impl FloodState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Run the flood check for `key`.
+    ///
+    /// If flood protection is disabled or the user has `chat_unlimited`, any
+    /// outstanding violation count for the key is reset without creating a new
+    /// tracker.
+    pub(crate) fn check(
+        &self,
+        key: FloodKey,
+        config: &FloodConfig,
+        has_unlimited: bool,
+        now: Instant,
+    ) -> FloodCheck {
+        let rate = config.rate();
+        let mut trackers = self
+            .trackers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        if rate == 0 || has_unlimited {
+            if let Some(tracker) = trackers.get_mut(&key)
+                && tracker.has_violations()
+            {
+                tracker.reset_violations();
+            }
+            return FloodCheck::Allowed;
+        }
+
+        let burst = config.burst();
+        trackers.entry(key).or_default().check(burst, rate, now)
+    }
+
+    /// Prune buckets for removed sessions whose visible identity no longer has
+    /// any live session. Caller holds the users write lock and must not call this
+    /// while holding the flood lock.
+    pub(crate) fn prune_removed_sessions<'a>(
+        &self,
+        removed: impl IntoIterator<Item = &'a UserSession>,
+        live_sessions: impl IntoIterator<Item = &'a UserSession>,
+    ) {
+        let removed_keys: HashSet<FloodKey> =
+            removed.into_iter().map(FloodKey::for_session).collect();
+        if removed_keys.is_empty() {
+            return;
+        }
+
+        let live_keys: HashSet<FloodKey> = live_sessions
+            .into_iter()
+            .map(FloodKey::for_session)
+            .collect();
+        let mut trackers = self
+            .trackers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        for key in removed_keys {
+            if !live_keys.contains(&key) {
+                trackers.remove(&key);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn contains_key_for_test(&self, key: &FloodKey) -> bool {
+        self.trackers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .contains_key(key)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tracker_count_for_test(&self) -> usize {
+        self.trackers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
+    }
+}
+
+/// Per-identity flood tracking state using a token bucket.
+#[derive(Debug)]
 pub struct FloodTracker {
     /// Current tokens in the bucket.
     tokens: f64,

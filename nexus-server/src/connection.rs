@@ -35,7 +35,7 @@ use crate::egress::{
     task::{EgressHandle, StageMessageError},
 };
 use crate::files::{FileActivityMap, FileIndex};
-use crate::flood::{FloodConfig, FloodTracker};
+use crate::flood::FloodConfig;
 use crate::handlers::{
     self, DirectWriter, HandlerContext, err_invalid_message_format, err_message_not_supported,
     err_slow_client_disconnect, err_unexpected_message_type,
@@ -78,7 +78,6 @@ struct ConnectionState {
     session_id: Option<u32>,
     handshake_complete: bool,
     locale: String,
-    flood_tracker: FloodTracker,
 }
 
 impl ConnectionState {
@@ -87,7 +86,6 @@ impl ConnectionState {
             session_id: None,
             handshake_complete: false,
             locale: DEFAULT_LOCALE.to_string(),
-            flood_tracker: FloodTracker::new(),
         }
     }
 }
@@ -831,15 +829,8 @@ where
             action,
             channel,
         } => {
-            handlers::handle_chat_send(
-                message,
-                action,
-                channel,
-                conn_state.session_id,
-                &mut conn_state.flood_tracker,
-                ctx,
-            )
-            .await?;
+            handlers::handle_chat_send(message, action, channel, conn_state.session_id, ctx)
+                .await?;
         }
         ClientMessage::ChatTopicUpdate { topic, channel } => {
             handlers::handle_chat_topic_update(topic, channel, conn_state.session_id, ctx).await?;
@@ -930,15 +921,8 @@ where
             message,
             action,
         } => {
-            handlers::handle_user_message(
-                to_nickname,
-                message,
-                action,
-                conn_state.session_id,
-                &mut conn_state.flood_tracker,
-                ctx,
-            )
-            .await?;
+            handlers::handle_user_message(to_nickname, message, action, conn_state.session_id, ctx)
+                .await?;
         }
         ClientMessage::UserUpdate {
             id,
