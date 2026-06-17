@@ -1112,45 +1112,7 @@ impl UserDb {
             user.group_id
         };
 
-        // In-tx resolution mirroring `get_user_permissions`. Admins
-        // resolve to empty (their bypass lives in
-        // `UserSession::has_permission`).
-        let mut final_permissions = Permissions::new();
-        if !final_is_admin {
-            let perm_rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
-                .bind(user.id)
-                .fetch_all(&mut *tx)
-                .await?;
-            if let Some(gid) = final_group_id {
-                let group_perm_rows: Vec<(String,)> =
-                    sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
-                        .bind(gid)
-                        .fetch_all(&mut *tx)
-                        .await?;
-                for (perm_str,) in &group_perm_rows {
-                    if let Some(perm) = Permission::parse(perm_str) {
-                        final_permissions.permissions.insert(perm);
-                    }
-                }
-                for (perm_str, override_type) in &perm_rows {
-                    if let Some(perm) = Permission::parse(perm_str) {
-                        if override_type == "grant" {
-                            final_permissions.permissions.insert(perm);
-                        } else if override_type == "revoke" {
-                            final_permissions.permissions.remove(&perm);
-                        }
-                    }
-                }
-            } else {
-                for (perm_str, override_type) in &perm_rows {
-                    if override_type == "grant"
-                        && let Some(perm) = Permission::parse(perm_str)
-                    {
-                        final_permissions.permissions.insert(perm);
-                    }
-                }
-            }
-        }
+        let final_permissions = Self::get_user_permissions_in_tx(&mut tx, user.id).await?;
 
         tx.commit().await?;
 
@@ -3512,7 +3474,11 @@ mod tests {
         // - New permissions: voice_listen (grant override on new group)
         // - New revokes: user_kick (revoke from new group)
         // - New group: group2 (user_list, user_kick)
-        let UpdateUserResult::Updated { account, .. } = db
+        let UpdateUserResult::Updated {
+            account,
+            permissions: returned_permissions,
+            ..
+        } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -3543,6 +3509,10 @@ mod tests {
         //   + grant override (voice_listen) - revoke (user_kick)
         //   = user_list, voice_listen
         let final_perms = db.get_user_permissions(user.id).await.unwrap();
+        assert_eq!(
+            returned_permissions.permissions, final_perms.permissions,
+            "update_user returned permissions must match the standalone resolver"
+        );
         assert!(
             final_perms.permissions.contains(&Permission::UserList),
             "Should have user_list from new group"
@@ -4056,7 +4026,11 @@ mod tests {
         // Promote to admin without touching group / permissions in the request.
         // The promotion auto-clean must NULL group_id and wipe all override rows
         // so the schema CHECK passes and no stale state survives.
-        let UpdateUserResult::Updated { account, .. } = db
+        let UpdateUserResult::Updated {
+            account,
+            permissions: returned_permissions,
+            ..
+        } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -4090,6 +4064,10 @@ mod tests {
             count_perm_rows(user.id).await,
             0,
             "promotion must wipe all permission override rows (admins resolve to all)"
+        );
+        assert!(
+            returned_permissions.permissions.is_empty(),
+            "admins must return an empty permission set because admin bypass lives in session auth"
         );
     }
 
