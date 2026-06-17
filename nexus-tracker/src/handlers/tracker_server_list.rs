@@ -309,7 +309,7 @@ mod tests {
             address: "bbs.example.com".to_string(),
             port: 23,
             websocket_port: None,
-            version: "0.9.2".to_string(),
+            version: "0.9.3".to_string(),
             fingerprint: fingerprint(),
             user_count: index as u32,
             allows_guest: false,

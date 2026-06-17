@@ -117,7 +117,7 @@ Start the tracker with default settings:
 You'll see output like:
 
 ```
-2026-04-28T09:00:05.360381Z  INFO Nexus Tracker v0.1.3
+2026-04-28T09:00:05.360381Z  INFO Nexus Tracker v0.1.4
 2026-04-28T09:00:05.360455Z  INFO Log level: info
 2026-04-28T09:00:05.360473Z  INFO Log directory: ~/.local/share/nexus-trackerd/logs
 2026-04-28T09:00:05.373620Z  INFO Generating self-signed TLS certificate...

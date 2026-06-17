@@ -4641,7 +4641,7 @@ mod tests {
             address: None,
             port: u16::MAX,
             websocket_port: Some(u16::MAX),
-            version: "0.9.2".to_string(),
+            version: "0.9.3".to_string(),
             fingerprint: str_of_len(SHA256_FINGERPRINT_LENGTH),
             user_count: u32::MAX,
             allows_guest: false,

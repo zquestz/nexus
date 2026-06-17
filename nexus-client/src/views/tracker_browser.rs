@@ -1349,7 +1349,7 @@ mod tests {
             address: "bbs.example".to_string(),
             port: 7500,
             websocket_port: Some(7502),
-            version: "0.9.2".to_string(),
+            version: "0.9.3".to_string(),
             fingerprint: "AA:BB".to_string(),
             user_count: 3,
             allows_guest: true,
@@ -1393,7 +1393,7 @@ mod tests {
             |e| e.address = "other.example".to_string(),
             |e| e.port = 7600,
             |e| e.websocket_port = Some(8502),
-            |e| e.version = "0.9.3".to_string(),
+            |e| e.version = "0.9.4".to_string(),
             |e| e.user_count = 7,
             |e| e.allows_guest = false,
         ] {

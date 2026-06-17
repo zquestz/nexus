@@ -1089,7 +1089,7 @@ mod tests {
             address: "bbs.example".to_string(),
             port: 7500,
             websocket_port: None,
-            version: "0.9.2".to_string(),
+            version: "0.9.3".to_string(),
             fingerprint: canonical_fingerprint(),
             user_count: 1,
             allows_guest: true,
