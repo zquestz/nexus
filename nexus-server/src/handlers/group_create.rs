@@ -8,22 +8,21 @@ use tracing::{error, info, warn};
 
 use crate::constants::*;
 
-use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
-    self, BandwidthWeightError, GroupNameError, MIN_BANDWIDTH_WEIGHT, PermissionsError,
-    validate_bandwidth_weight,
+    BandwidthWeightError, MIN_BANDWIDTH_WEIGHT, validate_bandwidth_weight,
 };
 
+use super::group_validation::{
+    parse_group_permissions_for_handler, validate_group_name_for_handler,
+    validate_group_permissions_for_handler, validate_shared_group_permission_names,
+};
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, Outcome, dispatch_outcome, err_bandwidth_weight_delegation,
-    err_bandwidth_weight_zero, err_database, err_group_already_exists, err_group_name_empty,
-    err_group_name_invalid, err_group_name_too_long, err_group_shared_permission,
-    err_not_logged_in, err_permission_denied, err_permissions_contains_newlines,
-    err_permissions_empty_permission, err_permissions_invalid_characters,
-    err_permissions_permission_too_long, err_permissions_too_many, err_unknown_permission,
+    err_bandwidth_weight_zero, err_database, err_group_already_exists, err_not_logged_in,
+    err_permission_denied,
 };
 use crate::db::{Permission, Permissions};
 
@@ -89,14 +88,7 @@ where
             }));
         }
 
-        if let Err(e) = validators::validate_group_name(&name) {
-            let error_msg = match e {
-                GroupNameError::Empty => err_group_name_empty(ctx.locale),
-                GroupNameError::TooLong => {
-                    err_group_name_too_long(ctx.locale, validators::MAX_GROUP_NAME_LENGTH)
-                }
-                GroupNameError::InvalidCharacters => err_group_name_invalid(ctx.locale),
-            };
+        if let Err(error_msg) = validate_group_name_for_handler(&name, ctx.locale) {
             break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
                 success: false,
                 error: Some(error_msg),
@@ -105,21 +97,7 @@ where
             }));
         }
 
-        if let Err(e) = validators::validate_permissions(&permissions) {
-            let error_msg = match e {
-                PermissionsError::TooMany => {
-                    err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
-                }
-                PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
-                PermissionsError::PermissionTooLong => err_permissions_permission_too_long(
-                    ctx.locale,
-                    validators::MAX_PERMISSION_LENGTH,
-                ),
-                PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
-                PermissionsError::InvalidCharacters => {
-                    err_permissions_invalid_characters(ctx.locale)
-                }
-            };
+        if let Err(error_msg) = validate_group_permissions_for_handler(&permissions, ctx.locale) {
             break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
                 success: false,
                 error: Some(error_msg),
@@ -129,36 +107,34 @@ where
         }
 
         // For shared groups, only shared-account permissions are accepted.
-        if is_shared {
-            for perm_str in &permissions {
-                if !is_shared_account_permission(perm_str) {
-                    break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
-                        success: false,
-                        error: Some(err_group_shared_permission(ctx.locale)),
-                        id: None,
-                        name: None,
-                    }));
-                }
-            }
+        if is_shared
+            && let Err(error_msg) = validate_shared_group_permission_names(&permissions, ctx.locale)
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                success: false,
+                error: Some(error_msg),
+                id: None,
+                name: None,
+            }));
         }
 
-        let mut parsed_permissions = Permissions::new();
-        for perm_str in &permissions {
-            let perm = match Permission::parse(perm_str) {
-                Some(p) => p,
-                None => {
-                    break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
-                        success: false,
-                        error: Some(err_unknown_permission(ctx.locale, perm_str)),
-                        id: None,
-                        name: None,
-                    }));
-                }
-            };
+        let parsed_requested = match parse_group_permissions_for_handler(&permissions, ctx.locale) {
+            Ok(perms) => perms,
+            Err(error_msg) => {
+                break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                    success: false,
+                    error: Some(error_msg),
+                    id: None,
+                    name: None,
+                }));
+            }
+        };
 
-            // Non-admins can only grant permissions they have
+        let mut parsed_permissions = Permissions::new();
+        for perm in parsed_requested {
+            // Non-admins can only grant permissions they have.
             if !requesting_user.has_permission(perm) {
-                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_GROUP_CREATE_UNOWNED_PERMISSION);
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm.as_str(), "{}", LOG_GROUP_CREATE_UNOWNED_PERMISSION);
                 break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
                     success: false,
                     error: Some(err_permission_denied(ctx.locale)),
@@ -223,6 +199,7 @@ where
 mod tests {
     use super::*;
     use crate::db;
+    use crate::handlers::err_group_name_empty;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     #[tokio::test]
@@ -540,6 +517,61 @@ mod tests {
             result.is_ok(),
             "Should send error message but not disconnect"
         );
+    }
+
+    #[tokio::test]
+    async fn test_group_create_reports_unknown_permission_before_authz_checks() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "creator",
+            "password",
+            &[db::Permission::GroupCreate, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        let result = handle_group_create(
+            "MixedBadGroup".to_string(),
+            false,
+            vec![
+                "user_kick".to_string(),        // valid, but creator does not own it
+                "not_a_permission".to_string(), // unknown input is reported before authz
+            ],
+            1,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "Should send error message but not disconnect"
+        );
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupCreateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error,
+                    Some(crate::handlers::err_unknown_permission(
+                        DEFAULT_TEST_LOCALE,
+                        "not_a_permission",
+                    ))
+                );
+            }
+            other => panic!("Expected GroupCreateResponse, got {:?}", other),
+        }
+
+        let group = test_ctx
+            .db
+            .groups
+            .get_group_by_name("MixedBadGroup")
+            .await
+            .unwrap();
+        assert!(group.is_none(), "rejected group should not be created");
     }
 
     /// Set up a non-admin "editor" with resolved bandwidth weight = `weight`

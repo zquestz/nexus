@@ -7,25 +7,23 @@ use std::sync::atomic::Ordering;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
-use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
-    self, BandwidthWeightError, GroupNameError, MIN_BANDWIDTH_WEIGHT, PermissionsError,
-    validate_bandwidth_weight,
+    BandwidthWeightError, MIN_BANDWIDTH_WEIGHT, validate_bandwidth_weight,
 };
 
+use super::group_validation::{
+    parse_group_permissions_for_handler, validate_group_name_for_handler,
+    validate_group_permissions_for_handler, validate_shared_group_permissions,
+};
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, Outcome, ServerInfoOptions, ServerInfoValues,
     broadcast_user_updated_for_members, build_server_info, dispatch_outcome,
     err_bandwidth_weight_delegation, err_bandwidth_weight_zero, err_database,
-    err_group_already_exists, err_group_name_empty, err_group_name_invalid,
-    err_group_name_too_long, err_group_no_fields, err_group_not_empty_modify, err_group_not_found,
-    err_group_shared_permission, err_not_logged_in, err_permission_denied,
-    err_permissions_contains_newlines, err_permissions_empty_permission,
-    err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_unknown_permission, update_egress_user_weight,
+    err_group_already_exists, err_group_no_fields, err_group_not_empty_modify, err_group_not_found,
+    err_not_logged_in, err_permission_denied, update_egress_user_weight,
 };
 use crate::constants::*;
 use crate::db::{GroupPermissionWriteScope, Permission, Permissions};
@@ -82,15 +80,8 @@ where
         }
 
         if let Some(ref n) = name
-            && let Err(e) = validators::validate_group_name(n)
+            && let Err(error_msg) = validate_group_name_for_handler(n, ctx.locale)
         {
-            let error_msg = match e {
-                GroupNameError::Empty => err_group_name_empty(ctx.locale),
-                GroupNameError::TooLong => {
-                    err_group_name_too_long(ctx.locale, validators::MAX_GROUP_NAME_LENGTH)
-                }
-                GroupNameError::InvalidCharacters => err_group_name_invalid(ctx.locale),
-            };
             break 'locked Outcome::Send(Box::new(ServerMessage::GroupUpdateResponse {
                 success: false,
                 id: None,
@@ -100,22 +91,8 @@ where
         }
 
         if let Some(ref perms) = permissions
-            && let Err(e) = validators::validate_permissions(perms)
+            && let Err(error_msg) = validate_group_permissions_for_handler(perms, ctx.locale)
         {
-            let error_msg = match e {
-                PermissionsError::TooMany => {
-                    err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
-                }
-                PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
-                PermissionsError::PermissionTooLong => err_permissions_permission_too_long(
-                    ctx.locale,
-                    validators::MAX_PERMISSION_LENGTH,
-                ),
-                PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
-                PermissionsError::InvalidCharacters => {
-                    err_permissions_invalid_characters(ctx.locale)
-                }
-            };
             break 'locked Outcome::Send(Box::new(ServerMessage::GroupUpdateResponse {
                 success: false,
                 id: None,
@@ -198,22 +175,17 @@ where
         let parsed_requested: Option<Vec<Permission>> = if let Some(ref requested_perms) =
             permissions
         {
-            let mut parsed: Vec<Permission> = Vec::new();
-            for perm_str in requested_perms {
-                match Permission::parse(perm_str) {
-                    Some(perm) => parsed.push(perm),
-                    None => {
-                        break 'locked Outcome::Send(Box::new(
-                            ServerMessage::GroupUpdateResponse {
-                                success: false,
-                                id: None,
-                                name: None,
-                                error: Some(err_unknown_permission(ctx.locale, perm_str)),
-                            },
-                        ));
-                    }
+            let parsed = match parse_group_permissions_for_handler(requested_perms, ctx.locale) {
+                Ok(perms) => perms,
+                Err(error_msg) => {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::GroupUpdateResponse {
+                        success: false,
+                        id: None,
+                        name: None,
+                        error: Some(error_msg),
+                    }));
                 }
-            }
+            };
 
             // Non-admins can't grant a permission they don't hold.
             if !requesting_user.is_admin {
@@ -265,17 +237,15 @@ where
         };
 
         // Shared groups may only hold shared-account permissions.
-        if final_is_shared {
-            for perm in &projected_final {
-                if !is_shared_account_permission(perm.as_str()) {
-                    break 'locked Outcome::Send(Box::new(ServerMessage::GroupUpdateResponse {
-                        success: false,
-                        id: None,
-                        name: None,
-                        error: Some(err_group_shared_permission(ctx.locale)),
-                    }));
-                }
-            }
+        if final_is_shared
+            && let Err(error_msg) = validate_shared_group_permissions(&projected_final, ctx.locale)
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::GroupUpdateResponse {
+                success: false,
+                id: None,
+                name: None,
+                error: Some(error_msg),
+            }));
         }
 
         // Old name/weight for diff detection. (Permission diffing uses the
@@ -599,6 +569,7 @@ mod tests {
     use crate::channels::JoinPolicy;
     use crate::db;
     use crate::egress::task::EgressSettingsCommand;
+    use crate::handlers::err_group_shared_permission;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
     use crate::transfers::registry::{TransferDirection, TransferRegistration};
 

@@ -27,6 +27,7 @@ mod group_delete;
 mod group_edit;
 mod group_list;
 mod group_update;
+mod group_validation;
 mod handshake;
 mod login;
 mod news_create;
