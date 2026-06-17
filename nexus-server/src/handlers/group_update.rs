@@ -1953,6 +1953,125 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_group_update_voice_talk_revoked_clears_speaking_but_keeps_voice() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Listeners",
+                false,
+                &Permissions::from(&[
+                    Permission::VoiceListen,
+                    Permission::VoiceTalk,
+                    Permission::ChatSend,
+                ]),
+                1,
+            )
+            .await
+            .expect("Failed to create group");
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "voicebob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let bob_effective = test_ctx
+            .db
+            .users
+            .get_user_permissions(bob.id)
+            .await
+            .unwrap();
+
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "voicebob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_effective.permissions.clone(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![crate::constants::FEATURE_VOICE.to_string()],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "voicebob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group.id),
+                group_name: Some("Listeners".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let voice_session = crate::voice::VoiceSession::new(
+            "voicebob".to_string(),
+            vec!["#general".to_string()],
+            bob_session,
+        );
+        test_ctx
+            .voice_registry
+            .add(voice_session)
+            .await
+            .expect("test setup: session_id is unique");
+
+        assert!(test_ctx.voice_registry.has_session(bob_session).await);
+
+        // Drop only voice_talk; keep voice_listen so the user stays in voice.
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            Some(vec!["voice_listen".to_string(), "chat_send".to_string()]),
+            None,
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+
+        assert!(
+            test_ctx.voice_registry.has_session(bob_session).await,
+            "User should stay in voice when only voice_talk is revoked"
+        );
+        assert_eq!(
+            test_ctx.voice_control_rx.try_recv(),
+            Ok(crate::voice::VoiceControlCommand::SpeakingStopped {
+                session_id: bob_session
+            }),
+            "voice_talk revoke should clear remote speaking indicators"
+        );
+    }
+
+    #[tokio::test]
     async fn test_group_update_permission_cascade_with_member_overrides() {
         let mut test_ctx = create_test_context().await;
 
