@@ -28,22 +28,6 @@ Recommended path:
 - Add tests proving the dependency hash changes on message, tab, font,
   timestamp, and theme changes.
 
-### User Update Permission Resolution
-
-`nexus-server/src/db/users.rs::update_user` still has an inline final effective
-permission recompute after applying group/permission changes.
-
-Recommended path:
-
-- Replace the final inline `(group grants + direct grants) - revokes` block with
-  `UserDb::get_user_permissions_in_tx(&mut tx, user.id)` after the update rows
-  have landed.
-- Keep the admin short-circuit returning `Permissions::new()`.
-- Do not remove the earlier group-change override cleanup block; that mutates
-  grant/revoke rows and is separate from effective-permission resolution.
-- Add a regression where the returned permissions match an independent
-  `get_user_permissions` read after group grants and revokes.
-
 ### User Update Handler Decomposition
 
 `nexus-server/src/handlers/user_update.rs::handle_user_update` still has a very
