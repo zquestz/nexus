@@ -85,7 +85,7 @@ mod tests {
         assert!(validate_tracker_name("Public Tracker 🌍").is_ok());
         // Internal whitespace allowed
         assert!(validate_tracker_name("Multi  Word  Name").is_ok());
-        // Leading/trailing whitespace allowed (client trims; we don't)
+        // Leading/trailing whitespace allowed; both sides preserve verbatim.
         assert!(validate_tracker_name("  Edge Spaces  ").is_ok());
     }
 
