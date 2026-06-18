@@ -195,17 +195,17 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
-    /// Keepalive sent while computing BLAKE3 hash for a large file (port 7501 only)
-    /// Receiver should reset idle timer but otherwise ignore this message.
-    FileHashing {
-        /// File being hashed (for logging/debugging)
-        file: String,
-    },
     /// Per-file hash sent after FileData (or alone if file was skipped).
     /// Contains the full BLAKE3 hash computed by the sender during streaming.
     FileHash {
         /// BLAKE3 hash of the complete file
         blake3: String,
+    },
+    /// Keepalive sent while computing BLAKE3 hash for a large file (port 7501 only)
+    /// Receiver should reset idle timer but otherwise ignore this message.
+    FileHashing {
+        /// File being hashed (for logging/debugging)
+        file: String,
     },
     FileInfo {
         /// Path to the file or directory to get info for
@@ -865,17 +865,17 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         transfer_id: Option<String>,
     },
-    /// Keepalive sent while computing BLAKE3 hash for a large file (port 7501 only)
-    /// Receiver should reset idle timer but otherwise ignore this message.
-    FileHashing {
-        /// File being hashed (for logging/debugging)
-        file: String,
-    },
     /// Per-file hash sent after FileData (or alone if file was skipped).
     /// Contains the full BLAKE3 hash computed by the sender during streaming.
     FileHash {
         /// BLAKE3 hash of the complete file
         blake3: String,
+    },
+    /// Keepalive sent while computing BLAKE3 hash for a large file (port 7501 only)
+    /// Receiver should reset idle timer but otherwise ignore this message.
+    FileHashing {
+        /// File being hashed (for logging/debugging)
+        file: String,
     },
     FileInfoResponse {
         success: bool,
