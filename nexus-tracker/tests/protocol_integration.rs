@@ -755,7 +755,9 @@ where
         .read_frame_in_context_with_full_timeout(
             Duration::from_secs(5),
             Duration::from_secs(5),
-            FrameContexts::TRACKER_SERVER,
+            // Generic test reader: accept every tracker-server response, both the
+            // register-refresh and list phases.
+            FrameContexts::TRACKER_SERVER | FrameContexts::TRACKER_SERVER_REGISTER,
         )
         .await
     {

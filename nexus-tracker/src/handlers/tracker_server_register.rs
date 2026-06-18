@@ -823,7 +823,7 @@ mod tests {
     #[tokio::test]
     async fn refresh_unknown_id_sends_failure_response() {
         use nexus_common::framing::FrameReader;
-        use nexus_common::io::read_tracker_server_message_with_idle_progress_timeout;
+        use nexus_common::io::read_tracker_server_message_with_progress_timeout;
 
         let state = TrackerState::new(
             Registry::new(0, 0),
@@ -851,11 +851,10 @@ mod tests {
         assert_eq!(outcome, RefreshOutcome::Rejected);
 
         let mut reader = FrameReader::new(client);
-        let received =
-            read_tracker_server_message_with_idle_progress_timeout(&mut reader, None, None)
-                .await
-                .expect("read response")
-                .expect("response should be present");
+        let received = read_tracker_server_message_with_progress_timeout(&mut reader, None)
+            .await
+            .expect("read response")
+            .expect("response should be present");
 
         match received.message {
             TrackerServerMessage::TrackerServerRegisterResponse {
@@ -879,7 +878,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_non_canonical_fingerprint() {
         use nexus_common::framing::FrameReader;
-        use nexus_common::io::read_tracker_server_message_with_idle_progress_timeout;
+        use nexus_common::io::read_tracker_server_message_with_progress_timeout;
 
         let state = Arc::new(TrackerState::new(
             Registry::new(0, 1),
@@ -910,11 +909,10 @@ mod tests {
         );
 
         let mut reader = FrameReader::new(client);
-        let received =
-            read_tracker_server_message_with_idle_progress_timeout(&mut reader, None, None)
-                .await
-                .expect("read response")
-                .expect("response should be present");
+        let received = read_tracker_server_message_with_progress_timeout(&mut reader, None)
+            .await
+            .expect("read response")
+            .expect("response should be present");
 
         match received.message {
             TrackerServerMessage::TrackerServerRegisterResponse {

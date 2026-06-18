@@ -774,6 +774,11 @@ fn parse_tracker_client_frame(frame: RawFrame) -> io::Result<ReceivedTrackerClie
 ///
 /// This is appropriate for persistent tracker registration sockets: idle is
 /// expected between refresh cycles, but a started frame must keep moving.
+///
+/// Reads in the `TRACKER_SERVER_REGISTER` context, so only
+/// `TrackerServerRegisterResponse` (and `Error`) are admitted — a tracker that
+/// answers a refresh with the 32 MiB `TrackerServerListResponse` is rejected at
+/// the frame header, before allocation.
 pub async fn read_tracker_server_message_with_progress_timeout<R>(
     reader: &mut FrameReader<R>,
     progress_timeout: Option<Duration>,
@@ -784,7 +789,10 @@ where
     let progress = progress_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
 
     let Some(frame) = reader
-        .read_frame_in_context_with_progress_timeout(progress, FrameContexts::TRACKER_SERVER)
+        .read_frame_in_context_with_progress_timeout(
+            progress,
+            FrameContexts::TRACKER_SERVER_REGISTER,
+        )
         .await?
     else {
         return Ok(None);
@@ -1064,11 +1072,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_tracker_server_message_with_progress_timeout_reads_tracker_server_frame() {
+    async fn read_tracker_server_message_with_progress_timeout_reads_register_response() {
         let message_id = MessageId::from_bytes(b"000000000006").unwrap();
-        let message = TrackerServerMessage::TrackerServerListResponse {
+        let message = TrackerServerMessage::TrackerServerRegisterResponse {
             success: true,
-            servers: Vec::new(),
+            refresh_interval: Some(300),
             error: None,
             error_kind: None,
         };
@@ -1088,7 +1096,36 @@ mod tests {
         assert_eq!(received.message_id, message_id);
         assert!(matches!(
             received.message,
-            TrackerServerMessage::TrackerServerListResponse { success: true, .. }
+            TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn read_tracker_server_message_with_progress_timeout_rejects_list_response() {
+        // The registration reader must reject the 32 MiB TrackerServerListResponse
+        // at the frame header — a compromised tracker can't make the BBS
+        // registration task read or allocate it.
+        let message_id = MessageId::from_bytes(b"000000000009").unwrap();
+        let message = TrackerServerMessage::TrackerServerListResponse {
+            success: true,
+            servers: Vec::new(),
+            error: None,
+            error_kind: None,
+        };
+        let bytes = tracker_server_message_to_frame_bytes(&message, message_id).unwrap();
+        let cursor = Cursor::new(bytes.as_ref().to_vec());
+        let buf_reader = BufReader::new(cursor);
+        let mut reader = FrameReader::new(buf_reader);
+
+        let result = read_tracker_server_message_with_progress_timeout(
+            &mut reader,
+            Some(Duration::from_secs(30)),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(FrameError::UnexpectedMessageType(t)) if t == "TrackerServerListResponse"
         ));
     }
 
@@ -1125,9 +1162,9 @@ mod tests {
     #[tokio::test]
     async fn read_tracker_server_message_with_progress_timeout_has_no_idle_deadline() {
         let message_id = MessageId::from_bytes(b"000000000008").unwrap();
-        let message = TrackerServerMessage::TrackerServerListResponse {
+        let message = TrackerServerMessage::TrackerServerRegisterResponse {
             success: true,
-            servers: Vec::new(),
+            refresh_interval: Some(300),
             error: None,
             error_kind: None,
         };

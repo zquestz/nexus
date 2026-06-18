@@ -1179,6 +1179,11 @@ impl FrameContexts {
     /// memory); inside the crate the reader entry points `debug_assert!`
     /// against it.
     pub(crate) const STREAMING: Self = Self(1 << 10);
+    /// Tracker register-refresh response phase. The BBS registration task reads
+    /// only `TrackerServerRegisterResponse` (and `Error`) here — never the
+    /// 32 MiB `TrackerServerListResponse`, which stays in `TRACKER_SERVER` for
+    /// the discovery client's list reader.
+    pub const TRACKER_SERVER_REGISTER: Self = Self(1 << 11);
 
     /// Whether `self` allows any of the contexts in `other`.
     #[must_use]
@@ -1197,7 +1202,7 @@ impl std::fmt::Debug for FrameContexts {
     /// List set context names (`FrameContexts(BBS_CLIENT | BBS_SERVER)`) so
     /// test assertion failures are readable, instead of the raw bit value.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        const NAMES: [(FrameContexts, &str); 11] = [
+        const NAMES: [(FrameContexts, &str); 12] = [
             (FrameContexts::CLIENT_HANDSHAKE, "CLIENT_HANDSHAKE"),
             (FrameContexts::CLIENT_LOGIN, "CLIENT_LOGIN"),
             (
@@ -1215,6 +1220,10 @@ impl std::fmt::Debug for FrameContexts {
             (FrameContexts::TRACKER_CLIENT, "TRACKER_CLIENT"),
             (FrameContexts::TRACKER_SERVER, "TRACKER_SERVER"),
             (FrameContexts::STREAMING, "STREAMING"),
+            (
+                FrameContexts::TRACKER_SERVER_REGISTER,
+                "TRACKER_SERVER_REGISTER",
+            ),
         ];
 
         write!(f, "FrameContexts(")?;
@@ -1720,7 +1729,8 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
                 | FrameContexts::SERVER_LOGIN_RESPONSE
                 | FrameContexts::BBS_SERVER
                 | FrameContexts::TRANSFER_SERVER
-                | FrameContexts::TRACKER_SERVER,
+                | FrameContexts::TRACKER_SERVER
+                | FrameContexts::TRACKER_SERVER_REGISTER,
         ),
     );
     m.insert(
@@ -2177,7 +2187,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, FrameTypeInfo>> = Laz
         "TrackerServerRegisterResponse",
         FrameTypeInfo::new(
             pad_limit(TRACKER_SERVER_REGISTER_RESPONSE_SIZE as u64),
-            FrameContexts::TRACKER_SERVER,
+            FrameContexts::TRACKER_SERVER_REGISTER,
         ),
     );
     m.insert(
@@ -2726,7 +2736,8 @@ mod tests {
             | FrameContexts::TRANSFER_CLIENT
             | FrameContexts::TRANSFER_SERVER
             | FrameContexts::TRACKER_CLIENT
-            | FrameContexts::TRACKER_SERVER;
+            | FrameContexts::TRACKER_SERVER
+            | FrameContexts::TRACKER_SERVER_REGISTER;
 
         for message_type in known_message_types() {
             let info = frame_type_info(message_type).expect("known type has info");
@@ -2741,6 +2752,34 @@ mod tests {
     }
 
     #[test]
+    fn registration_reader_context_rejects_list_response() {
+        // The BBS registration task reads in TRACKER_SERVER_REGISTER and must
+        // not accept the 32 MiB TrackerServerListResponse a compromised tracker
+        // could send — only the small register response (and Error).
+        let list = frame_type_info("TrackerServerListResponse").expect("known type");
+        assert!(
+            !list
+                .contexts
+                .intersects(FrameContexts::TRACKER_SERVER_REGISTER),
+            "list response must not be readable by the register-refresh reader"
+        );
+        let register = frame_type_info("TrackerServerRegisterResponse").expect("known type");
+        assert!(
+            register
+                .contexts
+                .intersects(FrameContexts::TRACKER_SERVER_REGISTER),
+            "register response must be readable by the register-refresh reader"
+        );
+        let error = frame_type_info("Error").expect("known type");
+        assert!(
+            error
+                .contexts
+                .intersects(FrameContexts::TRACKER_SERVER_REGISTER),
+            "tracker Error must be readable by the register-refresh reader"
+        );
+    }
+
+    #[test]
     fn frame_contexts_debug_lists_set_bits() {
         assert_eq!(
             format!(
@@ -2752,6 +2791,10 @@ mod tests {
         assert_eq!(
             format!("{:?}", FrameContexts::STREAMING),
             "FrameContexts(STREAMING)"
+        );
+        assert_eq!(
+            format!("{:?}", FrameContexts::TRACKER_SERVER_REGISTER),
+            "FrameContexts(TRACKER_SERVER_REGISTER)"
         );
     }
 
