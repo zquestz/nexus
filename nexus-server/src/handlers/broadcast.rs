@@ -9,18 +9,14 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MessageError};
 
 use super::{
-    HandlerContext, err_broadcast_too_long, err_message_contains_newlines, err_message_empty,
-    err_message_invalid_characters, err_not_logged_in, err_permission_denied,
+    HandlerContext, Outcome, dispatch_outcome, err_broadcast_too_long,
+    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
+    err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     HANDLER_USER_BROADCAST, LOG_USER_BROADCAST_NOT_LOGGED_IN, LOG_USER_BROADCAST_PERMISSION_DENIED,
 };
 use crate::db::Permission;
-
-enum BroadcastOutcome {
-    Disconnect,
-    Send(Box<ServerMessage>),
-}
 
 /// Broadcasts a message to all connected users (including the sender) and
 /// replies to the sender with a UserBroadcastResponse.
@@ -43,12 +39,12 @@ where
         let _user_state = ctx.user_manager.read_user_state().await;
 
         let Some(user) = ctx.user_manager.get_user_by_session_id(id).await else {
-            break 'locked BroadcastOutcome::Disconnect;
+            break 'locked Outcome::Disconnect;
         };
 
         if !user.has_permission(Permission::UserBroadcast) {
             warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_PERMISSION_DENIED);
-            break 'locked BroadcastOutcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
             }));
@@ -65,7 +61,7 @@ where
                 MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
                 MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
             };
-            break 'locked BroadcastOutcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
                 success: false,
                 error: Some(error_msg),
             }));
@@ -79,22 +75,13 @@ where
             })
             .await;
 
-        BroadcastOutcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
+        Outcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
             success: true,
             error: None,
         }))
     };
 
-    match outcome {
-        BroadcastOutcome::Disconnect => {
-            ctx.send_error_and_disconnect(
-                &err_not_logged_in(ctx.locale),
-                Some(HANDLER_USER_BROADCAST),
-            )
-            .await
-        }
-        BroadcastOutcome::Send(response) => ctx.send_message(&response).await,
-    }
+    dispatch_outcome(outcome, ctx, HANDLER_USER_BROADCAST).await
 }
 
 #[cfg(test)]
