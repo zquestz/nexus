@@ -244,7 +244,7 @@ and closes the connection.
    tracker resolves the address (after IDN → Punycode conversion) via
    the host's resolver and accepts the registration only if the
    peer's source IP appears in the result set. The DNS lookup is
-   bounded by a tracker-side timeout (5 seconds in the reference
+   bounded by a tracker-side timeout (15 seconds in the reference
    implementation). Resolver outcomes:
 
    | Outcome                            | Initial register    | Refresh            |

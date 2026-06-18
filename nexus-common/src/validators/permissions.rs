@@ -25,7 +25,7 @@ pub enum PermissionsError {
 /// Validate a permissions list
 ///
 /// Checks:
-/// - Does not exceed maximum count (16 permissions)
+/// - Does not exceed the total number of permissions (`PERMISSIONS_COUNT`)
 /// - Each permission is not empty
 /// - Each permission does not exceed maximum length (32 characters)
 /// - No newlines in permission strings

@@ -580,7 +580,8 @@ fn build_tab_bar(conn: &ServerConnection) -> (iced::widget::Row<'static, Message
 /// - Broadcast messages
 /// - Chat messages (server enforces chat_receive permission)
 ///
-/// The send input is only enabled with chat_send permission.
+/// The send input is not permission-gated; send permission is enforced per tab
+/// at send time (chat_send for channels, user_message for DMs) and by the server.
 ///
 /// # Voice Chat Integration
 ///
