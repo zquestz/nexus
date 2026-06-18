@@ -89,7 +89,7 @@ impl HistoryManager {
     /// This can be used as a key to share managers across connections
     /// to the same server+account.
     pub fn build_base_dir(fingerprint: &str, user_id: i64) -> PathBuf {
-        let data_dir = dirs::data_dir()
+        let data_dir = crate::paths::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("nexus")
             .join("history");
@@ -410,7 +410,7 @@ impl HistoryManager {
 /// # Returns
 /// Number of files successfully rotated
 pub fn rotate_fingerprint(old_fingerprint: &str, new_fingerprint: &str) -> usize {
-    let data_dir = dirs::data_dir()
+    let data_dir = crate::paths::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("nexus")
         .join("history");

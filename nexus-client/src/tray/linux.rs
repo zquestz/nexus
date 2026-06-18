@@ -13,7 +13,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
 
 use ksni::menu::{MenuItem as KsniMenuItem, StandardItem};
-use ksni::{Icon as KsniIcon, Tray, TrayMethods};
+use ksni::{Icon as KsniIcon, ToolTip, Tray, TrayMethods};
 
 use super::{BYTES_PER_PIXEL, TRAY_ID, TRAY_SERVICE_CLOSED_DELAY, TRAY_TITLE, TrayState};
 use crate::constants::ERR_TRAY_RX_UNINITIALIZED;
@@ -40,6 +40,8 @@ struct NexusTray {
     mute_enabled: bool,
     /// Whether user is currently deafened
     is_deafened: bool,
+    /// Current state-reflecting tooltip text (shown on hover).
+    tooltip: String,
 }
 
 impl Tray for NexusTray {
@@ -52,6 +54,13 @@ impl Tray for NexusTray {
 
     fn title(&self) -> String {
         TRAY_TITLE.into()
+    }
+
+    fn tool_tip(&self) -> ToolTip {
+        ToolTip {
+            title: self.tooltip.clone(),
+            ..Default::default()
+        }
     }
 
     fn icon_pixmap(&self) -> Vec<KsniIcon> {
@@ -196,6 +205,7 @@ impl TrayManager {
             window_visible: true,
             mute_enabled: false,
             is_deafened: false,
+            tooltip: t("tray-tooltip-disconnected"),
         };
 
         // Spawn the tray service
@@ -224,14 +234,20 @@ impl TrayManager {
         });
     }
 
-    /// Update the tooltip text
-    ///
-    /// Note: ksni doesn't support dynamic tooltips in the same way,
-    /// the title is used instead which updates on hover.
-    pub fn update_tooltip(&mut self, _tooltip: &str) {
-        // ksni uses title() for the tooltip, which is static.
-        // We could store tooltip and return it from title(), but that
-        // would require more refactoring. For now, we use a static title.
+    /// Update the hover tooltip (the SNI `ToolTip` property). `title()` stays
+    /// the static app name per the spec.
+    pub fn update_tooltip(&mut self, tooltip: &str) {
+        let tooltip = tooltip.to_string();
+        let handle = self.handle.clone();
+        tokio::spawn(async move {
+            handle
+                .update(move |tray| {
+                    if tray.tooltip != tooltip {
+                        tray.tooltip = tooltip;
+                    }
+                })
+                .await;
+        });
     }
 
     /// Update the show/hide menu item based on window visibility

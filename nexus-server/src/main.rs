@@ -12,6 +12,7 @@ mod flood;
 mod handlers;
 mod i18n;
 mod ip_rule_cache;
+mod paths;
 mod tracker;
 mod transfers;
 mod upnp;
@@ -733,7 +734,7 @@ fn resolve_data_dir(override_path: Option<std::path::PathBuf>) -> std::path::Pat
     if let Some(p) = override_path {
         return p;
     }
-    dirs::data_dir()
+    crate::paths::data_dir()
         .map(|d| d.join(DATA_DIR_NAME))
         .expect(ERR_NO_DATA_DIR)
 }
@@ -1060,6 +1061,18 @@ mod tests {
     fn test_resolve_data_dir_override_returned_verbatim() {
         let override_path = std::path::PathBuf::from("/var/lib/nexusd-custom");
         assert_eq!(resolve_data_dir(Some(override_path.clone())), override_path);
+    }
+
+    #[test]
+    fn resolve_data_dir_default_redirects_under_temp() {
+        // No override → resolution must land under the cfg(test) temp root,
+        // never the operator's real data directory.
+        let dir = resolve_data_dir(None);
+        assert!(
+            dir.starts_with(std::env::temp_dir()),
+            "default data dir must redirect under temp in tests, got {dir:?}"
+        );
+        assert!(dir.ends_with(DATA_DIR_NAME));
     }
 
     #[test]

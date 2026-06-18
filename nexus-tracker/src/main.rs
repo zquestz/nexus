@@ -19,6 +19,8 @@ use nexus_tracker::{
     upnp, websocket,
 };
 
+mod paths;
+
 #[tokio::main]
 async fn main() {
     // rustls 0.23 needs an explicit crypto provider installed before any TLS op.
@@ -477,7 +479,7 @@ fn resolve_data_dir(override_path: Option<PathBuf>) -> PathBuf {
     if let Some(p) = override_path {
         return p;
     }
-    dirs::data_dir()
+    crate::paths::data_dir()
         .map(|d| d.join(constants::DATA_DIR_NAME))
         .expect(constants::ERR_NO_DATA_DIR)
 }
@@ -521,6 +523,18 @@ mod tests {
     fn test_resolve_data_dir_override_returned_verbatim() {
         let override_path = PathBuf::from("/var/lib/nexus-trackerd-custom");
         assert_eq!(resolve_data_dir(Some(override_path.clone())), override_path);
+    }
+
+    #[test]
+    fn resolve_data_dir_default_redirects_under_temp() {
+        // No override → resolution must land under the cfg(test) temp root,
+        // never the operator's real data directory.
+        let dir = resolve_data_dir(None);
+        assert!(
+            dir.starts_with(std::env::temp_dir()),
+            "default data dir must redirect under temp in tests, got {dir:?}"
+        );
+        assert!(dir.ends_with(constants::DATA_DIR_NAME));
     }
 
     #[cfg(unix)]

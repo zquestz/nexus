@@ -52,7 +52,7 @@ impl TransferManager {
     ///
     /// Returns None if the config directory cannot be determined.
     pub fn transfers_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|dir| dir.join(APP_DIR_NAME).join(TRANSFERS_FILE_NAME))
+        crate::paths::config_dir().map(|dir| dir.join(APP_DIR_NAME).join(TRANSFERS_FILE_NAME))
     }
 
     /// Load transfers from disk, or return empty manager if not found

@@ -569,7 +569,7 @@ impl std::fmt::Debug for Settings {
 ///
 /// Returns the system downloads directory, or None if it cannot be determined.
 pub fn default_download_path() -> Option<String> {
-    dirs::download_dir().map(|p| p.to_string_lossy().into_owned())
+    crate::paths::download_dir().map(|p| p.to_string_lossy().into_owned())
 }
 
 fn default_chat_font_size() -> u8 {

@@ -13,7 +13,7 @@ impl Config {
     ///
     /// Returns None if the config directory cannot be determined.
     pub fn config_path() -> Option<PathBuf> {
-        dirs::config_dir().map(|dir| dir.join(APP_DIR_NAME).join(CONFIG_FILE_NAME))
+        crate::paths::config_dir().map(|dir| dir.join(APP_DIR_NAME).join(CONFIG_FILE_NAME))
     }
 
     /// Load config from disk, or return default if not found
