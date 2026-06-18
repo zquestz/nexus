@@ -17,18 +17,11 @@ use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, LOCALHOST_HOSTNAME, SNI_SER
 use super::constants::{CONNECTION_TIMEOUT, DNS_LOOKUP_TIMEOUT};
 use super::types::{ConnectError, ProxyConfig, TlsStream};
 
-/// Global TLS connector (accepts any certificate, no hostname verification)
-pub(super) static TLS_CONNECTOR: Lazy<TlsConnector> = Lazy::new(|| {
-    let mut config = ClientConfig::builder()
-        .dangerous()
-        .with_custom_certificate_verifier(Arc::new(NoVerifier))
-        .with_no_client_auth();
-
-    // Disable SNI (Server Name Indication) since we're not verifying hostnames
-    config.enable_sni = false;
-
-    TlsConnector::from(Arc::new(config))
-});
+/// Global TLS connector (accepts any certificate, no hostname verification).
+/// Built from `create_tls_config` so the BBS and transfer ports share a single
+/// TLS verification policy.
+pub(super) static TLS_CONNECTOR: Lazy<TlsConnector> =
+    Lazy::new(|| TlsConnector::from(Arc::new(create_tls_config())));
 
 /// Custom certificate verifier that accepts any certificate (no verification)
 #[derive(Debug)]
@@ -90,10 +83,10 @@ impl tokio_rustls::rustls::client::danger::ServerCertVerifier for NoVerifier {
     }
 }
 
-/// Create a TLS config that accepts any certificate (for TOFU model)
+/// Create the client's TLS config (TOFU model: accepts any certificate, no SNI).
 ///
-/// This is used by the transfer executor to establish connections to the
-/// transfer port (7501) with the same certificate verification behavior.
+/// Single source of truth for the client's TLS verification policy — used by the
+/// BBS `TLS_CONNECTOR` and by the transfer executor for the transfer port (7501).
 pub fn create_tls_config() -> ClientConfig {
     let mut config = ClientConfig::builder()
         .dangerous()
