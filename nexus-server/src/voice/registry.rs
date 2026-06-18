@@ -75,13 +75,8 @@ impl VoiceRegistry {
         }
 
         let mut target_to_tokens = self.target_to_tokens.write().await;
-        let nickname_already_in_target = target_to_tokens.get(&target_key).is_some_and(|tokens| {
-            tokens.iter().any(|token| {
-                sessions
-                    .get(token)
-                    .is_some_and(|s| fold_name(&s.nickname) == nickname_lower)
-            })
-        });
+        let nickname_already_in_target =
+            nickname_in_target_locked(&sessions, &target_to_tokens, &target_key, &nickname_lower);
 
         sessions.insert(token, session);
         id_to_token.insert(session_id, token);
@@ -95,46 +90,41 @@ impl VoiceRegistry {
 
     /// `None` when no session matches the token.
     pub async fn remove_by_token(&self, token: Uuid) -> Option<VoiceLeaveInfo> {
-        let session = {
+        let (session, nickname_still_in_voice) = {
             let mut sessions = self.sessions.write().await;
             let mut id_to_token = self.session_id_to_token.write().await;
             let mut target_to_tokens = self.target_to_tokens.write().await;
 
-            if let Some(session) = sessions.remove(&token) {
-                id_to_token.remove(&session.session_id);
-                remove_from_target_index(&mut target_to_tokens, &session);
-                session
-            } else {
-                return None;
-            }
+            let session = sessions.remove(&token)?;
+            id_to_token.remove(&session.session_id);
+            let still =
+                unindex_and_check_nickname_remains(&sessions, &mut target_to_tokens, &session);
+            (session, still)
         };
 
-        Some(self.compute_leave_info(session).await)
+        Some(Self::compute_leave_info(session, nickname_still_in_voice))
     }
 
     /// `None` when no session matches the TCP session id.
     pub async fn remove_by_session_id(&self, session_id: u32) -> Option<VoiceLeaveInfo> {
-        let session = {
+        let (session, nickname_still_in_voice) = {
             let mut sessions = self.sessions.write().await;
             let mut id_to_token = self.session_id_to_token.write().await;
             let mut target_to_tokens = self.target_to_tokens.write().await;
 
-            if let Some(token) = id_to_token.remove(&session_id)
-                && let Some(session) = sessions.remove(&token)
-            {
-                remove_from_target_index(&mut target_to_tokens, &session);
-                session
-            } else {
-                return None;
-            }
+            let token = id_to_token.remove(&session_id)?;
+            let session = sessions.remove(&token)?;
+            let still =
+                unindex_and_check_nickname_remains(&sessions, &mut target_to_tokens, &session);
+            (session, still)
         };
 
-        Some(self.compute_leave_info(session).await)
+        Some(Self::compute_leave_info(session, nickname_still_in_voice))
     }
 
     /// `None` when no session is bound to the UDP remote address.
     pub async fn remove_by_udp_addr(&self, addr: SocketAddr) -> Option<VoiceLeaveInfo> {
-        let session = {
+        let (session, nickname_still_in_voice) = {
             let mut sessions = self.sessions.write().await;
             let mut id_to_token = self.session_id_to_token.write().await;
             let mut target_to_tokens = self.target_to_tokens.write().await;
@@ -144,24 +134,19 @@ impl VoiceRegistry {
                 .find_map(|(token, session)| (session.udp_addr == Some(addr)).then_some(*token))?;
 
             let session = sessions.remove(&token)?;
-
             id_to_token.remove(&session.session_id);
-            remove_from_target_index(&mut target_to_tokens, &session);
-            session
+            let still =
+                unindex_and_check_nickname_remains(&sessions, &mut target_to_tokens, &session);
+            (session, still)
         };
 
-        Some(self.compute_leave_info(session).await)
+        Some(Self::compute_leave_info(session, nickname_still_in_voice))
     }
 
     /// Shared by every disconnect path so the broadcast-target /
     /// should-broadcast logic isn't duplicated.
-    async fn compute_leave_info(&self, session: VoiceSession) -> VoiceLeaveInfo {
-        let target_key = session.target_key();
+    fn compute_leave_info(session: VoiceSession, nickname_still_in_voice: bool) -> VoiceLeaveInfo {
         let is_channel = session.is_channel();
-
-        let nickname_still_in_voice = self
-            .is_nickname_in_target(&target_key, &session.nickname, None)
-            .await;
 
         let self_target = if is_channel {
             session.target.first().cloned().unwrap_or_default()
@@ -215,32 +200,6 @@ impl VoiceRegistry {
     pub async fn has_session(&self, session_id: u32) -> bool {
         let id_to_token = self.session_id_to_token.read().await;
         id_to_token.contains_key(&session_id)
-    }
-
-    /// Used by leave paths to decide whether to broadcast — only
-    /// the last session of a nickname triggers a notification.
-    /// Joins now compute this inside [`Self::add`] atomically.
-    pub async fn is_nickname_in_target(
-        &self,
-        target_key: &str,
-        nickname: &str,
-        exclude_session_id: Option<u32>,
-    ) -> bool {
-        let sessions = self.sessions.read().await;
-        let target_to_tokens = self.target_to_tokens.read().await;
-        let target_key_lower = fold_name(target_key);
-        let nickname_lower = fold_name(nickname);
-
-        target_to_tokens
-            .get(&target_key_lower)
-            .is_some_and(|tokens| {
-                tokens.iter().any(|token| {
-                    sessions.get(token).is_some_and(|s| {
-                        fold_name(&s.nickname) == nickname_lower
-                            && exclude_session_id != Some(s.session_id)
-                    })
-                })
-            })
     }
 
     /// Nicknames currently in voice for the given target.
@@ -383,6 +342,45 @@ fn remove_from_target_index(
             target_to_tokens.remove(&target_key);
         }
     }
+}
+
+/// Whether any session in the `target_key_lower` bucket carries
+/// `nickname_lower`. Both keys must already be folded (`fold_name`). Runs on
+/// already-locked maps so join (`add`) and the leave paths can compute the
+/// broadcast decision atomically inside their critical section.
+fn nickname_in_target_locked(
+    sessions: &HashMap<Uuid, VoiceSession>,
+    target_to_tokens: &HashMap<String, Vec<Uuid>>,
+    target_key_lower: &str,
+    nickname_lower: &str,
+) -> bool {
+    target_to_tokens
+        .get(target_key_lower)
+        .is_some_and(|tokens| {
+            tokens.iter().any(|token| {
+                sessions
+                    .get(token)
+                    .is_some_and(|s| fold_name(&s.nickname) == nickname_lower)
+            })
+        })
+}
+
+/// Unindex a just-removed session and report whether its nickname is still
+/// present in that target via another session — the leave-broadcast decision,
+/// computed while the caller still holds the `sessions` / `target_to_tokens`
+/// write locks so it's atomic with the removal (mirrors `add`).
+fn unindex_and_check_nickname_remains(
+    sessions: &HashMap<Uuid, VoiceSession>,
+    target_to_tokens: &mut HashMap<String, Vec<Uuid>>,
+    session: &VoiceSession,
+) -> bool {
+    remove_from_target_index(target_to_tokens, session);
+    nickname_in_target_locked(
+        sessions,
+        target_to_tokens,
+        &target_index_key(session),
+        &fold_name(&session.nickname),
+    )
 }
 
 impl Default for VoiceRegistry {
@@ -877,93 +875,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_is_nickname_in_target() {
-        let registry = VoiceRegistry::new();
-
-        assert!(
-            !registry
-                .is_nickname_in_target("#general", "alice", None)
-                .await
-        );
-
-        registry
-            .add(create_test_session("alice", "#general", 1))
-            .await
-            .expect("test setup: session_id is unique");
-
-        assert!(
-            registry
-                .is_nickname_in_target("#general", "alice", None)
-                .await
-        );
-
-        assert!(
-            !registry
-                .is_nickname_in_target("#other", "alice", None)
-                .await
-        );
-
-        assert!(
-            !registry
-                .is_nickname_in_target("#general", "bob", None)
-                .await
-        );
-
-        assert!(
-            registry
-                .is_nickname_in_target("#GENERAL", "ALICE", None)
-                .await
-        );
-    }
-
-    #[tokio::test]
-    async fn test_is_nickname_in_target_with_exclude() {
-        let registry = VoiceRegistry::new();
-
-        registry
-            .add(create_test_session("alice", "#general", 1))
-            .await
-            .expect("test setup: session_id is unique");
-
-        assert!(
-            registry
-                .is_nickname_in_target("#general", "alice", None)
-                .await
-        );
-
-        assert!(
-            !registry
-                .is_nickname_in_target("#general", "alice", Some(1))
-                .await
-        );
-
-        registry
-            .add(create_test_session("alice", "#general", 2))
-            .await
-            .expect("test setup: session_id is unique");
-
-        assert!(
-            registry
-                .is_nickname_in_target("#general", "alice", Some(1))
-                .await
-        );
-
-        assert!(
-            registry
-                .is_nickname_in_target("#general", "alice", Some(2))
-                .await
-        );
-
-        registry.remove_by_session_id(1).await;
-
-        assert!(
-            !registry
-                .is_nickname_in_target("#general", "alice", Some(2))
-                .await
-        );
-    }
-
-    #[tokio::test]
     async fn test_multi_session_same_nickname() {
         let registry = VoiceRegistry::new();
 
@@ -982,15 +893,21 @@ mod tests {
         registry.remove_by_session_id(1).await;
         assert!(
             registry
-                .is_nickname_in_target("#general", "alice", None)
+                .get_participants("#general")
                 .await
+                .iter()
+                .any(|n| n == "alice"),
+            "alice still in voice via her second session"
         );
 
         registry.remove_by_session_id(2).await;
         assert!(
             !registry
-                .is_nickname_in_target("#general", "alice", None)
+                .get_participants("#general")
                 .await
+                .iter()
+                .any(|n| n == "alice"),
+            "alice fully left voice"
         );
     }
 
@@ -1015,9 +932,9 @@ mod tests {
 
     /// Two concurrent same-nickname joins to the same target (with
     /// distinct `session_id`s) must yield exactly one
-    /// `broadcast_joined = true`. The pre-add `is_nickname_in_target`
-    /// check this replaces could race so both saw "not present" and
-    /// the handler emitted duplicate `VoiceUserJoined` broadcasts.
+    /// `broadcast_joined = true`. A non-atomic pre-add check could race
+    /// so both saw "not present" and the handler emitted duplicate
+    /// `VoiceUserJoined` broadcasts.
     #[tokio::test]
     async fn test_add_serializes_broadcast_joined_for_same_nickname_target() {
         let registry = VoiceRegistry::new();
@@ -1036,6 +953,59 @@ mod tests {
         assert_eq!(
             broadcasters, 1,
             "exactly one of two concurrent same-nickname joins broadcasts"
+        );
+    }
+
+    /// Symmetric to the join serialization: two concurrent same-nickname
+    /// leaves from one target must yield exactly one `should_broadcast`
+    /// (the last leaver). The leave decision is computed inside the
+    /// removal critical section, so it can't double- or zero-broadcast.
+    #[tokio::test]
+    async fn test_remove_serializes_should_broadcast_for_same_nickname_target() {
+        let registry = VoiceRegistry::new();
+
+        let t1 = registry
+            .add(create_test_session("alice", "#general", 1))
+            .await
+            .expect("session_id 1 unique")
+            .token;
+        let t2 = registry
+            .add(create_test_session("alice", "#general", 2))
+            .await
+            .expect("session_id 2 unique")
+            .token;
+
+        let (r1, r2) = tokio::join!(registry.remove_by_token(t1), registry.remove_by_token(t2));
+        let leave1 = r1.expect("token 1 present");
+        let leave2 = r2.expect("token 2 present");
+        let broadcasters = [leave1.should_broadcast, leave2.should_broadcast]
+            .iter()
+            .filter(|x| **x)
+            .count();
+        assert_eq!(
+            broadcasters, 1,
+            "exactly one of two concurrent same-nickname leaves broadcasts"
+        );
+    }
+
+    /// Folded keys: a case-variant of the same nickname/target is treated
+    /// as already present, so the second join doesn't re-broadcast.
+    #[tokio::test]
+    async fn test_add_nickname_match_is_case_insensitive() {
+        let registry = VoiceRegistry::new();
+
+        registry
+            .add(create_test_session("Alice", "#General", 1))
+            .await
+            .expect("session_id 1 unique");
+        let second = registry
+            .add(create_test_session("alice", "#general", 2))
+            .await
+            .expect("session_id 2 unique");
+
+        assert!(
+            !second.broadcast_joined,
+            "a case-variant of an existing nickname in the same target is not a new joiner"
         );
     }
 }
