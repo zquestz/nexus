@@ -64,8 +64,7 @@ pub fn translate_tracker_field_errors(
         });
     }
 
-    let fingerprint_trimmed = fingerprint.trim();
-    if !fingerprint_trimmed.is_empty() && !is_canonical_fingerprint(fingerprint_trimmed) {
+    if !fingerprint.is_empty() && !is_canonical_fingerprint(fingerprint) {
         return Err(t("err-tracker-fingerprint-invalid"));
     }
 

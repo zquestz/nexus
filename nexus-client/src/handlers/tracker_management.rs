@@ -718,19 +718,16 @@ fn validate_tracker_form(
         password,
     )?;
 
-    let name_key = fold_name(name.trim());
-    let address_key = address.trim().to_lowercase();
+    let name_key = fold_name(name);
+    let address_key = address.to_lowercase();
     for entry in existing {
         if Some(entry.id) == excluding_id {
             continue;
         }
-        if fold_name(entry.name.trim()) == name_key {
-            return Err(t_args(
-                "err-tracker-name-duplicate",
-                &[("name", name.trim())],
-            ));
+        if fold_name(&entry.name) == name_key {
+            return Err(t_args("err-tracker-name-duplicate", &[("name", name)]));
         }
-        if entry.address.trim().to_lowercase() == address_key && entry.port == port {
+        if entry.address.to_lowercase() == address_key && entry.port == port {
             return Err(t("err-tracker-address-duplicate"));
         }
     }
@@ -946,7 +943,7 @@ mod tests {
     }
 
     #[test]
-    fn edit_mode_ignores_tracker_fingerprint_and_password_whitespace_only_changes() {
+    fn edit_mode_detects_padded_fingerprint_and_password_changes() {
         let mut state = crate::types::TrackerManagementState::default();
         state.enter_edit_mode(crate::types::TrackerEditInit {
             id: 7,
@@ -968,11 +965,11 @@ mod tests {
             *password = "  secret  ".to_string();
         }
 
-        assert!(!state.mode.has_effective_tracker_update_changes());
+        assert!(state.mode.has_effective_tracker_update_changes());
     }
 
     #[test]
-    fn update_submit_does_not_send_for_normalized_empty_tracker_password() {
+    fn update_submit_sends_whitespace_password_verbatim() {
         let mut app = NexusApp {
             active_connection: Some(1),
             ..NexusApp::default()
@@ -1004,7 +1001,12 @@ mod tests {
 
         let _ = app.handle_edit_tracker_submit();
 
-        assert!(rx.try_recv().is_err());
+        match rx.try_recv() {
+            Ok((_, ClientMessage::TrackerUpdate { password, .. })) => {
+                assert_eq!(password.as_deref(), Some("   "));
+            }
+            other => panic!("expected TrackerUpdate, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1055,7 +1057,7 @@ mod tests {
     }
 
     #[test]
-    fn update_submit_trims_fingerprint_before_send() {
+    fn update_submit_rejects_whitespace_fingerprint() {
         let mut app = NexusApp {
             active_connection: Some(1),
             ..NexusApp::default()
@@ -1087,12 +1089,17 @@ mod tests {
 
         let _ = app.handle_edit_tracker_submit();
 
-        match rx.try_recv() {
-            Ok((_, ClientMessage::TrackerUpdate { fingerprint, .. })) => {
-                assert_eq!(fingerprint.as_deref(), Some(VALID_FINGERPRINT));
-            }
-            other => panic!("expected TrackerUpdate, got {other:?}"),
-        }
+        // A fingerprint with surrounding whitespace is non-canonical — the form
+        // rejects it; no TrackerUpdate is sent and the form surfaces the error.
+        assert!(rx.try_recv().is_err());
+        assert!(
+            app.connections
+                .get(&1)
+                .expect("connection")
+                .tracker_management
+                .form_error
+                .is_some()
+        );
     }
 
     #[test]
@@ -1142,7 +1149,7 @@ mod tests {
                 },
             )) => {
                 assert_eq!(name.as_deref(), Some("Public Tracker 2"));
-                assert_eq!(password.as_deref(), Some("secret"));
+                assert_eq!(password.as_deref(), Some("  secret  "));
                 assert!(address.is_none());
                 assert!(port.is_none());
                 assert!(fingerprint.is_none());

@@ -211,16 +211,6 @@ impl NexusApp {
 
         self.connection_form.error = None;
 
-        // Normalize whitespace on identifying fields so lookups don't miss due
-        // to user-typed leading/trailing whitespace. Password is left as-typed
-        // since users could have intentional whitespace there.
-        self.connection_form.server_name = self.connection_form.server_name.trim().to_string();
-        self.connection_form.server_address =
-            self.connection_form.server_address.trim().to_string();
-        self.connection_form.username = self.connection_form.username.trim().to_string();
-        self.connection_form.nickname = self.connection_form.nickname.trim().to_string();
-        self.connection_form.fingerprint = self.connection_form.fingerprint.trim().to_string();
-
         let port = self.connection_form.port;
 
         self.connection_form.is_connecting = true;

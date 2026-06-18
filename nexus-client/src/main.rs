@@ -24,6 +24,9 @@ mod views;
 mod voice;
 mod widgets;
 
+#[cfg(test)]
+mod testing;
+
 #[cfg(not(target_os = "macos"))]
 mod tray;
 

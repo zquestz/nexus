@@ -353,14 +353,12 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Get the body text from the editor
+        // Get the body text from the editor.
         let body = self
             .news_body_content
             .get(&conn_id)
             .map(|c| c.text())
-            .unwrap_or_default()
-            .trim()
-            .to_string();
+            .unwrap_or_default();
 
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
@@ -373,16 +371,18 @@ impl NexusApp {
 
         let image = conn.news_management.form_image.clone();
 
+        // A whitespace-only body counts as no body (emptiness gate); a non-empty
+        // body is kept as typed.
+        let body_has_content = !body.trim().is_empty();
+
         // Must have either body or image
-        if body.is_empty() && image.is_empty() {
+        if !body_has_content && image.is_empty() {
             conn.news_management.form_error = Some(t("err-news-empty"));
             return Task::none();
         }
 
         // Validate body if present
-        if !body.is_empty()
-            && let Err(e) = validators::validate_news_body(&body)
-        {
+        if body_has_content && let Err(e) = validators::validate_news_body(&body) {
             let error_msg = match e {
                 NewsBodyError::TooLong => t_args(
                     "err-news-body-too-long",
@@ -401,7 +401,7 @@ impl NexusApp {
         match &conn.news_management.mode {
             NewsManagementMode::Create => {
                 let msg = ClientMessage::NewsCreate {
-                    body: if body.is_empty() { None } else { Some(body) },
+                    body: if body_has_content { Some(body) } else { None },
                     image: if image.is_empty() { None } else { Some(image) },
                 };
 
@@ -419,6 +419,11 @@ impl NexusApp {
                 }
             }
             NewsManagementMode::Edit { id, .. } => {
+                let body = if body_has_content {
+                    body
+                } else {
+                    String::new()
+                };
                 let Some((body, image)) = conn.news_management.mode.news_update_fields(body, image)
                 else {
                     return Task::none();
@@ -495,5 +500,38 @@ impl NexusApp {
 
         // Focus the text editor
         self.focus_field(InputId::NewsBody)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::testing::support::test_connection_with_receiver;
+
+    #[test]
+    fn submit_drops_whitespace_only_body_when_image_present() {
+        // A whitespace-only body counts as no body; with an image present the
+        // post still sends, but with `body: None` rather than `Some("   ")`.
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.news_management.mode = NewsManagementMode::Create;
+        conn.news_management.form_image = "data:image/png;base64,iVBORw0KGgo=".to_string();
+        app.connections.insert(1, conn);
+        app.news_body_content
+            .insert(1, text_editor::Content::with_text("   "));
+
+        let _ = app.handle_news_submit_pressed();
+
+        match rx.try_recv() {
+            Ok((_, ClientMessage::NewsCreate { body, image })) => {
+                assert!(body.is_none(), "whitespace-only body must not be sent");
+                assert!(image.is_some());
+            }
+            other => panic!("expected NewsCreate, got {other:?}"),
+        }
     }
 }

@@ -40,10 +40,12 @@ impl NexusApp {
         };
 
         let tab = conn.files_management.active_tab_mut();
-        let query = tab.search_input.trim().to_string();
+        let query = tab.search_input.clone();
 
-        // If query is empty, exit search mode and refresh the file list
-        if query.is_empty() {
+        // If the query is empty (or only whitespace), exit search mode and
+        // refresh the file list. Emptiness gate only — a non-empty query is
+        // searched as typed.
+        if query.trim().is_empty() {
             let was_searching = tab.is_searching();
             tab.clear_search();
 

@@ -814,7 +814,7 @@ impl NexusApp {
 
         // Validate new password if provided
         let min_strength = conn.min_password_strength;
-        if !new_password.trim().is_empty()
+        if !new_password.is_empty()
             && let Err(e) =
                 validators::validate_password(&new_password, min_strength, &[new_username.as_str()])
         {
@@ -1541,7 +1541,10 @@ mod tests {
     }
 
     #[test]
-    fn update_submit_does_not_send_whitespace_only_password_change() {
+    fn update_submit_sends_whitespace_only_password_change() {
+        // A whitespace-only password is a real change, sent verbatim — the
+        // strength policy decides whether it is accepted (the test connection's
+        // Weak minimum admits it), not a silent client-side trim.
         let mut app = NexusApp {
             active_connection: Some(1),
             ..NexusApp::default()
@@ -1555,7 +1558,36 @@ mod tests {
 
         let _ = app.handle_user_management_update_pressed();
 
-        assert!(rx.try_recv().is_err());
+        match rx.try_recv() {
+            Ok((_, ClientMessage::UserUpdate { password, .. })) => {
+                assert_eq!(password.as_deref(), Some("   "));
+            }
+            other => panic!("expected UserUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn create_submit_sends_whitespace_password_verbatim() {
+        // A whitespace-only password is a valid value at Weak strength and is
+        // sent verbatim. (Regression guard for the create path; the submit gate
+        // itself lives in the view / keyboard handler.)
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.user_management.username = "alice".to_string();
+        conn.user_management.password = "   ".to_string();
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_user_management_create_pressed();
+
+        match rx.try_recv() {
+            Ok((_, ClientMessage::UserCreate { password, .. })) => {
+                assert_eq!(password, "   ");
+            }
+            other => panic!("expected UserCreate, got {other:?}"),
+        }
     }
 
     #[test]

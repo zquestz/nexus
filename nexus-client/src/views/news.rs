@@ -473,7 +473,7 @@ fn form_view<'a>(
     let has_effective_changes = !is_edit
         || news_management
             .mode
-            .has_effective_news_update_changes(body_text.trim(), &news_management.form_image);
+            .has_effective_news_update_changes(&body_text, &news_management.form_image);
     let submit_button = if has_content && has_effective_changes && !news_management.is_submitting {
         button(submit_label)
             .on_press(Message::NewsSubmitPressed)

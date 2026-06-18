@@ -171,7 +171,7 @@ impl UserManagementMode {
         let original_bandwidth_inherit = original_bandwidth_weight_override.is_none();
 
         (identity_and_bandwidth_allowed && new_username != original_username)
-            || (!is_self_edit && !new_password.trim().is_empty())
+            || (!is_self_edit && !new_password.is_empty())
             || (!is_self_edit && requester_is_admin && is_admin != original_is_admin)
             || (!is_self_edit && requester_is_admin && enabled != original_enabled)
             || (!is_self_edit && permissions != original_permissions)
@@ -287,8 +287,7 @@ impl UserManagementMode {
         Some(UserUpdateFields {
             id: *id,
             username: (new_username != original_username).then_some(new_username.clone()),
-            password: (!is_self_edit && !new_password.trim().is_empty())
-                .then_some(new_password.clone()),
+            password: (!is_self_edit && !new_password.is_empty()).then_some(new_password.clone()),
             is_admin: (requester_is_admin && !is_self_edit && is_admin != original_is_admin)
                 .then_some(*is_admin),
             enabled: (requester_is_admin && !is_self_edit && enabled != original_enabled)
@@ -648,14 +647,16 @@ mod tests {
     }
 
     #[test]
-    fn edit_mode_ignores_whitespace_only_password_change() {
+    fn edit_mode_detects_whitespace_only_password_change() {
         let mut state = UserManagementState::default();
         state.enter_edit_mode(edit_init(42, "alice"));
         if let UserManagementMode::Edit { new_password, .. } = edit_mode_mut(&mut state) {
             *new_password = "   ".to_string();
         }
 
-        assert!(!state.mode.has_effective_user_update_changes("admin", true));
+        // A whitespace-only password is a real change (only an exactly-empty
+        // field means "no change"); the strength validator judges it on submit.
+        assert!(state.mode.has_effective_user_update_changes("admin", true));
     }
 
     #[test]

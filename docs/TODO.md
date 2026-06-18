@@ -120,8 +120,8 @@ Persistent discussion boards for longer-form server/community threads.
 
 - User-defined only; never server-generated.
 - Slug is required on create.
-- Trimmed value must be non-empty.
-- Trim before validation/storage.
+- Must be non-empty.
+- Validate the exact submitted value; do not trim (whitespace is rejected below, not stripped).
 - Maximum 64 characters.
 - Reject control characters.
 - Reject whitespace.
@@ -178,8 +178,8 @@ Persistent discussion boards for longer-form server/community threads.
 **Name validation:**
 
 - Dedicated `validate_board_name` validator.
-- Trimmed value must be non-empty.
-- Trim before validation/storage.
+- Must not be empty or whitespace-only.
+- Store the value as submitted; do not trim.
 - Maximum 64 characters.
 - Unicode allowed.
 - Spaces and punctuation allowed.

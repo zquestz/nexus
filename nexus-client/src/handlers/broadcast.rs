@@ -83,7 +83,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        let message = conn.broadcast_message.trim().to_string();
+        let message = conn.broadcast_message.clone();
 
         // Validate message content using shared validators
         if let Err(e) = validators::validate_message(&message) {

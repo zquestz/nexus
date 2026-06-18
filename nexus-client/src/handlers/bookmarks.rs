@@ -66,10 +66,9 @@ impl NexusApp {
 
     /// Handle bookmark fingerprint pin field change.
     ///
-    /// Routes through [`normalize_certificate_fingerprint`] so whitespace-only
-    /// input (typing-then-deleting) collapses to `None` immediately rather
-    /// than transiently storing `Some(" ")`. Same normalization Save runs, so
-    /// Validate and Save see identical state.
+    /// Routes through [`normalize_certificate_fingerprint`] (empty → `None`),
+    /// the same normalization Save runs, so Validate and Save see identical
+    /// state.
     pub fn handle_bookmark_fingerprint_changed(&mut self, fingerprint: String) -> Task<Message> {
         self.bookmark_edit.bookmark.certificate_fingerprint =
             normalize_certificate_fingerprint(Some(fingerprint));
@@ -133,19 +132,7 @@ impl NexusApp {
 
         self.bookmark_edit.is_submitting = true;
 
-        // Normalize whitespace on identifying fields so lookups don't miss due
-        // to user-typed leading/trailing whitespace. Password is left as-typed
-        // since users could have intentional whitespace there.
-        self.bookmark_edit.bookmark.name = self.bookmark_edit.bookmark.name.trim().to_string();
-        self.bookmark_edit.bookmark.address =
-            self.bookmark_edit.bookmark.address.trim().to_string();
-        self.bookmark_edit.bookmark.username =
-            self.bookmark_edit.bookmark.username.trim().to_string();
-        self.bookmark_edit.bookmark.nickname =
-            self.bookmark_edit.bookmark.nickname.trim().to_string();
-        // Normalize the fingerprint pin so the on-disk shape stays consistent
-        // regardless of how the user typed it (e.g. stray whitespace won't
-        // produce a `Some("…")` value with leading/trailing spaces).
+        // Normalize the fingerprint pin: an empty field becomes `None`.
         self.bookmark_edit.bookmark.certificate_fingerprint = normalize_certificate_fingerprint(
             self.bookmark_edit.bookmark.certificate_fingerprint.clone(),
         );
@@ -429,7 +416,7 @@ fn validate_bookmark_form(
 /// list. Returns the localized error string on collision, or `None`
 /// if the candidate is unique.
 ///
-/// Comparison values are computed against the trimmed candidate using
+/// Comparison values are computed against the candidate using
 /// Unicode-aware case folding (matches the tracker form dedup
 /// pattern). The endpoint key is the
 /// `(address, port, username, nickname)` tuple so two bookmarks that
@@ -452,24 +439,21 @@ pub(super) fn check_bookmark_dedup(
     existing: &[crate::types::ServerBookmark],
     excluding_id: Option<Uuid>,
 ) -> Option<String> {
-    let name_key = fold_name(name.trim());
-    let address_key = address.trim().to_lowercase();
-    let username_key = fold_name(username.trim());
-    let nickname_key = fold_name(nickname.trim());
+    let name_key = fold_name(name);
+    let address_key = address.to_lowercase();
+    let username_key = fold_name(username);
+    let nickname_key = fold_name(nickname);
     for entry in existing {
         if Some(entry.id) == excluding_id {
             continue;
         }
-        if fold_name(entry.name.trim()) == name_key {
-            return Some(t_args(
-                "err-bookmark-name-duplicate",
-                &[("name", name.trim())],
-            ));
+        if fold_name(&entry.name) == name_key {
+            return Some(t_args("err-bookmark-name-duplicate", &[("name", name)]));
         }
-        if entry.address.trim().to_lowercase() == address_key
+        if entry.address.to_lowercase() == address_key
             && entry.port == port
-            && fold_name(entry.username.trim()) == username_key
-            && fold_name(entry.nickname.trim()) == nickname_key
+            && fold_name(&entry.username) == username_key
+            && fold_name(&entry.nickname) == nickname_key
         {
             return Some(t("err-bookmark-endpoint-duplicate"));
         }

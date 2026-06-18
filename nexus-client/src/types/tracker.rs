@@ -48,9 +48,9 @@ pub struct ClientTracker {
     /// queries Stage-1-check against this value; mismatch routes to the
     /// AcceptFingerprint dialog.
     ///
-    /// Deserialized via [`deserialize_normalized_fingerprint`] so empty /
-    /// whitespace-only values from a hand-edited config collapse to `None`
-    /// rather than reaching Stage 1 with an empty `expected`.
+    /// Deserialized via [`deserialize_normalized_fingerprint`] so an empty
+    /// value from a hand-edited config collapses to `None` rather than reaching
+    /// Stage 1 with an empty `expected`.
     #[serde(default, deserialize_with = "deserialize_normalized_fingerprint")]
     pub certificate_fingerprint: Option<String>,
 }
@@ -125,7 +125,8 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_normalizes_whitespace_fingerprint() {
+    fn test_deserialize_preserves_whitespace_fingerprint() {
+        // Whitespace is preserved; only an empty string collapses to None.
         let json = r#"{
             "id": "00000000-0000-0000-0000-000000000001",
             "name": "T",
@@ -134,7 +135,7 @@ mod tests {
             "certificate_fingerprint": "   "
         }"#;
         let t: ClientTracker = serde_json::from_str(json).expect("deserialize");
-        assert!(t.certificate_fingerprint.is_none());
+        assert_eq!(t.certificate_fingerprint, Some("   ".to_string()));
     }
 
     #[test]

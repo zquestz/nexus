@@ -195,8 +195,8 @@ impl NexusApp {
         self.tracker_browser.is_submitting = true;
         let new = ClientTracker {
             id: Uuid::new_v4(),
-            name: self.tracker_browser.add_name.trim().to_string(),
-            address: self.tracker_browser.add_address.trim().to_string(),
+            name: self.tracker_browser.add_name.clone(),
+            address: self.tracker_browser.add_address.clone(),
             port: self.tracker_browser.add_port,
             password: optional_string(&self.tracker_browser.add_password),
             certificate_fingerprint: normalize_certificate_fingerprint(Some(
@@ -336,8 +336,8 @@ impl NexusApp {
         let original = self.config.get_tracker(id).cloned();
         let updated = ClientTracker {
             id,
-            name: name.trim().to_string(),
-            address: address.trim().to_string(),
+            name,
+            address,
             port,
             password: optional_string(&password),
             certificate_fingerprint: normalize_certificate_fingerprint(Some(fingerprint)),
@@ -735,11 +735,9 @@ impl NexusApp {
         self.connection_form.server_name = name;
         self.connection_form.server_address = address;
         self.connection_form.port = port;
-        // Normalize before storing — the protocol guarantees a canonical
-        // 95-byte uppercase form so trim is a no-op in practice, but
-        // this matches the bookmark-row path's defensive trim and means
-        // a malformed tracker can't desync the connect-form fingerprint
-        // and the canonical-form validator at submit time.
+        // Normalize before storing — an empty pin becomes `None`. The
+        // canonical-form validator catches a malformed tracker fingerprint at
+        // submit time.
         self.connection_form.fingerprint =
             normalize_certificate_fingerprint(Some(fingerprint)).unwrap_or_default();
         self.connection_form.connect_origin = Some(ActivePanel::TrackerBrowser);
@@ -870,25 +868,21 @@ fn validate_form(
     }
 
     // -------------------- Dedup ----------------------
-    // Comparison values are computed against the trimmed user input,
-    // matching how the entry is normalized at storage time. Mirrors
-    // the server-side trackers-table unique indexes:
+    // Compare case-folded only (matching storage). Mirrors the server-side
+    // trackers-table unique indexes:
     //   - LOWER(name)            → case-insensitive on name
     //   - (LOWER(address), port) → case-insensitive on address + exact port
-    let name_key = fold_name(name.trim());
-    let address_key = address.trim().to_lowercase();
+    let name_key = fold_name(name);
+    let address_key = address.to_lowercase();
 
     for entry in existing {
         if Some(entry.id) == excluding_id {
             continue;
         }
-        if fold_name(entry.name.trim()) == name_key {
-            return Some(t_args(
-                "err-tracker-name-duplicate",
-                &[("name", name.trim())],
-            ));
+        if fold_name(&entry.name) == name_key {
+            return Some(t_args("err-tracker-name-duplicate", &[("name", name)]));
         }
-        if entry.address.trim().to_lowercase() == address_key && entry.port == port {
+        if entry.address.to_lowercase() == address_key && entry.port == port {
             return Some(t("err-tracker-address-duplicate"));
         }
     }
@@ -900,15 +894,8 @@ fn validate_form(
 /// into a server bookmark. The row action has no form-local error
 /// area, so callers surface the returned localized error as a toast.
 fn validate_tracker_bookmark_row(name: &str, address: &str, fingerprint: &str) -> Option<String> {
-    super::server_form_errors::translate_server_form_errors(
-        name,
-        address,
-        "",
-        "",
-        "",
-        fingerprint.trim(),
-    )
-    .err()
+    super::server_form_errors::translate_server_form_errors(name, address, "", "", "", fingerprint)
+        .err()
 }
 
 /// Apply a successful tracker response to the cache and persist the
@@ -970,16 +957,14 @@ where
     Ok(true)
 }
 
-/// Trim a freeform optional field (password, fingerprint); empty
-/// after trim collapses to `None` so the on-disk / wire shape stays
-/// canonical. Shared with `tracker_management.rs` so both forms
-/// agree on what "the user left this empty" means.
+/// Collapse an optional field (password, fingerprint) to `None` when empty.
+/// Shared with `tracker_management.rs` so both forms agree on what "the user
+/// left this empty" means.
 pub(super) fn optional_string(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
+    if value.is_empty() {
         None
     } else {
-        Some(trimmed.to_string())
+        Some(value.to_string())
     }
 }
 
@@ -1210,6 +1195,16 @@ mod tests {
     fn tracker_bookmark_row_validation_accepts_valid_row() {
         let fingerprint = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
         assert!(validate_tracker_bookmark_row("Public", "bbs.example", fingerprint).is_none());
+    }
+
+    #[test]
+    fn tracker_bookmark_row_validation_rejects_padded_fingerprint() {
+        // The fingerprint is validated raw — a canonical pin with surrounding
+        // whitespace is non-canonical and rejected.
+        let fingerprint = "  AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99  ";
+        let err = validate_tracker_bookmark_row("Public", "bbs.example", fingerprint)
+            .expect("padded fingerprint should be rejected");
+        assert_eq!(err, t("err-fingerprint-invalid"));
     }
 
     #[test]

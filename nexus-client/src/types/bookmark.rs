@@ -71,8 +71,8 @@ pub struct ServerBookmark {
     pub auto_connect: bool,
     /// Certificate fingerprint (SHA-256) for Trust On First Use.
     ///
-    /// Deserialized via [`deserialize_normalized_fingerprint`] so empty /
-    /// whitespace-only values from a hand-edited config collapse to `None`.
+    /// Deserialized via [`deserialize_normalized_fingerprint`] so an empty
+    /// value from a hand-edited config collapses to `None`.
     #[serde(default, deserialize_with = "deserialize_normalized_fingerprint")]
     pub certificate_fingerprint: Option<String>,
 }

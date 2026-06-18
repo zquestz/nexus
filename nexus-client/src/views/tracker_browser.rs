@@ -154,13 +154,12 @@ fn filter_and_sort_entries(
     column: TrackerBrowserSortColumn,
     ascending: bool,
 ) -> Vec<ServerEntry> {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
+    if query.trim().is_empty() {
         let mut all: Vec<ServerEntry> = entries.to_vec();
         sort_entries(&mut all, column, ascending);
         return all;
     }
-    let needle = trimmed.to_lowercase();
+    let needle = query.to_lowercase();
     let mut name_matches: Vec<ServerEntry> = Vec::new();
     let mut desc_only: Vec<ServerEntry> = Vec::new();
     for entry in entries {
@@ -1562,6 +1561,17 @@ mod tests {
             filter_and_sort_entries(&entries, "MÜNCHEN", TrackerBrowserSortColumn::Name, true);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].name, "München BBS");
+    }
+
+    #[test]
+    fn filter_and_sort_whitespace_is_part_of_the_query() {
+        // After the empty-query gate, the needle is the raw query — so " alpha "
+        // matches a name that actually contains those spaces, not a bare "alpha".
+        let entries = vec![make_entry("alpha", None, 0), make_entry(" alpha ", None, 0)];
+        let out =
+            filter_and_sort_entries(&entries, " alpha ", TrackerBrowserSortColumn::Name, true);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].name, " alpha ");
     }
 
     #[test]

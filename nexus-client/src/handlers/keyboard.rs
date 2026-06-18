@@ -328,7 +328,7 @@ impl NexusApp {
                     match &conn.user_management.mode {
                         UserManagementMode::Create => {
                             let can_create = !conn.user_management.username.trim().is_empty()
-                                && !conn.user_management.password.trim().is_empty()
+                                && !conn.user_management.password.is_empty()
                                 && !conn.user_management.is_submitting;
                             let msg = if can_create {
                                 Message::UserManagementCreatePressed

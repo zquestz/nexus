@@ -193,14 +193,13 @@ impl TrackerManagementMode {
     }
 }
 
-/// Trim a freeform optional tracker field (password, fingerprint); empty after
-/// trim collapses to `None` so edit-change detection and wire payloads agree.
+/// Collapse an optional tracker field (password, fingerprint) to `None` when
+/// empty; used for edit-change detection and wire payloads.
 pub fn normalize_optional_string(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
+    if value.is_empty() {
         None
     } else {
-        Some(trimmed.to_string())
+        Some(value.to_string())
     }
 }
 

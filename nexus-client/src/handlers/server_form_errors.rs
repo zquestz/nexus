@@ -68,8 +68,7 @@ pub fn translate_server_form_errors(
         ));
     }
 
-    let fp = fingerprint.trim();
-    if !fp.is_empty() && !is_canonical_fingerprint(fp) {
+    if !fingerprint.is_empty() && !is_canonical_fingerprint(fingerprint) {
         return Err(t("err-fingerprint-invalid"));
     }
 

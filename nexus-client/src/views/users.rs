@@ -736,7 +736,7 @@ fn create_view<'a>(
     let title = panel_title(t("title-user-create"));
 
     let can_create = !user_management.username.trim().is_empty()
-        && !user_management.password.trim().is_empty()
+        && !user_management.password.is_empty()
         && !user_management.is_submitting;
 
     // Helper for on_submit
