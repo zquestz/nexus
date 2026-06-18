@@ -32,18 +32,20 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
     }
 
     let seconds = match unit {
-        'm' => number * SECONDS_PER_MINUTE,
-        'h' => number * SECONDS_PER_HOUR,
-        'd' => number * SECONDS_PER_DAY,
+        'm' => number.checked_mul(SECONDS_PER_MINUTE),
+        'h' => number.checked_mul(SECONDS_PER_HOUR),
+        'd' => number.checked_mul(SECONDS_PER_DAY),
         _ => return Err(()),
-    };
+    }
+    .ok_or(())?;
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
         .as_secs();
 
-    Ok(Some((now + seconds) as i64))
+    let expiry = now.checked_add(seconds).ok_or(())?;
+    Ok(Some(i64::try_from(expiry).map_err(|_| ())?))
 }
 
 /// Format the time remaining until `expires_at` (Unix timestamp) as a string
@@ -177,6 +179,16 @@ mod tests {
         assert!(parse_duration(&Some("10§".to_string())).is_err());
         assert!(parse_duration(&Some("€".to_string())).is_err());
         assert!(parse_duration(&Some("5m€".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_parse_duration_overflow_rejected() {
+        // Overflowing the multiply, or producing a value too large for i64, is
+        // rejected as invalid rather than wrapping/panicking. (parse_duration
+        // itself isn't length-capped — callers validate length first.)
+        assert!(parse_duration(&Some(format!("{}d", u64::MAX))).is_err());
+        // Multiplies cleanly in u64 but exceeds i64::MAX → rejected at the cast.
+        assert!(parse_duration(&Some("200000000000000000m".to_string())).is_err());
     }
 
     #[test]
