@@ -443,36 +443,25 @@ impl VoiceUdpServer {
 
     async fn relay_bytes(&self, relayed_bytes: Vec<u8>, sender_nickname: &str, target_key: &str) {
         let sender_folded = fold_name(sender_nickname);
-        let sessions = self.registry.get_sessions_for_target(target_key).await;
+        let recipients = self
+            .registry
+            .relay_recipients(target_key, &sender_folded)
+            .await;
 
-        let targets = {
+        let conns: Vec<_> = {
             let clients = self.clients.read().await;
-            sessions
+            recipients
                 .into_iter()
-                .filter_map(|session| {
-                    // Never echo back to the sender
-                    if fold_name(&session.nickname) == sender_folded {
-                        return None;
-                    }
-
-                    let udp_addr = session.udp_addr?;
-                    clients
-                        .get(&udp_addr)
-                        .map(|client| (session.nickname, udp_addr, client.clone()))
-                })
-                .collect::<Vec<_>>()
+                .filter_map(|udp_addr| clients.get(&udp_addr).map(|client| client.conn.clone()))
+                .collect()
         };
 
-        for (nickname, udp_addr, client) in targets {
-            let conn = client.conn.clone();
-
-            if let Err(e) = conn.send(&relayed_bytes).await {
-                // debug, not error: per relayed packet, and largely self-limiting
-                // (UDP send to a vanished peer succeeds; a genuinely errored conn
-                // is being torn down, and an idle recipient is reaped within
-                // VOICE_SESSION_TIMEOUT_SECS).
-                debug!(user = %nickname, ip = %udp_addr, err = %e, "{}", LOG_VOICE_RELAY_FAILED);
-            }
+        // A failed relay send is ignored on purpose: it's per-packet and
+        // self-limiting — a UDP send to a vanished peer succeeds, and a
+        // genuinely-errored conn is already being torn down (idle recipients
+        // are reaped within VOICE_SESSION_TIMEOUT_SECS).
+        for conn in conns {
+            let _ = conn.send(&relayed_bytes).await;
         }
     }
 

@@ -216,17 +216,32 @@ impl VoiceRegistry {
             .collect()
     }
 
-    /// Cloned sessions for the target (for broadcasting voice events).
-    pub async fn get_sessions_for_target(&self, target_key: &str) -> Vec<VoiceSession> {
+    /// UDP addresses of the relay recipients for `target_key`: every session
+    /// with a bound `udp_addr` whose folded nickname differs from
+    /// `exclude_folded` (the sender, so it isn't echoed its own audio).
+    /// Returns only the addresses so the per-packet relay path doesn't clone a
+    /// full `VoiceSession` per participant.
+    pub(super) async fn relay_recipients(
+        &self,
+        target_key: &str,
+        exclude_folded: &str,
+    ) -> Vec<SocketAddr> {
+        let target_key_lower = fold_name(target_key);
         let sessions = self.sessions.read().await;
         let target_to_tokens = self.target_to_tokens.read().await;
-        let target_key_lower = fold_name(target_key);
 
         target_to_tokens
             .get(&target_key_lower)
             .into_iter()
             .flatten()
-            .filter_map(|token| sessions.get(token).cloned())
+            .filter_map(|token| {
+                let session = sessions.get(token)?;
+                // Never echo back to the sender (same folded nickname).
+                if fold_name(&session.nickname) == exclude_folded {
+                    return None;
+                }
+                session.udp_addr
+            })
             .collect()
     }
 
@@ -713,24 +728,77 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_sessions_for_target() {
+    async fn test_relay_recipients() {
         let registry = VoiceRegistry::new();
 
-        registry
-            .add(create_test_session("alice", "#general", 1))
-            .await
-            .expect("test setup: session_id is unique");
-        registry
-            .add(create_test_session("bob", "#general", 2))
-            .await
-            .expect("test setup: session_id is unique");
-        registry
-            .add(create_test_session("charlie", "#other", 3))
-            .await
-            .expect("test setup: session_id is unique");
+        // alice (sender) + bob (recipient) + carol (no bound UDP addr) in
+        // #general; dave in a different target.
+        let alice = create_test_session("alice", "#general", 1);
+        let bob = create_test_session("bob", "#general", 2);
+        let carol = create_test_session("carol", "#general", 3);
+        let dave = create_test_session("dave", "#other", 4);
+        let (alice_token, bob_token, dave_token) = (alice.token, bob.token, dave.token);
 
-        let sessions = registry.get_sessions_for_target("#general").await;
-        assert_eq!(sessions.len(), 2);
+        for session in [alice, bob, carol, dave] {
+            registry
+                .add(session)
+                .await
+                .expect("test setup: session_id is unique");
+        }
+
+        let alice_addr: SocketAddr = "10.0.0.1:1".parse().unwrap();
+        let bob_addr: SocketAddr = "10.0.0.2:2".parse().unwrap();
+        let dave_addr: SocketAddr = "10.0.0.4:4".parse().unwrap();
+        registry.bind_udp_addr(alice_token, alice_addr).await;
+        registry.bind_udp_addr(bob_token, bob_addr).await;
+        registry.bind_udp_addr(dave_token, dave_addr).await;
+        // carol intentionally never binds a UDP address.
+
+        // Sender (alice) excluded by folded nickname; carol has no bound addr;
+        // dave is in another target. Only bob qualifies.
+        let recipients = registry
+            .relay_recipients("#general", &fold_name("alice"))
+            .await;
+        assert_eq!(recipients, vec![bob_addr]);
+
+        // Folding: an uppercase target and sender resolve identically.
+        let folded = registry
+            .relay_recipients("#GENERAL", &fold_name("ALICE"))
+            .await;
+        assert_eq!(folded, vec![bob_addr]);
+    }
+
+    #[tokio::test]
+    async fn test_relay_recipients_excludes_same_nickname_co_sessions() {
+        // A user with two sessions in one target: when one sends, neither of
+        // their sessions receives the relay (folded-nickname exclusion covers
+        // co-sessions). This is why exclusion is by nickname, not token/address.
+        let registry = VoiceRegistry::new();
+
+        let alice1 = create_test_session("alice", "#general", 1);
+        let alice2 = create_test_session("alice", "#general", 2);
+        let bob = create_test_session("bob", "#general", 3);
+        let (alice1_token, alice2_token, bob_token) = (alice1.token, alice2.token, bob.token);
+
+        for session in [alice1, alice2, bob] {
+            registry
+                .add(session)
+                .await
+                .expect("test setup: session_id is unique");
+        }
+
+        let alice1_addr: SocketAddr = "10.0.0.1:1".parse().unwrap();
+        let alice2_addr: SocketAddr = "10.0.0.2:2".parse().unwrap();
+        let bob_addr: SocketAddr = "10.0.0.3:3".parse().unwrap();
+        registry.bind_udp_addr(alice1_token, alice1_addr).await;
+        registry.bind_udp_addr(alice2_token, alice2_addr).await;
+        registry.bind_udp_addr(bob_token, bob_addr).await;
+
+        // alice sends: both of her sessions are excluded; only bob receives.
+        let recipients = registry
+            .relay_recipients("#general", &fold_name("alice"))
+            .await;
+        assert_eq!(recipients, vec![bob_addr]);
     }
 
     #[tokio::test]
