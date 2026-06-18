@@ -12,6 +12,7 @@ pub(super) const ERR_ADD_RESOURCE: &str = "Failed to add resource to bundle";
 pub(super) const ERR_MISSING_KEY: &str = "Missing translation key";
 
 /// Error when translation key is missing in English
+#[cfg(debug_assertions)]
 pub(super) const ERR_MISSING_KEY_ENGLISH: &str = "Missing translation key in English";
 
 /// Error when FTL file parsing fails

@@ -74,7 +74,12 @@ fn translate(locale: &str, key: &str) -> String {
         return translate(DEFAULT_LOCALE, key);
     }
 
-    panic!("{} '{}'", ERR_MISSING_KEY_ENGLISH, key);
+    // Missing even in English: degrade to the raw key rather than
+    // crashing the GUI. Build-time coverage tests catch literal keys;
+    // this guards the dynamic-key paths they can't see.
+    #[cfg(debug_assertions)]
+    eprintln!("{} '{}'", ERR_MISSING_KEY_ENGLISH, key);
+    key.to_string()
 }
 
 /// Get a translated message with arguments for a specific locale
@@ -122,7 +127,12 @@ fn translate_with_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String
         return translate_with_args(DEFAULT_LOCALE, key, args);
     }
 
-    panic!("{} '{}'", ERR_MISSING_KEY_ENGLISH, key);
+    // Missing even in English: degrade to the raw key rather than
+    // crashing the GUI. Build-time coverage tests catch literal keys;
+    // this guards the dynamic-key paths they can't see.
+    #[cfg(debug_assertions)]
+    eprintln!("{} '{}'", ERR_MISSING_KEY_ENGLISH, key);
+    key.to_string()
 }
 
 #[cfg(test)]
@@ -147,6 +157,34 @@ mod tests {
     fn test_fallback_to_english() {
         let result = translate("xx", "button-cancel");
         assert_eq!(result, "Cancel");
+    }
+
+    #[test]
+    fn missing_key_degrades_to_raw_key_without_panic() {
+        // A key absent from every locale (including English) must not
+        // panic the GUI — it degrades to the raw key string.
+        let result = translate("en", "this-key-does-not-exist-anywhere");
+        assert_eq!(result, "this-key-does-not-exist-anywhere");
+    }
+
+    #[test]
+    fn missing_key_with_args_degrades_to_raw_key_without_panic() {
+        let result = translate_with_args("en", "this-key-does-not-exist-anywhere", &[("x", "1")]);
+        assert_eq!(result, "this-key-does-not-exist-anywhere");
+    }
+
+    #[test]
+    fn missing_key_via_non_english_fallback_degrades_without_panic() {
+        // Non-English locale → English fallback → still missing → degrade.
+        // Exercises the recursion arm, not just the terminal English case.
+        let result = translate("fr", "this-key-does-not-exist-anywhere");
+        assert_eq!(result, "this-key-does-not-exist-anywhere");
+    }
+
+    #[test]
+    fn missing_key_with_args_via_non_english_fallback_degrades_without_panic() {
+        let result = translate_with_args("fr", "this-key-does-not-exist-anywhere", &[("x", "1")]);
+        assert_eq!(result, "this-key-does-not-exist-anywhere");
     }
 
     // Pinning the Fluent plural selector dispatch on the chars-counted
@@ -210,9 +248,10 @@ mod tests {
     // =========================================================================
     // Build-time-ish coverage check: every `t("...")` / `t_args("...")`
     // literal in the client source tree must have a corresponding key in
-    // `locales/en/ui.ftl`. The fallback path in `translate()` panics on
-    // missing-in-English, so a stale or typo'd literal is a release bug
-    // — we'd rather catch it at `cargo test` than in production.
+    // `locales/en/ui.ftl`. `translate()` degrades a missing-in-English key
+    // to the raw key string rather than panicking, so a stale or typo'd
+    // literal would render untranslated in the UI — we'd rather catch it at
+    // `cargo test` than ship it.
     //
     // Scope: literal `"..."` keys only. Dynamic keys (variable, format!,
     // concat) cannot be statically checked and are skipped.
