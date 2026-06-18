@@ -69,7 +69,17 @@ static STARTUP_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None))
 
 /// Get the IPC socket path for single-instance communication
 fn get_ipc_socket_path() -> String {
-    #[cfg(unix)]
+    #[cfg(all(unix, test))]
+    {
+        let user = std::env::var("USER").unwrap_or_else(|_| "shared".to_string());
+        let pid = std::process::id();
+        std::env::temp_dir()
+            .join(format!("nexus-test-{user}-{pid}"))
+            .join("nexus.sock")
+            .to_string_lossy()
+            .into_owned()
+    }
+    #[cfg(all(unix, not(test)))]
     {
         // Linux: prefer XDG_RUNTIME_DIR, fallback to /tmp/nexus-$USER.sock
         // macOS: use TMPDIR
@@ -2121,6 +2131,23 @@ fn ipc_listener_stream() -> impl iced::futures::Stream<Item = Message> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn unix_ipc_path_redirects_under_temp_in_tests() {
+        let path = std::path::PathBuf::from(super::get_ipc_socket_path());
+        let user = std::env::var("USER").unwrap_or_else(|_| "shared".to_string());
+        let pid = std::process::id();
+        let expected = std::env::temp_dir()
+            .join(format!("nexus-test-{user}-{pid}"))
+            .join("nexus.sock");
+
+        assert_eq!(path, expected);
+        assert!(
+            path.starts_with(std::env::temp_dir()),
+            "IPC path must redirect under temp in tests, got {path:?}"
+        );
+    }
+
     #[cfg(windows)]
     fn token_user_buffer_for_well_known_sid(
         sid_type: windows_sys::Win32::Security::WELL_KNOWN_SID_TYPE,
