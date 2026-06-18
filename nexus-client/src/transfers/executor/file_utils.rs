@@ -312,7 +312,12 @@ pub fn is_safe_path(path: &str) -> bool {
 }
 
 fn is_windows_reserved_name(component: &str) -> bool {
-    let basename = component.split('.').next().unwrap_or(component);
+    let normalized_component = component.trim_end_matches([' ', '.']);
+    let basename = normalized_component
+        .split('.')
+        .next()
+        .unwrap_or(normalized_component)
+        .trim_end_matches([' ', '.']);
     let upper = basename.to_ascii_uppercase();
     matches!(
         upper.as_str(),
@@ -423,9 +428,13 @@ mod tests {
     #[test]
     fn test_is_safe_path_rejects_windows_reserved_names() {
         assert!(!is_safe_path("CON"));
+        assert!(!is_safe_path("CON "));
+        assert!(!is_safe_path("CON."));
         assert!(!is_safe_path("con"));
         assert!(!is_safe_path("NUL"));
+        assert!(!is_safe_path("NUL "));
         assert!(!is_safe_path("COM1"));
+        assert!(!is_safe_path("COM1 "));
         assert!(!is_safe_path("COM9"));
         assert!(!is_safe_path("LPT1"));
         assert!(!is_safe_path("LPT9"));
@@ -437,6 +446,8 @@ mod tests {
         assert!(!is_safe_path("dir/NUL.log"));
         assert!(!is_safe_path("dir/subdir/LPT1.tar.gz"));
         assert!(!is_safe_path("com1.backup"));
+        assert!(!is_safe_path("COM1 .txt"));
+        assert!(!is_safe_path("dir/NUL .log"));
     }
 
     #[test]
