@@ -90,7 +90,7 @@ fn has_effective_update_fields(request: &UserUpdateRequest) -> bool {
         || request
             .password
             .as_ref()
-            .is_some_and(|password| !password.trim().is_empty())
+            .is_some_and(|password| !password.is_empty())
         || request.is_admin.is_some()
         || request.enabled.is_some()
         || request.permissions.is_some()
@@ -198,7 +198,7 @@ where
         if request
             .password
             .as_ref()
-            .is_some_and(|password| !password.trim().is_empty())
+            .is_some_and(|password| !password.is_empty())
             && request.current_password.is_none()
         {
             return Err(user_update_error(err_current_password_required(ctx.locale)));
@@ -284,7 +284,7 @@ fn validate_user_update_common_request_shape(
     if request
         .password
         .as_ref()
-        .is_some_and(|password| !password.trim().is_empty())
+        .is_some_and(|password| !password.is_empty())
         && fold_name(target_username) == GUEST_USERNAME
     {
         return Err(user_update_error(err_cannot_change_guest_password(locale)));
@@ -332,7 +332,7 @@ where
     let password_change_requested = request
         .password
         .as_ref()
-        .is_some_and(|password| !password.trim().is_empty());
+        .is_some_and(|password| !password.is_empty());
     let mut verified_self_password_hash: Option<String> = None;
     let precomputed_password_hash = if password_change_requested {
         let requesting_user = match ctx
@@ -540,7 +540,7 @@ where
         // Password change requires current_password verification.
         if is_self_edit
             && let Some(ref new_password) = request.password
-            && !new_password.trim().is_empty()
+            && !new_password.is_empty()
             && verified_self_password_hash
                 .as_ref()
                 .is_none_or(|verified_hash| verified_hash != &target_account.hashed_password)
@@ -1014,8 +1014,9 @@ where
         };
 
         let requested_password_hash = if let Some(ref password) = request.password {
-            // Empty/whitespace password = no change.
-            if password.trim().is_empty() {
+            // Empty password = no change. Whitespace is a real password value
+            // and must be judged by the shared password validator.
+            if password.is_empty() {
                 None
             } else {
                 let min_strength = ctx.db.config.get_min_password_strength().await;
@@ -2041,7 +2042,7 @@ mod tests {
                 ..empty_user_update_request(admin_user.id, Some(session_id))
             },
             UserUpdateRequest {
-                password: Some("   ".to_string()),
+                password: Some(String::new()),
                 ..empty_user_update_request(admin_user.id, Some(session_id))
             },
             UserUpdateRequest {
@@ -5283,6 +5284,148 @@ mod tests {
         assert_eq!(
             user.hashed_password, original_hash,
             "Password should not have been changed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_whitespace_password_is_real_change() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "oldhash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: None,
+            password: Some("   ".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(success, "whitespace password should update: {error:?}");
+                assert!(error.is_none());
+                assert_eq!(id, Some(alice.id));
+                assert_eq!(username, Some("alice".to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        let user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            verify_password_async("   ".to_string(), user.hashed_password)
+                .await
+                .unwrap(),
+            "whitespace password should be stored verbatim"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_whitespace_password_not_dropped_with_other_change() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "oldhash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alice2".to_string()),
+            password: Some("   ".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(success, "mixed update should succeed: {error:?}");
+                assert!(error.is_none());
+                assert_eq!(id, Some(alice.id));
+                assert_eq!(username, Some("alice2".to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        let user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice2")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            verify_password_async("   ".to_string(), user.hashed_password)
+                .await
+                .unwrap(),
+            "password change must not be silently dropped when another field changes"
         );
     }
 
