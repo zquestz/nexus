@@ -665,7 +665,7 @@ Secret channels are hidden from `ChatList` for non-members. Only members and adm
 
 ## Flood Protection
 
-Chat messages are rate-limited using a token bucket algorithm to prevent flooding. This applies to both channel messages (`ChatSend`) and user messages (`UserMessage`).
+Chat messages are rate-limited using a token bucket algorithm to prevent flooding. This applies to both channel messages (`ChatSend`) and user messages (`UserMessage`) for the sender's visible identity.
 
 ### Configuration
 
@@ -678,12 +678,14 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 
 ### Behavior
 
-1. Each connection has a token bucket with capacity equal to the burst limit
+1. Each visible user identity has a token bucket with capacity equal to the burst limit
 2. Tokens refill at a rate of `chat_rate_limit / 60` tokens per second
 3. Each message consumes one token
 4. When tokens are exhausted, the message is rejected with a rate-limited error
 5. The error includes the wait time before the user can send again
-6. After 3 consecutive rate-limited messages, the connection is disconnected
+6. After 3 consecutive rate-limited messages, the session that trips the limit is disconnected
+
+Regular account sessions share one bucket and violation counter keyed by account ID. Shared and guest sessions are keyed by their active nickname, so two different shared nicknames are rate-limited independently.
 
 ### Bypass
 
@@ -770,7 +772,7 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
   topics do not survive a server restart
 - Empty topic (`""`) is valid and clears the topic display
 - Channel names are case-insensitive but preserve the case of the first creator
-- Flood protection is shared across channel messages and user messages per connection
+- Flood protection is shared across channel messages and user messages per visible user identity
 
 ## Server Configuration
 
