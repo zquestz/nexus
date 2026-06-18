@@ -304,8 +304,8 @@ pub struct AudioSettings {
     #[serde(default)]
     pub noise_suppression_level: NoiseSuppressionLevel,
 
-    /// Enable echo cancellation (default: false, for headphone users)
-    #[serde(default)]
+    /// Enable echo cancellation (default: true)
+    #[serde(default = "default_true")]
     pub echo_cancellation: bool,
 
     /// Enable automatic gain control (default: true)
@@ -338,7 +338,7 @@ impl Default for AudioSettings {
             ptt_release_delay: PttReleaseDelay::default(),
             noise_suppression: true,
             noise_suppression_level: NoiseSuppressionLevel::default(),
-            echo_cancellation: false,
+            echo_cancellation: true,
             agc: true,
             transient_suppression: false,
             mic_boost: MicBoost::default(),
@@ -382,7 +382,7 @@ mod tests {
             settings.noise_suppression_level,
             NoiseSuppressionLevel::Moderate
         );
-        assert!(!settings.echo_cancellation);
+        assert!(settings.echo_cancellation);
         assert!(settings.agc);
         assert!(!settings.transient_suppression);
         assert_eq!(settings.mic_boost, MicBoost::Off);

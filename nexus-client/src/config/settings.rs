@@ -470,7 +470,7 @@ pub struct Settings {
     pub minimize_to_tray: bool,
 
     /// Enable hardware (GPU) rendering instead of software rendering (requires restart)
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub hardware_rendering: bool,
 
     /// GPU rendering backend (requires restart, only used when hardware_rendering is enabled)
@@ -523,7 +523,7 @@ impl Default for Settings {
             audio: AudioSettings::default(),
             show_tray_icon: false,
             minimize_to_tray: false,
-            hardware_rendering: false,
+            hardware_rendering: true,
             gpu_backend: GpuBackend::default(),
             auto_away_timeout: AutoAwayTimeout::default(),
             auto_away_message: default_auto_away_message(),

@@ -33,9 +33,9 @@ const SILENCE_HOLDOVER_FRAMES: u32 = 20;
 
 /// Settings for audio processing features
 ///
-/// Default values are tuned for the common case of headphone users:
+/// Default values:
 /// - Noise suppression ON: Removes background noise with minimal latency cost
-/// - Echo cancellation OFF: Most users wear headphones; AEC adds latency and CPU overhead
+/// - Echo cancellation ON: Cancels speaker echo for users not on headphones; small latency/CPU cost
 /// - AGC ON: Normalizes volume levels across different microphones
 /// - Transient suppression OFF: Can occasionally clip word beginnings; enable if typing while talking
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,9 +45,9 @@ pub struct AudioProcessorSettings {
     pub noise_suppression: bool,
     /// Noise suppression aggressiveness (default: Moderate)
     pub noise_suppression_level: NoiseSuppressionLevel,
-    /// Enable echo cancellation (default: false)
-    /// Only needed when using speakers instead of headphones.
-    /// Adds latency and CPU overhead, so disabled by default.
+    /// Enable echo cancellation (default: true)
+    /// Cancels speaker echo for users not on headphones.
+    /// Adds some latency and CPU overhead.
     pub echo_cancellation: bool,
     /// Enable automatic gain control (default: true)
     /// Normalizes microphone volume to consistent levels.
@@ -66,7 +66,7 @@ impl Default for AudioProcessorSettings {
         Self {
             noise_suppression: true,
             noise_suppression_level: NoiseSuppressionLevel::default(),
-            echo_cancellation: false,
+            echo_cancellation: true,
             agc: true,
             transient_suppression: false,
             mic_boost: MicBoost::default(),
@@ -294,7 +294,7 @@ mod tests {
             settings.noise_suppression_level,
             NoiseSuppressionLevel::Moderate
         );
-        assert!(!settings.echo_cancellation);
+        assert!(settings.echo_cancellation);
         assert!(settings.agc);
         assert_eq!(settings.mic_boost, MicBoost::Off);
     }
