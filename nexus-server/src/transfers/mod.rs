@@ -18,8 +18,9 @@ mod transfer;
 mod types;
 mod upload;
 
-use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, io, net::SocketAddr, panic::AssertUnwindSafe, sync::Arc};
 
+use futures_util::FutureExt;
 use tokio::io::BufReader;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
@@ -124,8 +125,17 @@ where
         }
     }
 
-    let result =
-        handle_transfer_connection_inner_registered(socket, params, egress_dispatch_rx).await;
+    // Catch a panic in the handler so the egress cleanup below still runs — a
+    // bare `.await` would unwind straight past it and leak the registration.
+    // (The scheduler also self-heals on its next dispatch attempt to this
+    // connection; catching here makes the cleanup deterministic on every exit.)
+    let result = AssertUnwindSafe(handle_transfer_connection_inner_registered(
+        socket,
+        params,
+        egress_dispatch_rx,
+    ))
+    .catch_unwind()
+    .await;
 
     if egress_registered {
         match egress.unregister(egress_connection_id).await {
@@ -142,7 +152,11 @@ where
         }
     }
 
-    result
+    // Re-raise a caught panic after cleanup so tokio still observes the task panic.
+    match result {
+        Ok(result) => result,
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
 }
 
 async fn handle_transfer_connection_inner_registered<S>(
