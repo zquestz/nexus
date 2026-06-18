@@ -123,6 +123,18 @@ fn user_update_error(error: String) -> Outcome {
     }))
 }
 
+/// Coarse pre-fetch gate: may this requester even reach the target lookup and
+/// the full authority pass? True for self-edit (by stable account id) or a
+/// `UserEdit` holder. A `true` result does NOT authorize the edit — it only
+/// admits the request to `validate_user_update_authority_preconditions` and the
+/// rest of the checks (e.g. a shared account passes here by `user_id` but is
+/// rejected later by the shared-self-edit guard). Its only job is to stop an
+/// unauthorized caller before the `user_not_found`-vs-`permission_denied` fetch
+/// leaks which account ids exist.
+fn requester_may_reach_target(request: &UserUpdateRequest, requesting_user: &UserSession) -> bool {
+    request.id == requesting_user.user_id || requesting_user.has_permission(Permission::UserEdit)
+}
+
 fn validate_target_username(target_username: &str, locale: &str) -> Result<(), Outcome> {
     if let Err(e) = validators::validate_username(target_username) {
         let error_msg = match e {
@@ -334,6 +346,18 @@ where
             }
         };
 
+        // Gate before the existence-revealing fetch so an unauthorized caller
+        // can't probe account-id existence via user_not_found vs permission_denied.
+        if !requester_may_reach_target(&request, &requesting_user) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
+            return dispatch_outcome(
+                user_update_error(err_permission_denied(ctx.locale)),
+                ctx,
+                HANDLER_USER_UPDATE,
+            )
+            .await;
+        }
+
         let target_account = match ctx.db.users.get_user_by_id(request.id).await {
             Ok(Some(account)) => account,
             Ok(None) => {
@@ -464,6 +488,13 @@ where
                 break 'locked Outcome::Disconnect;
             }
         };
+
+        // Gate before the existence-revealing fetch so an unauthorized caller
+        // can't probe account-id existence via user_not_found vs permission_denied.
+        if !requester_may_reach_target(&request, &requesting_user) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
+            break 'locked user_update_error(err_permission_denied(ctx.locale));
+        }
 
         let target_account = match ctx.db.users.get_user_by_id(request.id).await {
             Ok(Some(account)) => account,
@@ -3613,6 +3644,121 @@ mod tests {
 
         let request = UserUpdateRequest {
             id: 99999, // Non-existent user ID
+            current_password: None,
+            username: Some("newname".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_user_not_found(DEFAULT_TEST_LOCALE, "99999")
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_nonexistent_id_denied_without_user_edit() {
+        // Account-id existence oracle: a non-admin without `user_edit` editing a
+        // non-existent id must get permission_denied — NOT user_not_found — so it
+        // can't probe which account ids are live. (Post-lock / non-password path.)
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "nobody", "password", &[], false).await;
+
+        let request = UserUpdateRequest {
+            id: 99999,
+            current_password: None,
+            username: Some("newname".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_nonexistent_id_password_change_denied_without_user_edit() {
+        // Same oracle guard on the password-change (pre-lock) path.
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "nobody", "password", &[], false).await;
+
+        let request = UserUpdateRequest {
+            id: 99999,
+            current_password: None,
+            username: None,
+            password: Some("brandnewpass".to_string()),
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_permission_denied(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_nonexistent_id_returns_not_found_with_user_edit() {
+        // Authorized editors (UserEdit) may still learn a target id is missing —
+        // the oracle guard only hides existence from unauthorized callers.
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit],
+            false,
+        )
+        .await;
+
+        let request = UserUpdateRequest {
+            id: 99999,
             current_password: None,
             username: Some("newname".to_string()),
             password: None,
