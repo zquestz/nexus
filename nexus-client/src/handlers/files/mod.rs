@@ -247,9 +247,10 @@ fn sanitize_filename(name: &str, fallback: &str) -> String {
         return fallback.to_string();
     }
 
-    // Check for Windows reserved names (case-insensitive)
-    // These cannot be used as filenames on Windows, even with extensions
-    let upper = trimmed.to_uppercase();
+    // Check for Windows reserved names (case-insensitive). The reservation
+    // applies to the stem before the first dot, so "CON.txt" is reserved too.
+    let stem = trimmed.split('.').next().unwrap_or(trimmed);
+    let upper = stem.to_uppercase();
     let is_reserved = matches!(
         upper.as_str(),
         "CON"
@@ -352,6 +353,13 @@ mod tests {
         assert_eq!(sanitize_filename("COM9", "fallback"), "_COM9");
         assert_eq!(sanitize_filename("LPT1", "fallback"), "_LPT1");
         assert_eq!(sanitize_filename("LPT9", "fallback"), "_LPT9");
+        // Reserved even with an extension — the stem before the first dot is
+        // what's reserved on Windows.
+        assert_eq!(sanitize_filename("CON.txt", "fallback"), "_CON.txt");
+        assert_eq!(sanitize_filename("nul.log", "fallback"), "_nul.log");
+        assert_eq!(sanitize_filename("COM1.tar.gz", "fallback"), "_COM1.tar.gz");
+        // A non-reserved stem (e.g. "console") with an extension is untouched.
+        assert_eq!(sanitize_filename("console.txt", "fallback"), "console.txt");
     }
 
     #[test]
