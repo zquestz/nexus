@@ -255,6 +255,9 @@ err-reason-too-long = Reason is too long (max { $max_length } characters)
 err-reason-invalid = Reason contains invalid characters
 err-banned-permanent = You have been banned from this server
 err-banned-with-expiry = You have been banned from this server (expires in { $remaining })
+duration-remaining-days = { $days }d { $hours }h
+duration-remaining-hours = { $hours }h { $minutes }m
+duration-remaining-minutes = { $minutes }m
 
 # Trust System Errors
 err-trust-invalid-target = Invalid target (use nickname, IP address, or CIDR range)

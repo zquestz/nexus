@@ -257,6 +257,9 @@ err-reason-too-long = O motivo do banimento é demasiado longo (máximo { $max_l
 err-reason-invalid = O motivo do banimento contém caracteres inválidos
 err-banned-permanent = Foi banido deste servidor
 err-banned-with-expiry = Foi banido deste servidor (expira em { $remaining })
+duration-remaining-days = { $days }d { $hours }h
+duration-remaining-hours = { $hours }h { $minutes }m
+duration-remaining-minutes = { $minutes }m
 
 # File Search Errors
 err-search-query-empty = A consulta de pesquisa não pode estar vazia

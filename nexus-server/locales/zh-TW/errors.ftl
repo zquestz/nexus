@@ -257,6 +257,9 @@ err-reason-too-long = 封鎖原因過長（最多 { $max_length } 個字元）
 err-reason-invalid = 封鎖原因包含無效字元
 err-banned-permanent = 您已被此伺服器封鎖
 err-banned-with-expiry = 您已被此伺服器封鎖（{ $remaining } 後解除）
+duration-remaining-days = { $days }天 { $hours }小時
+duration-remaining-hours = { $hours }小時 { $minutes }分鐘
+duration-remaining-minutes = { $minutes }分鐘
 
 # File Search Errors
 err-search-query-empty = 搜尋查詢不能為空

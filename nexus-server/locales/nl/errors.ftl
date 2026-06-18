@@ -257,6 +257,9 @@ err-reason-too-long = Verbanningsreden is te lang (max { $max_length } tekens)
 err-reason-invalid = Verbanningsreden bevat ongeldige tekens
 err-banned-permanent = U bent verbannen van deze server
 err-banned-with-expiry = U bent verbannen van deze server (verloopt over { $remaining })
+duration-remaining-days = { $days }d { $hours }u
+duration-remaining-hours = { $hours }u { $minutes }m
+duration-remaining-minutes = { $minutes }m
 
 # File Search Errors
 err-search-query-empty = Zoekopdracht mag niet leeg zijn

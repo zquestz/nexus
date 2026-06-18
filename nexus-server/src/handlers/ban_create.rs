@@ -405,7 +405,7 @@ fn build_ban_disconnect_message(locale: &str, expires_at: Option<i64>) -> Server
     use super::err_banned_with_expiry;
 
     let message = if let Some(expiry) = expires_at {
-        let remaining = format_duration_remaining(expiry);
+        let remaining = format_duration_remaining(locale, expiry);
         err_banned_with_expiry(locale, &remaining)
     } else {
         err_banned_permanent(locale)

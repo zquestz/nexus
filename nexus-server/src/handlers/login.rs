@@ -119,7 +119,7 @@ fn handle_login_snapshot_error(
 
 fn late_ban_error(locale: &str, expires_at: Option<i64>) -> String {
     match expires_at {
-        Some(expiry) => err_banned_with_expiry(locale, &format_duration_remaining(expiry)),
+        Some(expiry) => err_banned_with_expiry(locale, &format_duration_remaining(locale, expiry)),
         None => err_banned_permanent(locale),
     }
 }

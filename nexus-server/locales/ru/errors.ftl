@@ -257,6 +257,9 @@ err-reason-too-long = Причина блокировки слишком дли�
 err-reason-invalid = Причина блокировки содержит недопустимые символы
 err-banned-permanent = Вы заблокированы на этом сервере
 err-banned-with-expiry = Вы заблокированы на этом сервере (истекает через { $remaining })
+duration-remaining-days = { $days }д { $hours }ч
+duration-remaining-hours = { $hours }ч { $minutes }м
+duration-remaining-minutes = { $minutes }м
 
 # File Search Errors
 err-search-query-empty = Поисковый запрос не может быть пустым

@@ -3,6 +3,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
+use crate::i18n::t_args;
 use nexus_common::time::{SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE};
 
 /// Parse a `<number><unit>` duration (unit: `m`/`h`/`d`) into an expiry timestamp.
@@ -48,9 +49,11 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
     Ok(Some(i64::try_from(expiry).map_err(|_| ())?))
 }
 
-/// Format the time remaining until `expires_at` (Unix timestamp) as a string
-/// like "2d 5h", "3h 45m", or "15m" (clamped to a minimum of "1m").
-pub fn format_duration_remaining(expires_at: i64) -> String {
+/// Format the time remaining until `expires_at` (Unix timestamp) into a
+/// localized string like "2d 5h", "3h 45m", or "15m" (clamped to a minimum of
+/// one minute). The unit labels are translated per `locale` via the
+/// `duration-remaining-*` keys, mirroring the client's ban/trust list display.
+pub fn format_duration_remaining(locale: &str, expires_at: i64) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
@@ -63,17 +66,41 @@ pub fn format_duration_remaining(expires_at: i64) -> String {
     let minutes = (remaining_secs % SECONDS_PER_HOUR as i64) / SECONDS_PER_MINUTE as i64;
 
     if days > 0 {
-        format!("{}d {}h", days, hours)
+        t_args(
+            locale,
+            "duration-remaining-days",
+            &[("days", &days.to_string()), ("hours", &hours.to_string())],
+        )
     } else if hours > 0 {
-        format!("{}h {}m", hours, minutes)
+        t_args(
+            locale,
+            "duration-remaining-hours",
+            &[
+                ("hours", &hours.to_string()),
+                ("minutes", &minutes.to_string()),
+            ],
+        )
     } else {
-        format!("{}m", minutes.max(1))
+        t_args(
+            locale,
+            "duration-remaining-minutes",
+            &[("minutes", &minutes.max(1).to_string())],
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fluent wraps interpolated values in directional isolation marks
+    /// (U+2066..=U+2069); strip them so the terse duration format can be
+    /// asserted exactly.
+    fn visible(s: &str) -> String {
+        s.chars()
+            .filter(|c| !matches!(c, '\u{2066}'..='\u{2069}'))
+            .collect()
+    }
 
     #[test]
     fn test_parse_duration_none() {
@@ -206,7 +233,10 @@ mod tests {
 
         // 2 days and 5 hours from now
         let expires_at = now + (2 * SECONDS_PER_DAY as i64) + (5 * SECONDS_PER_HOUR as i64);
-        assert_eq!(format_duration_remaining(expires_at), "2d 5h");
+        assert_eq!(
+            visible(&format_duration_remaining("en", expires_at)),
+            "2d 5h"
+        );
     }
 
     #[test]
@@ -218,7 +248,10 @@ mod tests {
 
         // 3 hours and 45 minutes from now
         let expires_at = now + (3 * SECONDS_PER_HOUR as i64) + (45 * SECONDS_PER_MINUTE as i64);
-        assert_eq!(format_duration_remaining(expires_at), "3h 45m");
+        assert_eq!(
+            visible(&format_duration_remaining("en", expires_at)),
+            "3h 45m"
+        );
     }
 
     #[test]
@@ -230,7 +263,7 @@ mod tests {
 
         // 15 minutes from now
         let expires_at = now + (15 * SECONDS_PER_MINUTE as i64);
-        assert_eq!(format_duration_remaining(expires_at), "15m");
+        assert_eq!(visible(&format_duration_remaining("en", expires_at)), "15m");
     }
 
     #[test]
@@ -242,7 +275,7 @@ mod tests {
 
         // 30 seconds from now (less than a minute)
         let expires_at = now + 30;
-        assert_eq!(format_duration_remaining(expires_at), "1m");
+        assert_eq!(visible(&format_duration_remaining("en", expires_at)), "1m");
     }
 
     #[test]
@@ -254,6 +287,21 @@ mod tests {
 
         // Already expired (in the past)
         let expires_at = now - 100;
-        assert_eq!(format_duration_remaining(expires_at), "1m");
+        assert_eq!(visible(&format_duration_remaining("en", expires_at)), "1m");
+    }
+
+    #[test]
+    fn test_format_duration_remaining_localizes_units() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Unit labels are translated per-locale, not hardcoded English.
+        let expires_at = now + (2 * SECONDS_PER_DAY as i64) + (5 * SECONDS_PER_HOUR as i64);
+        assert_eq!(
+            visible(&format_duration_remaining("ja", expires_at)),
+            "2日 5時間"
+        );
     }
 }

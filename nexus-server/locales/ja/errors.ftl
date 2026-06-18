@@ -257,6 +257,9 @@ err-reason-too-long = BAN理由が長すぎます（最大{ $max_length }文字�
 err-reason-invalid = BAN理由に無効な文字が含まれています
 err-banned-permanent = このサーバーからBANされました
 err-banned-with-expiry = このサーバーからBANされました（{ $remaining }後に解除）
+duration-remaining-days = { $days }日 { $hours }時間
+duration-remaining-hours = { $hours }時間 { $minutes }分
+duration-remaining-minutes = { $minutes }分
 
 # File Search Errors
 err-search-query-empty = 検索クエリを空にすることはできません
