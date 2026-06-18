@@ -877,6 +877,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_non_canonical_fingerprint() {
+        use nexus_common::framing::FrameReader;
+        use nexus_common::io::read_tracker_server_message_with_idle_progress_timeout;
+
+        let state = Arc::new(TrackerState::new(
+            Registry::new(0, 1),
+            None,
+            None,
+            300,
+            0,
+            0,
+            std::time::Duration::ZERO,
+        ));
+        let peer_addr: SocketAddr = "8.8.8.8:12345".parse().expect("peer addr");
+        let (client, server) = tokio::io::duplex(8192);
+        let mut writer = FrameWriter::new(server);
+
+        // Valid params except a non-canonical fingerprint — the handler must
+        // reject it at the boundary, before any registry insertion.
+        let mut params = valid_register_params("FpTest");
+        params.fingerprint = "not-a-canonical-fingerprint".to_string();
+
+        let outcome = handle_initial_register(params, &state, &mut writer, peer_addr)
+            .await
+            .expect("handler should send a rejection response");
+        assert!(matches!(outcome, InitialRegisterOutcome::Rejected));
+        assert_eq!(
+            state.registry.lock().expect("registry mutex").len(),
+            0,
+            "a rejected registration must not be inserted"
+        );
+
+        let mut reader = FrameReader::new(client);
+        let received =
+            read_tracker_server_message_with_idle_progress_timeout(&mut reader, None, None)
+                .await
+                .expect("read response")
+                .expect("response should be present");
+
+        match received.message {
+            TrackerServerMessage::TrackerServerRegisterResponse {
+                success,
+                refresh_interval,
+                error,
+                error_kind,
+            } => {
+                assert!(!success);
+                assert_eq!(refresh_interval, None);
+                assert_eq!(error_kind.as_deref(), Some(ERROR_KIND_INVALID));
+                assert_eq!(error, Some(err_tracker_fingerprint_invalid("en")));
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn rejects_malformed_address() {
         let r = empty_resolver();
         // `validate_public_address` rejects embedded ports.
