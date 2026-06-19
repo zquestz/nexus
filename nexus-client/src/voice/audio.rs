@@ -1173,9 +1173,11 @@ where
                         }
                     }
 
-                    // Write from ring buffer directly to audio output (O(1) per sample)
+                    // Write from ring buffer directly to audio output (O(1) per sample).
+                    // Resampling can introduce small overshoots, so keep the final device
+                    // samples inside the normalized PCM range.
                     for dst in data.iter_mut() {
-                        *dst = T::from_sample(state.resampled_ring.read_sample());
+                        *dst = T::from_sample(sanitize_sample(state.resampled_ring.read_sample()));
                     }
                 } else {
                     // No resampling needed - direct path (no persistent buffer needed)
@@ -1286,9 +1288,11 @@ where
                         }
                     }
 
-                    // Write from ring buffer directly to audio output (O(1) per sample)
+                    // Write from ring buffer directly to audio output (O(1) per sample).
+                    // Resampling can introduce small overshoots, so keep the final device
+                    // samples inside the normalized PCM range.
                     for dst in data.iter_mut() {
-                        *dst = T::from_sample(state.resampled_ring.read_sample());
+                        *dst = T::from_sample(sanitize_sample(state.resampled_ring.read_sample()));
                     }
                 } else {
                     // No resampling needed - direct path with stereo upmix
@@ -1325,8 +1329,28 @@ where
 /// as it approaches the maximum, resulting in less harsh distortion
 /// when multiple loud sources are summed together.
 pub(crate) fn soft_clip(sample: f32) -> f32 {
+    if !sample.is_finite() {
+        return 0.0;
+    }
+
     // tanh gives smooth saturation, but we scale input to make it more gradual
-    (sample * SOFT_CLIP_GAIN).tanh() / SOFT_CLIP_GAIN.tanh()
+    sanitize_sample((sample * SOFT_CLIP_GAIN).tanh() / SOFT_CLIP_GAIN.tanh())
+}
+
+/// Keep a sample inside the normalized full-scale PCM range.
+pub(crate) fn sanitize_sample(sample: f32) -> f32 {
+    if sample.is_finite() {
+        sample.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+/// Sanitize an audio frame in place without changing valid in-range samples.
+pub(crate) fn sanitize_audio_frame(frame: &mut [f32]) {
+    for sample in frame {
+        *sample = sanitize_sample(*sample);
+    }
 }
 
 // =============================================================================
@@ -1395,12 +1419,28 @@ mod tests {
     fn test_soft_clip_limits() {
         // Large values should be limited
         let output = soft_clip(2.0);
-        assert!(output < 1.5);
+        assert!(output <= 1.0);
         assert!(output > 0.0);
 
         let output_neg = soft_clip(-2.0);
-        assert!(output_neg > -1.5);
+        assert!(output_neg >= -1.0);
         assert!(output_neg < 0.0);
+    }
+
+    #[test]
+    fn test_soft_clip_sanitizes_non_finite_samples() {
+        assert_eq!(soft_clip(f32::NAN), 0.0);
+        assert_eq!(soft_clip(f32::INFINITY), 0.0);
+        assert_eq!(soft_clip(f32::NEG_INFINITY), 0.0);
+    }
+
+    #[test]
+    fn test_sanitize_audio_frame_preserves_valid_samples_and_bounds_invalid() {
+        let mut frame = vec![-2.0, -0.5, 0.0, 0.5, 2.0, f32::NAN, f32::INFINITY];
+
+        sanitize_audio_frame(&mut frame);
+
+        assert_eq!(frame, vec![-1.0, -0.5, 0.0, 0.5, 1.0, 0.0, 0.0]);
     }
 
     #[test]

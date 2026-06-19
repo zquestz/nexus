@@ -23,7 +23,7 @@ use crate::constants::{
     ERR_VOICE_PLAYBACK_START, ERR_VOICE_THREAD_TOKIO_RUNTIME,
 };
 
-use super::audio::{AudioCapture, AudioMixer, soft_clip};
+use super::audio::{AudioCapture, AudioMixer, sanitize_audio_frame, soft_clip};
 use super::codec::{DecoderPool, VoiceEncoder};
 use super::dtls::{VoiceDtlsCommand, VoiceDtlsEvent, run_voice_client};
 use super::jitter::JitterBufferPool;
@@ -780,9 +780,12 @@ async fn run_voice_session(
                     && capture.is_active()
                     && let Some(mut samples) = capture.take_frame()
                 {
+                    sanitize_audio_frame(&mut samples);
+
                     // Apply audio processing (noise suppression, AGC, AEC) to capture
                     if let Some(ref mut proc) = processor {
                         let _ = proc.process_capture_frame(&mut samples);
+                        sanitize_audio_frame(&mut samples);
 
                         // In toggle mode, use VAD to gate transmission
                         // This prevents sending silence/noise when mic is "open"
@@ -1206,9 +1209,9 @@ mod tests {
             assert!((actual - expected).abs() < f32::EPSILON);
         }
         assert!((frame[1] - 0.5).abs() < 0.1);
-        assert!(frame[2] < 2.0);
+        assert!(frame[2] <= 1.0);
         assert!(frame[2] > 0.0);
-        assert!(frame[3] > -2.0);
+        assert!(frame[3] >= -1.0);
         assert!(frame[3] < 0.0);
     }
 
