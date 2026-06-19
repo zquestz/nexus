@@ -42,7 +42,7 @@ pub use error_kind::{
 };
 
 /// Version information for the Nexus BBS protocol
-pub const PROTOCOL_VERSION: &str = "0.9.3";
+pub const PROTOCOL_VERSION: &str = "0.9.4";
 
 /// Client/server feature identifiers used in `Login.features`,
 /// `LoginResponse.features`, and user-info feature reporting.

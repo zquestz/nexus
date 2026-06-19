@@ -12,7 +12,7 @@
 
 ## Audit Follow-Ups
 
-These are the remaining non-urgent items from the 0.9.3 hardening pass.
+These are the remaining non-urgent items from the 0.9.4 hardening pass.
 
 ### Chat Message Render Cache
 

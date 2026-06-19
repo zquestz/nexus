@@ -4440,7 +4440,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-client"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "audioadapter-buffers",
@@ -4501,7 +4501,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-common"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "base64",
  "blake3",
@@ -4535,7 +4535,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-server"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "argon2",
  "async-trait",
