@@ -188,6 +188,9 @@ mod tests {
     use crate::handlers::tracker_list::handle_tracker_list;
     use crate::handlers::tracker_remove::handle_tracker_remove;
     use crate::handlers::tracker_update::{TrackerUpdateRequest, handle_tracker_update};
+    use crate::tracker::testing::{MockBehavior, MockTracker};
+    use nexus_common::tracker_protocol::TrackerClientMessage;
+    use std::time::Duration;
 
     fn valid_request() -> TrackerAddRequest {
         TrackerAddRequest {
@@ -198,6 +201,27 @@ mod tests {
             name: "Public".to_string(),
             enabled: true,
         }
+    }
+
+    /// Extract the registration password from a captured mock message.
+    fn register_password(msg: &TrackerClientMessage) -> Option<&str> {
+        match msg {
+            TrackerClientMessage::TrackerServerRegister { password, .. } => password.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Poll `pred` every 25ms until it returns true; panic after 10s. The
+    /// mock speaks over real sockets, so task state advances asynchronously
+    /// relative to handler returns.
+    async fn wait_until(what: &str, pred: impl Fn() -> bool) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !pred() {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
     }
 
     #[tokio::test]
@@ -686,6 +710,119 @@ mod tests {
             }
             other => panic!("expected empty list, got {other:?}"),
         }
+    }
+
+    /// Companion to the lifecycle walk above, but against a *live* mock
+    /// tracker: proves `replace()` respawns from the freshly written row —
+    /// the post-update re-registration must carry the updated password,
+    /// which `status_for(id).is_some()` alone can't distinguish from a
+    /// stale-snapshot respawn.
+    #[tokio::test]
+    async fn update_reregisters_with_updated_password() {
+        let mock = MockTracker::start(MockBehavior::default()).await;
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[
+                db::Permission::TrackerAdd,
+                db::Permission::TrackerEdit,
+                db::Permission::TrackerRemove,
+            ],
+            false,
+        )
+        .await;
+
+        // ---- Add, pointing at the live mock ----
+        handle_tracker_add(
+            TrackerAddRequest {
+                address: mock.addr.ip().to_string(),
+                port: mock.addr.port(),
+                fingerprint: None,
+                password: Some("register-pass-a".to_string()),
+                name: "Live".to_string(),
+                enabled: true,
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .expect("add call");
+        let id = match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerAddResponse {
+                success: true,
+                id: Some(id),
+                ..
+            } => id,
+            other => panic!("expected add success, got {other:?}"),
+        };
+
+        // The spawned task completes TOFU and registers with the original
+        // password before we update (so the Stage 1 pin is already written).
+        wait_until("initial registration with the original password", || {
+            mock.behavior
+                .captured_registers
+                .lock()
+                .expect("captured registers lock")
+                .iter()
+                .any(|m| register_password(m) == Some("register-pass-a"))
+        })
+        .await;
+        wait_until("connected status after initial registration", || {
+            test_ctx
+                .tracker_manager
+                .status_for(id)
+                .is_some_and(|s| s.connected)
+        })
+        .await;
+
+        // ---- Update the registration password ----
+        handle_tracker_update(
+            TrackerUpdateRequest {
+                id,
+                address: None,
+                port: None,
+                fingerprint: None,
+                password: Some("register-pass-b".to_string()),
+                name: None,
+                enabled: None,
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .expect("update call");
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerUpdateResponse { success: true, .. } => {}
+            other => panic!("expected update success, got {other:?}"),
+        }
+
+        // The replacement task re-registers carrying the updated password.
+        wait_until("re-registration with the updated password", || {
+            mock.behavior
+                .captured_registers
+                .lock()
+                .expect("captured registers lock")
+                .iter()
+                .any(|m| register_password(m) == Some("register-pass-b"))
+        })
+        .await;
+
+        // ---- Remove tears the task down ----
+        handle_tracker_remove(id, Some(session_id), &mut test_ctx.handler_context())
+            .await
+            .expect("remove call");
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerRemoveResponse { success: true, .. } => {}
+            other => panic!("expected remove success, got {other:?}"),
+        }
+        assert!(
+            test_ctx.tracker_manager.status_for(id).is_none(),
+            "manager should have terminated the task on remove"
+        );
+
+        mock.stop().await;
     }
 
     /// Concurrent-lifecycle regression: a TrackerRemove on the id TrackerAdd

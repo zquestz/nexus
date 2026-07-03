@@ -10,7 +10,7 @@ mod manager;
 mod status;
 mod task;
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 mod tls;
 
 pub use context::TrackerContext;
