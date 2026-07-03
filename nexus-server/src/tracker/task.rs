@@ -7,6 +7,7 @@
 //! safe at every await point — drop semantics on the TLS stream and
 //! the status `Arc<RwLock<TrackerStatus>>` handle cleanup.
 
+use std::borrow::Cow;
 use std::io;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -221,7 +222,7 @@ async fn attempt_connection_cycle(
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_INVALID_HOST
             );
-            set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
+            set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID, None);
             return CycleOutcome::Unrecoverable;
         }
     };
@@ -244,7 +245,7 @@ async fn attempt_connection_cycle(
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_DNS_FAILED
             );
-            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
         Err(_) => {
@@ -255,7 +256,7 @@ async fn attempt_connection_cycle(
                 timeout_secs = DNS_LOOKUP_TIMEOUT.as_secs(),
                 "{}", LOG_TRACKER_REGISTRATION_DNS_TIMEOUT
             );
-            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
     };
@@ -266,7 +267,7 @@ async fn attempt_connection_cycle(
             address = %record.address,
             "{}", LOG_TRACKER_REGISTRATION_DNS_NO_RECORDS
         );
-        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED, None);
         return CycleOutcome::Transient { connected: false };
     }
 
@@ -281,7 +282,7 @@ async fn attempt_connection_cycle(
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_TCP_FAILED
             );
-            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
         Err(_) => {
@@ -291,7 +292,7 @@ async fn attempt_connection_cycle(
                 timeout_secs = CONNECTION_TIMEOUT.as_secs(),
                 "{}", LOG_TRACKER_REGISTRATION_TCP_FAILED
             );
-            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
     };
@@ -313,7 +314,7 @@ async fn attempt_connection_cycle(
                     err = %e,
                     "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
+                set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED, None);
                 return CycleOutcome::Transient { connected: false };
             }
             Err(_) => {
@@ -323,7 +324,7 @@ async fn attempt_connection_cycle(
                     timeout_secs = CONNECTION_TIMEOUT.as_secs(),
                     "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
+                set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED, None);
                 return CycleOutcome::Transient { connected: false };
             }
         };
@@ -337,7 +338,7 @@ async fn attempt_connection_cycle(
                 name = %record.name,
                 "{}", LOG_TRACKER_REGISTRATION_NO_PEER_CERTS
             );
-            set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
     };
@@ -353,10 +354,10 @@ async fn attempt_connection_cycle(
             observed = %tls_observed,
             "{}", LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH
         );
-        set_status_with_pending_fingerprint(
+        set_status_error(
             status,
             ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
-            tls_observed.clone(),
+            Some(tls_observed.clone()),
         );
         return CycleOutcome::Unrecoverable;
     }
@@ -374,7 +375,7 @@ async fn attempt_connection_cycle(
             err = %e,
             "{}", LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED
         );
-        set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+        set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED, None);
         return CycleOutcome::Transient { connected: false };
     }
 
@@ -394,7 +395,7 @@ async fn attempt_connection_cycle(
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
             );
-            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
         Ok(Err(HandshakeReadError::Closed)) => {
@@ -403,7 +404,7 @@ async fn attempt_connection_cycle(
                 name = %record.name,
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED
             );
-            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
         Ok(Err(HandshakeReadError::Rejected { error })) => {
@@ -413,7 +414,7 @@ async fn attempt_connection_cycle(
                 err = %sanitize_for_log(&error.unwrap_or_default()),
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED
             );
-            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
         Ok(Err(HandshakeReadError::Unexpected { received })) => {
@@ -423,7 +424,7 @@ async fn attempt_connection_cycle(
                 received = received,
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_UNEXPECTED
             );
-            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
         Err(_elapsed) => {
@@ -432,7 +433,7 @@ async fn attempt_connection_cycle(
                 name = %record.name,
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
             );
-            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED, None);
             return CycleOutcome::Transient { connected: false };
         }
     };
@@ -448,7 +449,7 @@ async fn attempt_connection_cycle(
             server_reported = TRACKER_FINGERPRINT_MALFORMED_SENTINEL,
             "{}", LOG_TRACKER_REGISTRATION_STAGE2_MALFORMED
         );
-        set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+        set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR, None);
         return CycleOutcome::Unrecoverable;
     }
     if server_reported != tls_observed {
@@ -463,7 +464,7 @@ async fn attempt_connection_cycle(
         // write `pending_fingerprint`: it feeds `TrackerAcceptFingerprint`
         // as a one-click promote-to-pin, which would let an admin pin
         // the attacker's cert. Recovery requires Edit / Remove.
-        set_status_error(status, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED);
+        set_status_error(status, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED, None);
         return CycleOutcome::Unrecoverable;
     }
 
@@ -489,7 +490,7 @@ async fn attempt_connection_cycle(
                     err = %e,
                     "{}", LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
+                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED, None);
                 return CycleOutcome::Transient { connected: false };
             }
             Err(e) => {
@@ -499,7 +500,7 @@ async fn attempt_connection_cycle(
                     err = %e,
                     "{}", LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
+                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED, None);
                 return CycleOutcome::Unrecoverable;
             }
         }
@@ -564,7 +565,7 @@ where
                             name = %record.name,
                             "{}", LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME
                         );
-                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
+                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST, None);
                         return CycleOutcome::Transient {
                             connected: connected_once,
                         };
@@ -575,7 +576,7 @@ where
                             name = %record.name,
                             "{}", LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE
                         );
-                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
+                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST, None);
                         return CycleOutcome::Transient {
                             connected: connected_once,
                         };
@@ -587,7 +588,7 @@ where
                             err = %e,
                             "{}", LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE
                         );
-                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
+                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST, None);
                         return CycleOutcome::Transient {
                             connected: connected_once,
                         };
@@ -605,7 +606,7 @@ where
                     err = %e,
                     "{}", LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
+                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED, None);
                 return CycleOutcome::Transient {
                     connected: connected_once,
                 };
@@ -619,7 +620,7 @@ where
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED
             );
-            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST, None);
             return CycleOutcome::Transient {
                 connected: connected_once,
             };
@@ -635,7 +636,7 @@ where
                     name = %record.name,
                     "{}", LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST, None);
                 return CycleOutcome::Transient {
                     connected: connected_once,
                 };
@@ -647,7 +648,7 @@ where
                     err = %e,
                     "{}", LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST, None);
                 return CycleOutcome::Transient {
                     connected: connected_once,
                 };
@@ -658,7 +659,7 @@ where
                     name = %record.name,
                     "{}", LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST, None);
                 return CycleOutcome::Transient {
                     connected: connected_once,
                 };
@@ -730,7 +731,7 @@ where
                         rejected_kind = %sanitize_for_log(raw),
                         "{}", LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND
                     );
-                    set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+                    set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR, None);
                     return CycleOutcome::Unrecoverable;
                 }
                 // Decide against the *raw* input: only a recognized
@@ -746,8 +747,10 @@ where
                 // When the tracker omits a kind, default to "connection
                 // lost" (the wire ate the response) rather than
                 // "invalid", which would imply our payload was rejected.
-                let kind =
-                    error_kind.unwrap_or_else(|| ERROR_KIND_TRACKER_CONNECTION_LOST.to_string());
+                let kind = error_kind.map_or(
+                    Cow::Borrowed(ERROR_KIND_TRACKER_CONNECTION_LOST),
+                    Cow::Owned,
+                );
                 // Tracker-supplied `error` text (localized to the "en"
                 // we send) is operator-log only — the admin UI renders
                 // the kind via the BBS server's own i18n in their locale.
@@ -759,7 +762,7 @@ where
                     err = %sanitize_for_log(&detail),
                     "{}", LOG_TRACKER_REGISTRATION_REGISTER_REJECTED
                 );
-                set_status_error(status, &kind);
+                set_status_error(status, kind, None);
                 return outcome;
             }
             // Tracker reported a protocol-level error (role violation,
@@ -773,7 +776,7 @@ where
                     err = %sanitize_for_log(&message),
                     "{}", LOG_TRACKER_REGISTRATION_TRACKER_REPORTED_ERROR
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+                set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR, None);
                 return CycleOutcome::Unrecoverable;
             }
             // Client-flow response on our server connection — a tracker
@@ -784,7 +787,7 @@ where
                     name = %record.name,
                     "{}", LOG_TRACKER_REGISTRATION_WRONG_FLOW_RESPONSE
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+                set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR, None);
                 return CycleOutcome::Unrecoverable;
             }
         }
@@ -913,26 +916,22 @@ fn observed_fingerprint(stream: &tokio_rustls::client::TlsStream<TcpStream>) -> 
     ))
 }
 
-// These set only the machine-readable `last_error_kind`. The admin-UI
+// Sets the machine-readable `last_error_kind` (plus, for Stage 1
+// mismatches, the observed-but-unaccepted fingerprint). The admin-UI
 // message is translated at handler compose-time in the admin's locale;
 // the raw error flows to operator logs separately at the call site.
+// `kind` is `Into<Cow>` so the `ERROR_KIND_*` constant sites store
+// `&'static str` allocation-free; only a tracker-supplied kind is owned.
 
-fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: &str) {
-    let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
-    s.connected = false;
-    s.last_error_kind = Some(kind.to_string());
-    s.refresh_interval = None;
-}
-
-fn set_status_with_pending_fingerprint(
+fn set_status_error(
     status: &Arc<RwLock<TrackerStatus>>,
-    kind: &str,
-    pending: String,
+    kind: impl Into<Cow<'static, str>>,
+    pending_fingerprint: Option<String>,
 ) {
     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
     s.connected = false;
-    s.last_error_kind = Some(kind.to_string());
-    s.pending_fingerprint = Some(pending);
+    s.last_error_kind = Some(kind.into());
+    s.pending_fingerprint = pending_fingerprint;
     s.refresh_interval = None;
 }
 
@@ -943,15 +942,15 @@ fn set_status_with_pending_fingerprint(
 ///
 /// Borrows on the common (no-control-char) path; only the vandalism
 /// path allocates. `Cow<str>: Display` so tracing writes it directly.
-fn sanitize_for_log(s: &str) -> std::borrow::Cow<'_, str> {
+fn sanitize_for_log(s: &str) -> Cow<'_, str> {
     if s.chars().any(|c| c.is_control()) {
-        std::borrow::Cow::Owned(
+        Cow::Owned(
             s.chars()
                 .map(|c| if c.is_control() { '?' } else { c })
                 .collect(),
         )
     } else {
-        std::borrow::Cow::Borrowed(s)
+        Cow::Borrowed(s)
     }
 }
 

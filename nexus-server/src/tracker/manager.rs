@@ -27,6 +27,8 @@ use crate::constants::{
     LOG_TRACKER_REGISTRATION_SPAWN_SKIPPED, LOG_TRACKER_REGISTRATION_TASK_ABORTED,
 };
 use crate::db::TrackerRecord;
+#[cfg(test)]
+use std::borrow::Cow;
 
 /// Live handle to one tracker task. Held in the manager's HashMap
 /// keyed by tracker `id`.
@@ -233,7 +235,7 @@ impl TrackerManager {
     /// states (e.g. Stage 2 interception) without a `MockTracker`. Companion
     /// to [`Self::set_pending_fingerprint_for_test`]. No-op if no task for `id`.
     #[cfg(test)]
-    pub(crate) fn set_last_error_kind_for_test(&self, id: i64, kind: String) {
+    pub(crate) fn set_last_error_kind_for_test(&self, id: i64, kind: impl Into<Cow<'static, str>>) {
         let map = self
             .inner
             .lock()
@@ -243,7 +245,7 @@ impl TrackerManager {
                 .status
                 .write()
                 .expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
-            status.last_error_kind = Some(kind);
+            status.last_error_kind = Some(kind.into());
         }
     }
 

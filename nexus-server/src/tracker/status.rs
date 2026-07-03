@@ -1,5 +1,7 @@
 //! Per-tracker runtime status tracked by the tracker manager.
 
+use std::borrow::Cow;
+
 /// Runtime state of a single tracker task.
 ///
 /// Updated by the task across connect → handshake → register → refresh;
@@ -23,8 +25,10 @@ pub struct TrackerStatus {
     /// TCP dial so the UI shows forward progress even while failing.
     pub last_attempted_at: Option<i64>,
     /// Machine-readable error kind (e.g. `"tracker_fingerprint_mismatch"`),
-    /// translated to the admin's locale at handler compose time.
-    pub last_error_kind: Option<String>,
+    /// translated to the admin's locale at handler compose time. `Cow`:
+    /// writers store `ERROR_KIND_*` constants allocation-free; only a
+    /// tracker-supplied kind is owned.
+    pub last_error_kind: Option<Cow<'static, str>>,
     /// Fingerprint observed but not yet accepted (after a Stage 1
     /// mismatch); `None` in normal operation.
     pub pending_fingerprint: Option<String>,

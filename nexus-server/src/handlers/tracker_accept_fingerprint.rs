@@ -291,10 +291,9 @@ mod tests {
         test_ctx
             .tracker_manager
             .set_pending_fingerprint_for_test(created.id, NEW_FINGERPRINT.to_string());
-        test_ctx.tracker_manager.set_last_error_kind_for_test(
-            created.id,
-            ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED.to_string(),
-        );
+        test_ctx
+            .tracker_manager
+            .set_last_error_kind_for_test(created.id, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED);
 
         let result = handle_tracker_accept_fingerprint(
             created.id,

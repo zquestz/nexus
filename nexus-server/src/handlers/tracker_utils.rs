@@ -2,6 +2,8 @@
 //! is the single field-validation source for `TrackerAdd`/`TrackerUpdate` so
 //! their rules can't drift; `compose_tracker_info` builds the wire struct.
 
+use std::borrow::Cow;
+
 use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::protocol::TrackerInfo;
 use nexus_common::validators::{
@@ -59,7 +61,7 @@ pub fn compose_tracker_info(
         last_connected_at: s.last_connected_at,
         last_attempted_at: s.last_attempted_at,
         last_error,
-        last_error_kind: s.last_error_kind,
+        last_error_kind: s.last_error_kind.map(Cow::into_owned),
         pending_fingerprint: s.pending_fingerprint,
         refresh_interval: s.refresh_interval,
     }
@@ -213,9 +215,9 @@ mod tests {
             connected: false,
             last_connected_at: None,
             last_attempted_at: None,
-            last_error_kind: Some(
-                nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH.to_string(),
-            ),
+            last_error_kind: Some(Cow::Borrowed(
+                nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
+            )),
             pending_fingerprint: Some("CC:DD".to_string()),
             refresh_interval: None,
         };
@@ -242,7 +244,7 @@ mod tests {
             connected: false,
             last_connected_at: None,
             last_attempted_at: None,
-            last_error_kind: Some("not_a_real_kind".to_string()),
+            last_error_kind: Some(Cow::Borrowed("not_a_real_kind")),
             pending_fingerprint: None,
             refresh_interval: None,
         };
