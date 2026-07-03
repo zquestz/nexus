@@ -326,12 +326,12 @@ err-tracker-handshake-failed = Не удалось выполнить рукоп
 err-tracker-connection-lost = Соединение с трекером потеряно
 err-tracker-db-failed = Ошибка базы данных при обновлении состояния трекера
 err-tracker-fingerprint-mismatch = Сертификат трекера не соответствует сохраненному отпечатку
-err-tracker-fingerprint-intercepted = Самосообщенный отпечаток трекера не соответствует его TLS-сертификату
+err-tracker-fingerprint-intercepted = Отпечаток, заявленный самим трекером, не соответствует его TLS-сертификату
 err-tracker-unauthorized = Трекер отклонил регистрацию
-err-tracker-rate-limited = Ограничено по скорости трекером
+err-tracker-rate-limited = Трекер ограничил частоту запросов
 err-tracker-capacity = Трекер достиг максимальной вместимости
 err-tracker-invalid = Трекер отклонил регистрацию как недействительную
-err-tracker-protocol-error = Трекер отправил искажённый ответ об ошибке
+err-tracker-protocol-error = Трекер отправил некорректно сформированный ответ об ошибке
 err-tracker-unknown = Трекер сообщил о неизвестной ошибке
 
 # Flood Protection Errors
