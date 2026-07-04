@@ -17,6 +17,17 @@ pub struct AddOutcome {
     pub broadcast_joined: bool,
 }
 
+/// Hot-path snapshot for the per-packet UDP relay: exactly the fields the
+/// relay needs, so validating a packet clones two small strings instead of
+/// the whole `VoiceSession` (`target` Vec) and re-derived folded keys.
+pub struct VoiceRelayInfo {
+    pub nickname: String,
+    pub nickname_folded: String,
+    pub target_key_folded: String,
+    pub session_id: u32,
+    pub udp_addr: Option<SocketAddr>,
+}
+
 /// Result of binding a voice session to a UDP remote address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindUdpAddrOutcome {
@@ -64,8 +75,8 @@ impl VoiceRegistry {
     pub async fn add(&self, session: VoiceSession) -> Option<AddOutcome> {
         let token = session.token;
         let session_id = session.session_id;
-        let target_key = target_index_key(&session);
-        let nickname_lower = fold_name(&session.nickname);
+        let target_key = session.target_key_folded.clone();
+        let nickname_lower = session.nickname_folded.clone();
 
         let mut sessions = self.sessions.write().await;
         let mut id_to_token = self.session_id_to_token.write().await;
@@ -180,9 +191,25 @@ impl VoiceRegistry {
         }
     }
 
+    /// Full-session lookup by token. Test-only: the production packet path
+    /// uses the narrower [`Self::relay_info_by_token`].
+    #[cfg(test)]
     pub async fn get_by_token(&self, token: Uuid) -> Option<VoiceSession> {
         let sessions = self.sessions.read().await;
         sessions.get(&token).cloned()
+    }
+
+    /// Per-packet relay lookup; see [`VoiceRelayInfo`]. `None` if the token
+    /// is unknown (session already left).
+    pub async fn relay_info_by_token(&self, token: Uuid) -> Option<VoiceRelayInfo> {
+        let sessions = self.sessions.read().await;
+        sessions.get(&token).map(|s| VoiceRelayInfo {
+            nickname: s.nickname.clone(),
+            nickname_folded: s.nickname_folded.clone(),
+            target_key_folded: s.target_key_folded.clone(),
+            session_id: s.session_id,
+            udp_addr: s.udp_addr,
+        })
     }
 
     pub async fn get_by_session_id(&self, session_id: u32) -> Option<VoiceSession> {
@@ -216,28 +243,28 @@ impl VoiceRegistry {
             .collect()
     }
 
-    /// UDP addresses of the relay recipients for `target_key`: every session
-    /// with a bound `udp_addr` whose folded nickname differs from
-    /// `exclude_folded` (the sender, so it isn't echoed its own audio).
-    /// Returns only the addresses so the per-packet relay path doesn't clone a
-    /// full `VoiceSession` per participant.
+    /// UDP addresses of the relay recipients for the **pre-folded** target
+    /// key: every session with a bound `udp_addr` whose folded nickname
+    /// differs from `exclude_folded` (the sender, so it isn't echoed its own
+    /// audio). Both keys come from the caches on `VoiceSession` /
+    /// [`VoiceRelayInfo`], so the per-packet path allocates nothing here —
+    /// only the address Vec is returned, never full session clones.
     pub(super) async fn relay_recipients(
         &self,
-        target_key: &str,
+        target_key_folded: &str,
         exclude_folded: &str,
     ) -> Vec<SocketAddr> {
-        let target_key_lower = fold_name(target_key);
         let sessions = self.sessions.read().await;
         let target_to_tokens = self.target_to_tokens.read().await;
 
         target_to_tokens
-            .get(&target_key_lower)
+            .get(target_key_folded)
             .into_iter()
             .flatten()
             .filter_map(|token| {
                 let session = sessions.get(token)?;
                 // Never echo back to the sender (same folded nickname).
-                if fold_name(&session.nickname) == exclude_folded {
+                if session.nickname_folded == exclude_folded {
                     return None;
                 }
                 session.udp_addr
@@ -290,12 +317,14 @@ impl VoiceRegistry {
     /// accounts keep their per-session nicknames, so it's never called for them).
     pub async fn update_nickname(&self, old_nickname: &str, new_nickname: &str) {
         let old_lower = fold_name(old_nickname);
+        let new_folded = fold_name(new_nickname);
         let mut sessions = self.sessions.write().await;
         let mut target_to_tokens = self.target_to_tokens.write().await;
 
         for session in sessions.values_mut() {
-            if fold_name(&session.nickname) == old_lower {
+            if session.nickname_folded == old_lower {
                 session.nickname = new_nickname.to_string();
+                session.nickname_folded = new_folded.clone();
             }
             let mut target_changed = false;
             for entry in &mut session.target {
@@ -306,6 +335,7 @@ impl VoiceRegistry {
             }
             if target_changed {
                 session.target.sort_by_key(|a| fold_name(a));
+                session.target_key_folded = fold_name(&session.target.join(":"));
             }
         }
 
@@ -332,7 +362,7 @@ impl VoiceRegistry {
 }
 
 fn target_index_key(session: &VoiceSession) -> String {
-    fold_name(&session.target_key())
+    session.target_key_folded.clone()
 }
 
 fn build_target_index(sessions: &HashMap<Uuid, VoiceSession>) -> HashMap<String, Vec<Uuid>> {
@@ -431,6 +461,53 @@ mod tests {
             vec![nickname.to_string(), target.to_string()]
         };
         VoiceSession::new(nickname.to_string(), target_vec, session_id)
+    }
+
+    #[tokio::test]
+    async fn update_nickname_maintains_folded_caches() {
+        let registry = VoiceRegistry::new();
+        let alice = create_test_session("Alice", "Alice:bob", 1);
+        let alice_token = alice.token;
+        let bob = create_test_session("bob", "Alice:bob", 2);
+        let bob_token = bob.token;
+        registry.add(alice).await.expect("add alice");
+        registry.add(bob).await.expect("add bob");
+
+        assert_eq!(
+            registry
+                .bind_udp_addr(alice_token, "10.0.0.1:1000".parse().unwrap())
+                .await,
+            BindUdpAddrOutcome::Bound
+        );
+        assert_eq!(
+            registry
+                .bind_udp_addr(bob_token, "10.0.0.2:2000".parse().unwrap())
+                .await,
+            BindUdpAddrOutcome::Bound
+        );
+
+        registry.update_nickname("alice", "БОРИС").await;
+
+        let renamed = registry
+            .get_by_token(alice_token)
+            .await
+            .expect("alice session");
+        assert_eq!(renamed.nickname, "БОРИС");
+        assert_eq!(renamed.nickname_folded, fold_name("БОРИС"));
+        assert_eq!(
+            renamed.target_key_folded,
+            fold_name(&renamed.target.join(":"))
+        );
+
+        // Relay routing runs entirely on the caches after the rename: the
+        // renamed sender is excluded, the DM peer is still reachable.
+        let recipients = registry
+            .relay_recipients(&renamed.target_key_folded, &renamed.nickname_folded)
+            .await;
+        assert_eq!(
+            recipients,
+            vec!["10.0.0.2:2000".parse::<SocketAddr>().unwrap()]
+        );
     }
 
     #[tokio::test]
@@ -761,9 +838,10 @@ mod tests {
             .await;
         assert_eq!(recipients, vec![bob_addr]);
 
-        // Folding: an uppercase target and sender resolve identically.
+        // The contract takes pre-folded keys: a caller folding an uppercase
+        // target and sender resolves identically.
         let folded = registry
-            .relay_recipients("#GENERAL", &fold_name("ALICE"))
+            .relay_recipients(&fold_name("#GENERAL"), &fold_name("ALICE"))
             .await;
         assert_eq!(folded, vec![bob_addr]);
     }

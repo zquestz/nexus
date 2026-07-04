@@ -13,8 +13,15 @@ pub struct VoiceSession {
     /// Authenticates UDP voice packets.
     pub token: Uuid,
     pub nickname: String,
+    /// `fold_name(&nickname)`, cached so the per-packet relay path never
+    /// re-folds. Maintained at construction and in
+    /// `VoiceRegistry::update_nickname` (the only post-create mutator).
+    pub nickname_folded: String,
     /// `["#channel"]` for channels, sorted `["alice", "bob"]` for user messages.
     pub target: Vec<String>,
+    /// `fold_name(&target.join(":"))` — the registry's target-index key,
+    /// cached under the same maintenance rule as `nickname_folded`.
+    pub target_key_folded: String,
     /// Unix create time; used to expire sessions that never opened DTLS.
     pub joined_at: i64,
     /// Set on the first UDP packet from the client.
@@ -28,7 +35,9 @@ impl fmt::Debug for VoiceSession {
         f.debug_struct("VoiceSession")
             .field("token", &"<REDACTED>")
             .field("nickname", &self.nickname)
+            .field("nickname_folded", &self.nickname_folded)
             .field("target", &self.target)
+            .field("target_key_folded", &self.target_key_folded)
             .field("joined_at", &self.joined_at)
             .field("udp_addr", &self.udp_addr)
             .field("session_id", &self.session_id)
@@ -40,10 +49,14 @@ impl VoiceSession {
     /// Permissions aren't cached here — they're resolved dynamically by
     /// session_id via UserManager so permission changes take effect at once.
     pub fn new(nickname: String, target: Vec<String>, session_id: u32) -> Self {
+        let nickname_folded = fold_name(&nickname);
+        let target_key_folded = fold_name(&target.join(":"));
         Self {
             token: Uuid::new_v4(),
             nickname,
+            nickname_folded,
             target,
+            target_key_folded,
             joined_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
@@ -58,7 +71,9 @@ impl VoiceSession {
         self.target.len() == 1 && self.target[0].starts_with('#')
     }
 
-    /// Colon-joined target, the key used for registry lookups.
+    /// Colon-joined target (unfolded). Test-only: production paths use the
+    /// cached [`Self::target_key_folded`].
+    #[cfg(test)]
     pub fn target_key(&self) -> String {
         self.target.join(":")
     }
@@ -99,6 +114,22 @@ mod tests {
         assert!(!dbg.contains(&token), "{dbg}");
         assert!(dbg.contains("<REDACTED>"), "{dbg}");
         assert!(dbg.contains("alice"), "{dbg}");
+    }
+
+    #[test]
+    fn test_new_session_caches_folded_keys() {
+        let session = VoiceSession::new(
+            "БОРИС".to_string(),
+            vec!["Alice".to_string(), "БОРИС".to_string()],
+            1,
+        );
+
+        assert_eq!(session.nickname_folded, fold_name("БОРИС"));
+        assert_eq!(
+            session.target_key_folded,
+            fold_name(&session.target.join(":"))
+        );
+        assert_eq!(session.target_key_folded, "alice:борис");
     }
 
     #[test]

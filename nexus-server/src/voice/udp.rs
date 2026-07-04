@@ -23,7 +23,6 @@ use tokio::sync::{Mutex, RwLock, mpsc};
 use webrtc_util::conn::Conn;
 
 use nexus_common::address::normalize_socket_addr;
-use nexus_common::names::fold_name;
 use nexus_common::voice::{
     MAX_VOICE_PACKET_SIZE, RelayedVoicePacket, VOICE_SESSION_TIMEOUT_SECS, VoiceMessageType,
     VoicePacketRef,
@@ -356,13 +355,12 @@ impl VoiceUdpServer {
     ) -> bool {
         // Validate the token on every packet — the session may have been
         // removed via VoiceLeave since the connection opened.
-        let Some(session) = self.registry.get_by_token(packet.token).await else {
+        let Some(session) = self.registry.relay_info_by_token(packet.token).await else {
             debug!(ip = %remote_addr, "{}", LOG_VOICE_SESSION_NOT_FOUND);
             return false; // Session gone, close connection
         };
 
-        let sender_nickname = session.nickname.clone();
-        let target_key = session.target_key();
+        let sender_nickname = &session.nickname;
         let session_id = session.session_id;
 
         match session.udp_addr {
@@ -411,8 +409,13 @@ impl VoiceUdpServer {
                     .await
                 {
                     Some(true) => {
-                        self.relay_packet(packet, &sender_nickname, &target_key)
-                            .await;
+                        self.relay_packet(
+                            packet,
+                            sender_nickname,
+                            &session.nickname_folded,
+                            &session.target_key_folded,
+                        )
+                        .await;
                     }
                     Some(false) => {
                         // debug, not warn: a session without voice_talk can send
@@ -434,18 +437,23 @@ impl VoiceUdpServer {
         &self,
         packet: &VoicePacketRef<'_>,
         sender_nickname: &str,
-        target_key: &str,
+        sender_folded: &str,
+        target_key_folded: &str,
     ) {
         let relayed_bytes = RelayedVoicePacket::to_bytes_from_voice_packet(packet, sender_nickname);
-        self.relay_bytes(relayed_bytes, sender_nickname, target_key)
+        self.relay_bytes(relayed_bytes, sender_folded, target_key_folded)
             .await;
     }
 
-    async fn relay_bytes(&self, relayed_bytes: Vec<u8>, sender_nickname: &str, target_key: &str) {
-        let sender_folded = fold_name(sender_nickname);
+    async fn relay_bytes(
+        &self,
+        relayed_bytes: Vec<u8>,
+        sender_folded: &str,
+        target_key_folded: &str,
+    ) {
         let recipients = self
             .registry
-            .relay_recipients(target_key, &sender_folded)
+            .relay_recipients(target_key_folded, sender_folded)
             .await;
 
         let conns: Vec<_> = {
@@ -487,8 +495,12 @@ impl VoiceUdpServer {
         };
 
         let relayed_bytes = relayed_speaking_stopped_bytes(&session.nickname);
-        self.relay_bytes(relayed_bytes, &session.nickname, &session.target_key())
-            .await;
+        self.relay_bytes(
+            relayed_bytes,
+            &session.nickname_folded,
+            &session.target_key_folded,
+        )
+        .await;
     }
 
     async fn cleanup_loop(&self) {
