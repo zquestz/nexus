@@ -74,7 +74,7 @@ impl VoiceState {
             .any(|n| fold_name(n) == nickname_lower)
         {
             self.participants.push(nickname);
-            self.participants.sort_by_key(|a| fold_name(a));
+            self.participants.sort_by_cached_key(|a| fold_name(a));
         }
     }
 
@@ -109,7 +109,7 @@ impl VoiceState {
             if !self.participants.iter().any(|n| fold_name(n) == new_lower) {
                 self.participants.push(new.to_string());
             }
-            self.participants.sort_by_key(|a| fold_name(a));
+            self.participants.sort_by_cached_key(|a| fold_name(a));
         }
         self.speaking_users.remove(&old_lower);
         if had_old_participant {

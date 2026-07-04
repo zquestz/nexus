@@ -337,7 +337,7 @@ impl ChannelManager {
             .map(|ch| ch.name.clone())
             .collect();
 
-        result.sort_by_key(|a| fold_name(a));
+        result.sort_by_cached_key(|a| fold_name(a));
         result
     }
 

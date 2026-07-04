@@ -123,7 +123,7 @@ where
             .collect();
 
         // Clients require a sorted list (case-insensitive by username).
-        user_infos.sort_by_key(|u| fold_name(&u.username));
+        user_infos.sort_by_cached_key(|u| fold_name(&u.username));
 
         let response = ServerMessage::UserListResponse {
             success: true,
@@ -170,7 +170,7 @@ where
     }
 
     // Clients require a sorted list (case-insensitive by display nickname).
-    user_infos.sort_by_key(|u| fold_name(&u.nickname));
+    user_infos.sort_by_cached_key(|u| fold_name(&u.nickname));
 
     let response = ServerMessage::UserListResponse {
         success: true,

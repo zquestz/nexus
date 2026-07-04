@@ -428,7 +428,7 @@ impl NexusApp {
         // delete so the full sorted list is still available.
         let next_pick: Option<Uuid> = if self.tracker_browser.selected_tracker == Some(id) {
             let mut sorted: Vec<&ClientTracker> = self.config.client_trackers.iter().collect();
-            sorted.sort_by_key(|t| fold_name(&t.name));
+            sorted.sort_by_cached_key(|t| fold_name(&t.name));
             sorted.iter().position(|t| t.id == id).and_then(|i| {
                 sorted
                     .get(i + 1)

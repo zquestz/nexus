@@ -93,7 +93,7 @@ fn build_options(trackers: &[ClientTracker]) -> Vec<TrackerOption> {
             name: t.name.clone(),
         })
         .collect();
-    options.sort_by_key(|o| fold_name(&o.name));
+    options.sort_by_cached_key(|o| fold_name(&o.name));
     options
 }
 

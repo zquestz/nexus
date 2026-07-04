@@ -70,7 +70,7 @@ where
         })
         .collect();
 
-    connections.sort_by_key(|c| fold_name(&c.nickname));
+    connections.sort_by_cached_key(|c| fold_name(&c.nickname));
 
     // Active transfers from the registry, sorted by nickname.
     let mut transfers: Vec<_> = ctx
@@ -79,7 +79,7 @@ where
         .iter()
         .map(|t| t.to_transfer_info())
         .collect();
-    transfers.sort_by_key(|t| fold_name(&t.nickname));
+    transfers.sort_by_cached_key(|t| fold_name(&t.nickname));
 
     let response = ServerMessage::ConnectionMonitorResponse {
         success: true,

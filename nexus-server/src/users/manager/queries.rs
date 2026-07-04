@@ -166,7 +166,7 @@ impl UserManager {
             .iter()
             .filter_map(|&session_id| users.get(&session_id).map(|u| u.nickname.clone()))
             .collect();
-        nicknames.sort_by_key(|n| fold_name(n));
+        nicknames.sort_by_cached_key(|n| fold_name(n));
         nicknames
     }
 

@@ -146,7 +146,7 @@ where
         };
 
         participants.push(current.nickname.clone());
-        participants.sort_by_key(|a| fold_name(a));
+        participants.sort_by_cached_key(|a| fold_name(a));
 
         if broadcast_joined {
             if is_channel {

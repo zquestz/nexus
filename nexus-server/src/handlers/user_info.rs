@@ -203,7 +203,7 @@ where
         all_channels.extend(session_channels);
     }
     let mut channels: Vec<String> = all_channels.into_iter().collect();
-    channels.sort_by_key(|a| fold_name(a));
+    channels.sort_by_cached_key(|a| fold_name(a));
     let channels = if channels.is_empty() {
         None
     } else {

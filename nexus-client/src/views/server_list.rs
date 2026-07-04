@@ -154,7 +154,7 @@ fn bookmarks_section<'a>(
     } else {
         // Sort bookmarks alphabetically by name (case-insensitive)
         let mut sorted_bookmarks: Vec<_> = bookmarks.iter().collect();
-        sorted_bookmarks.sort_by_key(|b| fold_name(&b.name));
+        sorted_bookmarks.sort_by_cached_key(|b| fold_name(&b.name));
 
         for (index, bookmark) in sorted_bookmarks.into_iter().enumerate() {
             let bookmark_id = bookmark.id;

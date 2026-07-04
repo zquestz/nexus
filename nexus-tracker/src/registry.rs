@@ -15,6 +15,7 @@ use std::net::IpAddr;
 use std::time::Instant;
 
 use nexus_common::address::ipv6_slash_64_bucket_key;
+use nexus_common::names::fold_name;
 use nexus_common::tracker_protocol::ServerEntry;
 
 /// Identifier for a registered entry, assigned at register time.
@@ -129,7 +130,7 @@ impl Registry {
     #[must_use]
     pub fn list(&self) -> Vec<ServerEntry> {
         let mut out: Vec<ServerEntry> = self.entries.values().map(|r| r.entry.clone()).collect();
-        out.sort_by_cached_key(|e| e.name.to_lowercase());
+        out.sort_by_cached_key(|e| fold_name(&e.name));
         out
     }
 
