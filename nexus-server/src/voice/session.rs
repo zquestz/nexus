@@ -3,6 +3,7 @@
 use std::{fmt, net::SocketAddr};
 
 use nexus_common::names::fold_name;
+use nexus_common::validators::is_channel_target;
 
 use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use uuid::Uuid;
@@ -68,7 +69,7 @@ impl VoiceSession {
 
     /// Single element starting with `#`.
     pub fn is_channel(&self) -> bool {
-        self.target.len() == 1 && self.target[0].starts_with('#')
+        self.target.len() == 1 && is_channel_target(&self.target[0])
     }
 
     /// Colon-joined target (unfolded). Test-only: production paths use the

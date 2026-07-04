@@ -8,7 +8,7 @@ use iced_toasts::ToastId;
 use uuid::Uuid;
 
 use nexus_common::framing::MessageId;
-use nexus_common::protocol::FileSearchResult;
+use nexus_common::protocol::{FileSearchResult, VoiceJoinToken};
 use nexus_common::validators::PasswordStrength;
 use nexus_common::voice::VoiceQuality;
 
@@ -877,10 +877,12 @@ pub enum Message {
     // ==================== Voice ====================
     /// Voice: Join voice for a channel or user message
     VoiceJoinPressed(String),
-    /// Voice: Server address resolution completed after a successful join
+    /// Voice: Server address resolution completed after a successful join.
+    /// The token rides the `VoiceJoinToken` newtype so the enum's derived
+    /// `Debug` redacts it.
     VoiceAddressResolved {
         connection_id: usize,
-        token: Uuid,
+        token: VoiceJoinToken,
         result: Result<Option<SocketAddr>, String>,
     },
     /// Voice: Leave current voice session

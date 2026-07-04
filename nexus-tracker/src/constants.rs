@@ -137,12 +137,6 @@ pub const ERR_TRACKER_WRITE_ZERO: &str = "Tracker response write returned zero b
 
 pub const LOG_ACCEPT_ERROR: &str = "Accept error";
 
-/// Connection error after TLS (frame, JSON, or unexpected disconnect).
-pub const LOG_CONNECTION_ERROR: &str = "Connection error";
-
-pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
-pub const LOG_CONNECTION_ERROR_WS: &str = "Connection error (WebSocket handshake)";
-
 /// Peer sent a non-Handshake message before completing the handshake.
 pub const LOG_HANDSHAKE_REQUIRED: &str = "Handshake: required";
 
@@ -277,9 +271,6 @@ pub const LOG_ROLE_VIOLATION: &str = "Role violation";
 /// A registered server connection closed; its entry was removed from the registry.
 pub const LOG_REGISTER_DISCONNECTED: &str =
     "TrackerServerRegister: connection closed; entry unregistered";
-
-/// Benign rustls warning substring (client disconnected without TLS shutdown).
-pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
 
 /// Panics — handler required for graceful shutdown.
 #[cfg(unix)]

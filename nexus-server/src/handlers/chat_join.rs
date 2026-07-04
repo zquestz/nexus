@@ -9,7 +9,7 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MAX_CHANNELS_PER_USER};
 
 use super::{
-    HandlerContext, channel_error_to_message, err_channel_already_member,
+    HandlerContext, build_channel_join_info, channel_error_to_message, err_channel_already_member,
     err_channel_limit_exceeded, err_chat_feature_not_enabled, err_not_logged_in,
     err_permission_denied,
 };
@@ -110,55 +110,28 @@ where
             }
         };
 
-        let member_nicknames = ctx
-            .user_manager
-            .get_unique_nicknames_for_sessions(&result.member_session_ids)
-            .await;
-
-        let voiced =
-            if user.has_feature(FEATURE_VOICE) && user.has_permission(Permission::VoiceListen) {
-                let participants = ctx.voice_registry.get_participants(&channel).await;
-                if participants.is_empty() {
-                    None
-                } else {
-                    Some(participants)
-                }
-            } else {
-                None
-            };
+        let wants_voiced =
+            user.has_feature(FEATURE_VOICE) && user.has_permission(Permission::VoiceListen);
+        let info = build_channel_join_info(
+            ctx.user_manager,
+            ctx.voice_registry,
+            &user,
+            channel,
+            result,
+            wants_voiced,
+        )
+        .await;
 
         let response = ServerMessage::ChatJoinResponse {
             success: true,
             error: None,
-            channel: Some(channel.clone()),
-            topic: result.topic,
-            topic_set_by: result.topic_set_by,
-            secret: Some(result.secret),
-            members: Some(member_nicknames),
-            voiced,
+            channel: Some(info.channel),
+            topic: info.topic,
+            topic_set_by: info.topic_set_by,
+            secret: Some(info.secret),
+            members: Some(info.members),
+            voiced: info.voiced,
         };
-
-        let nickname_present_elsewhere = ctx
-            .user_manager
-            .sessions_contain_nickname(&result.member_session_ids, &user.nickname, Some(session_id))
-            .await;
-
-        if !nickname_present_elsewhere {
-            let join_broadcast = ServerMessage::ChatUserJoined {
-                channel: channel.clone(),
-                nickname: user.nickname.clone(),
-                is_admin: user.is_admin,
-                is_shared: user.is_shared,
-            };
-
-            for member_session_id in &result.member_session_ids {
-                if *member_session_id != session_id {
-                    ctx.user_manager
-                        .send_to_session(*member_session_id, join_broadcast.clone())
-                        .await;
-                }
-            }
-        }
 
         JoinOutcome::Send(Box::new(response))
     };

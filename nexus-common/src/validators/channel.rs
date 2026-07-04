@@ -6,6 +6,13 @@
 /// Prefix required for all channel names
 pub const CHANNEL_PREFIX: char = '#';
 
+/// True when `target` names a channel (starts with [`CHANNEL_PREFIX`]) rather
+/// than a user. The single source of the `#`-means-channel rule for voice and
+/// chat target dispatch.
+pub fn is_channel_target(target: &str) -> bool {
+    target.starts_with(CHANNEL_PREFIX)
+}
+
 /// The default/main channel name
 pub const DEFAULT_CHANNEL: &str = "#nexus";
 

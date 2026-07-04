@@ -453,7 +453,7 @@ mod tests {
 
     fn create_test_session(nickname: &str, target: &str, session_id: u32) -> VoiceSession {
         // `#name` → channel; `a:b` → user-message key; bare name → pair with nickname.
-        let target_vec = if target.starts_with('#') {
+        let target_vec = if nexus_common::validators::is_channel_target(target) {
             vec![target.to_string()]
         } else if target.contains(':') {
             target.split(':').map(|s| s.to_string()).collect()

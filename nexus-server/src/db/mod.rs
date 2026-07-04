@@ -28,7 +28,7 @@ pub use password::{
 // hash helper. Production code in async contexts must use the `_async` variants.
 #[allow(unused_imports)]
 pub use password::{hash_password, verify_password};
-pub use permissions::{Permission, Permissions};
+pub use permissions::{OverrideType, Permission, Permissions};
 pub use trackers::{
     CreateTrackerParams, TrackerDb, TrackerDbError, TrackerRecord, UpdateTrackerParams,
     is_transient_db_error,

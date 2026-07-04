@@ -25,6 +25,7 @@ pub const HANDLE_LIFETIME: Duration = Duration::from_secs(6);
 
 use iced_toasts::{ToastLevel, toast};
 use nexus_common::names::fold_name;
+use nexus_common::validators::is_channel_target;
 
 use crate::NexusApp;
 use crate::config::events::{EventType, NotificationContent};
@@ -417,10 +418,10 @@ fn focused_voice_event_is_visible(
     }
 
     match active_chat_tab {
-        ChatTab::Channel(channel) if target.starts_with('#') => {
+        ChatTab::Channel(channel) if is_channel_target(target) => {
             fold_name(channel) == fold_name(target)
         }
-        ChatTab::UserMessage(nickname) if suppress_dm && !target.starts_with('#') => {
+        ChatTab::UserMessage(nickname) if suppress_dm && !is_channel_target(target) => {
             fold_name(nickname) == fold_name(target)
         }
         _ => false,
@@ -967,7 +968,7 @@ fn build_voice_joined_notification(
         NotificationContent::WithContext | NotificationContent::WithPreview => {
             // "Alice joined voice in #general"
             let summary = match (&context.username, &context.channel) {
-                (Some(username), Some(channel)) if channel.starts_with('#') => t_args(
+                (Some(username), Some(channel)) if is_channel_target(channel) => t_args(
                     "notification-voice-joined-details",
                     &[("username", username), ("target", channel)],
                 ),
@@ -994,7 +995,7 @@ fn build_voice_left_notification(
         NotificationContent::WithContext | NotificationContent::WithPreview => {
             // "Alice left voice in #general"
             let summary = match (&context.username, &context.channel) {
-                (Some(username), Some(channel)) if channel.starts_with('#') => t_args(
+                (Some(username), Some(channel)) if is_channel_target(channel) => t_args(
                     "notification-voice-left-details",
                     &[("username", username), ("target", channel)],
                 ),

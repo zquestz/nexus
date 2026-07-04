@@ -9,14 +9,18 @@
 //! are passed in via [`LogInitParams`] and the matching parameters on
 //! [`purge_old_logs`] / [`spawn_purge_task`]. Both `nexus-server` and
 //! `nexus-tracker` share this module verbatim — see each daemon's
-//! `main.rs` for the per-daemon prefix it passes in.
+//! `main.rs` for the per-daemon prefix it passes in. The accept-loop
+//! connection-error classifier ([`log_connection_error`]) also lives here,
+//! next to the handshake-failure prefixes it interprets.
 
 use std::fmt;
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use tracing::{debug, error};
 use tracing_subscriber::{
     Layer, fmt as subscriber_fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -45,6 +49,46 @@ pub const ERR_LOG_RETENTION_TOO_SHORT: &str =
 
 /// Log directory creation failed (caller appends the path and underlying error).
 pub const ERR_CREATE_LOG_DIR: &str = "Failed to create log directory: ";
+
+/// Message rustls emits when a peer drops the connection without sending a
+/// TLS close_notify. Matched textually because rustls surfaces it only as an
+/// `io::Error` string; if a rustls upgrade rewords it, the classifier stops
+/// downgrading these and abrupt disconnects surface as errors again.
+pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
+
+/// Log message for unclassified connection errors.
+pub const LOG_CONNECTION_ERROR: &str = "Connection error";
+
+/// Log message for TLS handshake failures (scanners, probes, incompatible peers).
+pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
+
+/// Log message for WebSocket handshake failures.
+pub const LOG_CONNECTION_ERROR_WS: &str = "Connection error (WebSocket handshake)";
+
+/// Categorize a connection error for accept-loop logging, shared by both
+/// daemons: abrupt close_notify → silent; TLS / WebSocket handshake-failed
+/// prefixes (scanners, crawlers, incompatible peers) → debug; everything
+/// else → error.
+pub fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
+    let error_msg = error.to_string();
+
+    // Benign: client disconnected abruptly.
+    if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
+        return;
+    }
+
+    if error_msg.contains(crate::TLS_HANDSHAKE_FAILED_PREFIX) {
+        debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_TLS);
+        return;
+    }
+
+    if error_msg.contains(crate::WS_HANDSHAKE_FAILED_PREFIX) {
+        debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_WS);
+        return;
+    }
+
+    error!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR);
+}
 
 /// Log level for a Nexus daemon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

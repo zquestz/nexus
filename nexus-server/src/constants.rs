@@ -150,8 +150,6 @@ pub const MAX_DB_CONNECTIONS: u32 = 5;
 pub const CERT_FILENAME: &str = "server.crt";
 pub const KEY_FILENAME: &str = "server.key";
 pub const TLS_CERT_COMMON_NAME: &str = "Nexus BBS";
-/// Error-string pattern matched to detect an unclean TLS close.
-pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
 
 pub const MSG_BANNER: &str = "Nexus BBS Server v";
 pub const MSG_DATABASE: &str = "Database: ";
@@ -372,9 +370,6 @@ pub const LOG_DEAD_SESSION_REAPER_NO_RECEIVER: &str =
     "Dead-session reaper receiver already taken; dead-receiver cleanup is disabled";
 
 pub const LOG_ACCEPT_ERROR: &str = "Accept error";
-pub const LOG_CONNECTION_ERROR: &str = "Connection error";
-pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
-pub const LOG_CONNECTION_ERROR_WS: &str = "Connection error (WebSocket handshake)";
 pub const LOG_CONNECTION_LIMIT: &str = "Connection limit reached";
 pub const LOG_DISCONNECTED: &str = "Disconnected";
 pub const LOG_ERROR_HANDLING_MESSAGE: &str = "Error handling message";
@@ -408,6 +403,7 @@ pub const LOG_CLEANUP_EXPIRED_TRUSTS_FAILED: &str = "Failed to cleanup expired t
 pub const LOG_LOADED_CACHE: &str = "Loaded entries into cache";
 pub const LOG_LOAD_BANS_FAILED: &str = "Failed to load bans";
 pub const LOG_LOAD_TRUSTS_FAILED: &str = "Failed to load trusts";
+pub const LOG_UNKNOWN_OVERRIDE_TYPE: &str = "Ignoring permission row with unknown override_type";
 pub const LOG_CHANNEL_SETTINGS_CREATE_FAILED: &str = "Failed to create channel settings";
 pub const LOG_CHANNEL_SETTINGS_LOAD_FAILED: &str = "Failed to load channel settings";
 pub const LOG_CHANNEL_SETTINGS_DELETE_FAILED: &str = "Failed to delete stale channel settings";

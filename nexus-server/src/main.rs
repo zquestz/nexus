@@ -138,13 +138,14 @@ async fn main() {
     let file_root = setup_file_area(cli.file_root, &data_dir);
 
     let websocket_enabled = cli.websocket;
-    let (
-        listener,
-        transfer_listener,
-        ws_listener,
-        ws_transfer_listener,
-        (tls_acceptor, fingerprint),
-    ) = setup_network(
+    let Listeners {
+        bbs: listener,
+        transfer: transfer_listener,
+        websocket: ws_listener,
+        transfer_websocket: ws_transfer_listener,
+        tls_acceptor,
+        fingerprint,
+    } = setup_network(
         cli.bind,
         cli.port,
         cli.transfer_port,
@@ -301,71 +302,7 @@ async fn main() {
         ))
     });
 
-    let persistent_channels_config = database.config.get_persistent_channels().await;
-    let channel_names = db::ConfigDb::parse_channel_list(&persistent_channels_config);
-    if !channel_names.is_empty() {
-        let mut channels_to_init = Vec::new();
-        for name in &channel_names {
-            match database.channels.get_channel_settings(name).await {
-                Ok(Some(settings)) => {
-                    let (topic, topic_set_by) = if settings.topic.is_empty() {
-                        (None, None)
-                    } else {
-                        (Some(settings.topic), Some(settings.topic_set_by))
-                    };
-                    channels_to_init.push(Channel::with_settings(
-                        name.to_string(),
-                        topic,
-                        topic_set_by,
-                        settings.secret,
-                    ));
-                }
-                Ok(None) => {
-                    // In config but not in DB — create default settings.
-                    if let Err(e) = database
-                        .channels
-                        .upsert_channel_settings(&db::channels::ChannelSettings {
-                            name: name.to_string(),
-                            topic: String::new(),
-                            topic_set_by: String::new(),
-                            secret: false,
-                        })
-                        .await
-                    {
-                        error!(channel = %name, err = %e, "{}", LOG_CHANNEL_SETTINGS_CREATE_FAILED);
-                    }
-                    channels_to_init.push(Channel::new(name.to_string()));
-                }
-                Err(e) => {
-                    error!(channel = %name, err = %e, "{}", LOG_CHANNEL_SETTINGS_LOAD_FAILED);
-                    channels_to_init.push(Channel::new(name.to_string()));
-                }
-            }
-        }
-
-        // Prune DB rows for channels no longer in config.
-        if let Ok(all_settings) = database.channels.get_all_channel_settings().await {
-            for settings in all_settings {
-                let name_lower = fold_name(&settings.name);
-                if !channel_names.iter().any(|n| fold_name(n) == name_lower) {
-                    if let Err(e) = database
-                        .channels
-                        .delete_channel_settings(&settings.name)
-                        .await
-                    {
-                        error!(channel = %settings.name, err = %e, "{}", LOG_CHANNEL_SETTINGS_DELETE_FAILED);
-                    } else {
-                        debug!(channel = %settings.name, "{}", LOG_CHANNEL_SETTINGS_PRUNED);
-                    }
-                }
-            }
-        }
-
-        channel_manager
-            .initialize_persistent_channels(channels_to_init)
-            .await;
-        debug!(count = channel_names.len(), "{}", LOG_CHANNELS_INITIALIZED);
-    }
+    init_persistent_channels(&database, &channel_manager).await;
 
     let file_index_for_timer = file_index.clone();
     let database_for_timer = database.clone();
@@ -682,6 +619,18 @@ async fn setup_upnp(
     }
 }
 
+/// Bound network listeners plus the TLS state produced by `setup_network`.
+/// The voice DTLS listener is separate (`create_voice_listener`) — it shares
+/// the BBS port over UDP and may be absent without being fatal.
+struct Listeners {
+    bbs: TcpListener,
+    transfer: TcpListener,
+    websocket: Option<TcpListener>,
+    transfer_websocket: Option<TcpListener>,
+    tls_acceptor: TlsAcceptor,
+    fingerprint: String,
+}
+
 async fn setup_network(
     bind: std::net::IpAddr,
     port: u16,
@@ -689,13 +638,7 @@ async fn setup_network(
     websocket_port: Option<u16>,
     transfer_websocket_port: Option<u16>,
     data_dir: &Path,
-) -> (
-    TcpListener,
-    TcpListener,
-    Option<TcpListener>,
-    Option<TcpListener>,
-    (TlsAcceptor, String),
-) {
+) -> Listeners {
     // Generate a self-signed cert/key on first run and compute the SHA-256
     // fingerprint reported in the handshake.
     let tls_config = nexus_common::tls::TlsCertConfig {
@@ -767,13 +710,89 @@ async fn setup_network(
         (None, None)
     };
 
-    (
-        listener,
-        transfer_listener,
-        ws_listener,
-        ws_transfer_listener,
-        (tls_acceptor, fingerprint),
-    )
+    Listeners {
+        bbs: listener,
+        transfer: transfer_listener,
+        websocket: ws_listener,
+        transfer_websocket: ws_transfer_listener,
+        tls_acceptor,
+        fingerprint,
+    }
+}
+
+/// Load the admin-configured persistent channels into the channel manager:
+/// read settings for each configured name (creating default rows for new
+/// names), prune DB rows for channels no longer in config, then hand the
+/// set to the channel manager. All failures here are non-fatal — log and
+/// continue with default channel state.
+async fn init_persistent_channels(database: &db::Database, channel_manager: &ChannelManager) {
+    let persistent_channels_config = database.config.get_persistent_channels().await;
+    let channel_names = db::ConfigDb::parse_channel_list(&persistent_channels_config);
+    if channel_names.is_empty() {
+        return;
+    }
+
+    let mut channels_to_init = Vec::new();
+    for name in &channel_names {
+        match database.channels.get_channel_settings(name).await {
+            Ok(Some(settings)) => {
+                let (topic, topic_set_by) = if settings.topic.is_empty() {
+                    (None, None)
+                } else {
+                    (Some(settings.topic), Some(settings.topic_set_by))
+                };
+                channels_to_init.push(Channel::with_settings(
+                    name.to_string(),
+                    topic,
+                    topic_set_by,
+                    settings.secret,
+                ));
+            }
+            Ok(None) => {
+                // In config but not in DB — create default settings.
+                if let Err(e) = database
+                    .channels
+                    .upsert_channel_settings(&db::channels::ChannelSettings {
+                        name: name.to_string(),
+                        topic: String::new(),
+                        topic_set_by: String::new(),
+                        secret: false,
+                    })
+                    .await
+                {
+                    error!(channel = %name, err = %e, "{}", LOG_CHANNEL_SETTINGS_CREATE_FAILED);
+                }
+                channels_to_init.push(Channel::new(name.to_string()));
+            }
+            Err(e) => {
+                error!(channel = %name, err = %e, "{}", LOG_CHANNEL_SETTINGS_LOAD_FAILED);
+                channels_to_init.push(Channel::new(name.to_string()));
+            }
+        }
+    }
+
+    // Prune DB rows for channels no longer in config.
+    if let Ok(all_settings) = database.channels.get_all_channel_settings().await {
+        for settings in all_settings {
+            let name_lower = fold_name(&settings.name);
+            if !channel_names.iter().any(|n| fold_name(n) == name_lower) {
+                if let Err(e) = database
+                    .channels
+                    .delete_channel_settings(&settings.name)
+                    .await
+                {
+                    error!(channel = %settings.name, err = %e, "{}", LOG_CHANNEL_SETTINGS_DELETE_FAILED);
+                } else {
+                    debug!(channel = %settings.name, "{}", LOG_CHANNEL_SETTINGS_PRUNED);
+                }
+            }
+        }
+    }
+
+    channel_manager
+        .initialize_persistent_channels(channels_to_init)
+        .await;
+    debug!(count = channel_names.len(), "{}", LOG_CHANNELS_INITIALIZED);
 }
 
 /// Returns the canonicalized file area root, ready for `resolve_path()` and
@@ -848,7 +867,7 @@ async fn run_accept_loop<G, P, MakeParams, Handler, Fut>(
                     }
 
                     if let Err(e) = handler(socket, tls_acceptor, params).await {
-                        log_connection_error(&e, peer_addr);
+                        logging::log_connection_error(&e, peer_addr);
                     }
                 });
             }
@@ -858,29 +877,6 @@ async fn run_accept_loop<G, P, MakeParams, Handler, Fut>(
             }
         }
     }
-}
-
-/// Log connection errors, dropping benign noise (abrupt close_notify) and
-/// demoting TLS/WebSocket handshake failures (scanners, probes) to debug.
-fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
-    let error_msg = error.to_string();
-
-    // Benign: client disconnected abruptly.
-    if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
-        return;
-    }
-
-    if error_msg.contains(nexus_common::TLS_HANDSHAKE_FAILED_PREFIX) {
-        debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_TLS);
-        return;
-    }
-
-    if error_msg.contains(nexus_common::WS_HANDSHAKE_FAILED_PREFIX) {
-        debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_WS);
-        return;
-    }
-
-    error!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR);
 }
 
 /// Wait for a graceful shutdown signal (SIGTERM/SIGINT on Unix, Ctrl+C elsewhere).

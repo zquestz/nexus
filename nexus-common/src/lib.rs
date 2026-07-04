@@ -201,12 +201,6 @@ pub const FALLBACK_FILE_NAME: &str = "file";
 /// This is `FALLBACK_FILE_NAME` + `PART_SUFFIX`.
 pub const FALLBACK_PART_FILE_NAME: &str = "file.part";
 
-/// Default port as a string for form fields and display.
-///
-/// This is the string representation of [`DEFAULT_PORT`], provided as a constant
-/// because Rust doesn't support const string formatting.
-pub const DEFAULT_PORT_STR: &str = "7500";
-
 /// All available permissions in the Nexus protocol.
 ///
 /// These permission strings are used by both client and server to manage
@@ -456,12 +450,6 @@ mod tests {
     #[test]
     fn test_default_refresh_interval_matches_protocol_default() {
         assert_eq!(DEFAULT_REFRESH_INTERVAL_SECS, 300);
-    }
-
-    #[test]
-    fn test_default_port_str_matches() {
-        // Verify DEFAULT_PORT_STR matches DEFAULT_PORT
-        assert_eq!(DEFAULT_PORT_STR, DEFAULT_PORT.to_string());
     }
 
     #[test]

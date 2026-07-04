@@ -11,6 +11,8 @@ use std::net::ToSocketAddrs;
 use iced::Task;
 use nexus_common::address::resolve_host_for_connection;
 use nexus_common::names::fold_name;
+use nexus_common::protocol::VoiceJoinToken;
+use nexus_common::validators::is_channel_target;
 use uuid::Uuid;
 
 use crate::NexusApp;
@@ -135,7 +137,7 @@ impl NexusApp {
             }
 
             let can_transmit = conn.has_permission(PERMISSION_VOICE_TALK);
-            if !target.starts_with('#') {
+            if !is_channel_target(&target) {
                 let self_nickname = fold_name(&conn.nickname);
                 let target_nickname = fold_name(&target);
                 let peer_is_present = participants.iter().any(|participant| {
@@ -178,7 +180,7 @@ impl NexusApp {
             resolve_voice_socket_addr(server_address, server_port),
             move |result| Message::VoiceAddressResolved {
                 connection_id,
-                token,
+                token: token.into(),
                 result,
             },
         )
@@ -187,9 +189,10 @@ impl NexusApp {
     pub fn handle_voice_address_resolved(
         &mut self,
         connection_id: usize,
-        token: Uuid,
+        token: VoiceJoinToken,
         result: Result<Option<std::net::SocketAddr>, String>,
     ) -> Task<Message> {
+        let token: Uuid = token.into();
         let (participants, can_transmit, server_fingerprint) = {
             let Some(conn) = self.connections.get(&connection_id) else {
                 return Task::none();
@@ -343,7 +346,7 @@ impl NexusApp {
 
             // Track voiced nicknames per channel (even when we're not in voice)
             // Use lowercase for consistency with ChatJoinResponse population
-            if target.starts_with('#') {
+            if is_channel_target(&target) {
                 conn.channel_voiced
                     .entry(fold_name(&target))
                     .or_default()
@@ -384,7 +387,7 @@ impl NexusApp {
                 ChatMessage::system(t_args("msg-voice-user-joined", &[("nickname", &nickname)]));
 
             // Route to channel or user message tab based on target
-            if target.starts_with('#') {
+            if is_channel_target(&target) {
                 return self.add_channel_message(connection_id, &target, message);
             } else {
                 return self.add_user_message(connection_id, &target, message);
@@ -419,7 +422,7 @@ impl NexusApp {
 
             // Also remove ourselves from channel voice tracking
             if let Some(conn) = self.connections.get_mut(&connection_id)
-                && target.starts_with('#')
+                && is_channel_target(&target)
                 && let Some(voiced) = conn.channel_voiced.get_mut(&fold_name(&target))
             {
                 voiced.remove(&fold_name(&nickname));
@@ -428,7 +431,7 @@ impl NexusApp {
             // Show notification in target tab
             let message = ChatMessage::system(t("msg-voice-you-left"));
 
-            if target.starts_with('#') {
+            if is_channel_target(&target) {
                 return self.add_channel_message(connection_id, &target, message);
             } else {
                 return self.add_user_message(connection_id, &target, message);
@@ -444,11 +447,11 @@ impl NexusApp {
             };
 
             // Remove from per-channel voiced tracking (use lowercase for consistency)
-            if target.starts_with('#')
+            if is_channel_target(&target)
                 && let Some(voiced) = conn.channel_voiced.get_mut(&fold_name(&target))
             {
                 voiced.remove(&fold_name(&nickname));
-            } else if !target.starts_with('#') {
+            } else if !is_channel_target(&target) {
                 conn.user_message_voiced.remove(&fold_name(&nickname));
             }
 
@@ -485,7 +488,7 @@ impl NexusApp {
                 ChatMessage::system(t_args("msg-voice-user-left", &[("nickname", &nickname)]));
 
             // Route to channel or user message tab based on target
-            if target.starts_with('#') {
+            if is_channel_target(&target) {
                 return self.add_channel_message(connection_id, &target, message);
             } else {
                 return self.add_user_message(connection_id, &target, message);
@@ -806,7 +809,8 @@ mod tests {
         app.active_voice_connection = Some(1);
         app.connections.insert(1, conn);
 
-        let _ = app.handle_voice_address_resolved(1, token, Err("resolve failed".to_string()));
+        let _ =
+            app.handle_voice_address_resolved(1, token.into(), Err("resolve failed".to_string()));
 
         expect_voice_leave(&mut rx);
         assert!(rx.try_recv().is_err());
@@ -831,7 +835,8 @@ mod tests {
         assert_eq!(app.send_voice_leave_once(1), Ok(true));
         expect_voice_leave(&mut rx);
 
-        let _ = app.handle_voice_address_resolved(1, token, Err("resolve failed".to_string()));
+        let _ =
+            app.handle_voice_address_resolved(1, token.into(), Err("resolve failed".to_string()));
 
         assert!(rx.try_recv().is_err());
         assert!(app.connections[&1].voice_session.is_some());

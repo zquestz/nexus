@@ -2,6 +2,7 @@
 
 use iced::Task;
 use nexus_common::names::fold_name;
+use nexus_common::validators::is_channel_target;
 
 use crate::NexusApp;
 use crate::i18n::t_args;
@@ -39,7 +40,7 @@ pub fn execute(
     let target_lower = fold_name(target);
 
     // Check if target is a channel (starts with #)
-    if target.starts_with('#') {
+    if is_channel_target(target) {
         // Check if we're a member of this channel
         if conn.channels.contains_key(&target_lower) {
             // Find the original casing from channel_tabs

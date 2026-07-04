@@ -1,6 +1,7 @@
 //! Voice state types for tracking active voice UI state
 
 use std::collections::HashSet;
+use std::fmt;
 
 use nexus_common::names::fold_name;
 use uuid::Uuid;
@@ -10,7 +11,7 @@ use uuid::Uuid;
 /// Tracks the local view of a voice session for a connection, including the target
 /// (channel or user message), participants, speaking indicators, and mute state.
 /// This is distinct from the server's VoiceSession which tracks authentication and routing.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct VoiceState {
     /// Voice join token for the current accepted session, when known.
     pub token: Option<Uuid>,
@@ -29,6 +30,22 @@ pub struct VoiceState {
     /// Nicknames of users muted by the local user (lowercase for case-insensitive lookup)
     /// This is client-side only - stops playing audio from these users
     pub muted_users: HashSet<String>,
+}
+
+/// Manual impl: the voice join token is a bearer credential.
+impl fmt::Debug for VoiceState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VoiceState")
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("leave_sent", &self.leave_sent)
+            .field("can_transmit", &self.can_transmit)
+            .field("transmit_initialized", &self.transmit_initialized)
+            .field("target", &self.target)
+            .field("participants", &self.participants)
+            .field("speaking_users", &self.speaking_users)
+            .field("muted_users", &self.muted_users)
+            .finish()
+    }
 }
 
 impl VoiceState {

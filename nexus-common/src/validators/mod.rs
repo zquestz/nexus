@@ -57,7 +57,7 @@ pub use bandwidth_weight::{
 pub use blake3::{BLAKE3_HEX_LENGTH, Blake3Error, validate_blake3};
 pub use channel::{
     CHANNEL_PREFIX, ChannelError, DEFAULT_CHANNEL, MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER,
-    MIN_CHANNEL_LENGTH, validate_channel,
+    MIN_CHANNEL_LENGTH, is_channel_target, validate_channel,
 };
 pub use channel_list::{
     AutoJoinChannelsError, ChannelListError, MAX_AUTO_JOIN_CHANNELS_LENGTH,

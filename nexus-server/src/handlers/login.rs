@@ -16,12 +16,13 @@ use nexus_common::validators::{
 
 use super::duration::format_duration_remaining;
 use super::{
-    HandlerContext, ServerInfoOptions, ServerInfoValues, build_server_info, err_account_disabled,
-    err_already_logged_in, err_authentication, err_avatar_invalid_format, err_avatar_too_large,
-    err_avatar_undecodable, err_avatar_unsupported_type, err_banned_permanent,
-    err_banned_with_expiry, err_database, err_failed_to_create_user, err_features_empty_feature,
-    err_features_feature_too_long, err_features_invalid_characters, err_features_too_many,
-    err_guest_disabled, err_handshake_required, err_internal_error, err_invalid_credentials,
+    HandlerContext, ServerInfoOptions, ServerInfoValues, build_channel_join_info,
+    build_server_info, err_account_disabled, err_already_logged_in, err_authentication,
+    err_avatar_invalid_format, err_avatar_too_large, err_avatar_undecodable,
+    err_avatar_unsupported_type, err_banned_permanent, err_banned_with_expiry, err_database,
+    err_failed_to_create_user, err_features_empty_feature, err_features_feature_too_long,
+    err_features_invalid_characters, err_features_too_many, err_guest_disabled,
+    err_handshake_required, err_internal_error, err_invalid_credentials,
     err_locale_invalid_characters, err_locale_too_long, err_login_bandwidth_failed,
     err_login_group_failed, err_login_permissions_failed, err_login_rate_limited,
     err_nickname_empty, err_nickname_invalid, err_nickname_required, err_nickname_too_long,
@@ -374,68 +375,27 @@ async fn auto_join_channels(
     policy: JoinPolicy,
     wants_voiced: bool,
 ) -> Vec<ChannelJoinInfo> {
-    let session_id = session.session_id;
     let mut joined_channels = Vec::new();
     for channel_name in channel_names {
         // Skip on any error (missing channel + no ChatCreate, at limit, …).
         let Ok(result) = channel_manager
-            .join(&channel_name, session_id, policy)
+            .join(&channel_name, session.session_id, policy)
             .await
         else {
             continue;
         };
 
-        // Build member list as unique nicknames.
-        let member_nicknames = user_manager
-            .get_unique_nicknames_for_sessions(&result.member_session_ids)
-            .await;
-
-        // Membership is nickname-based: only broadcast when this nickname
-        // first becomes present (multiple sessions may share a nickname).
-        let nickname_present_elsewhere = user_manager
-            .sessions_contain_nickname(
-                &result.member_session_ids,
-                &session.nickname,
-                Some(session_id),
+        joined_channels.push(
+            build_channel_join_info(
+                user_manager,
+                voice_registry,
+                session,
+                channel_name,
+                result,
+                wants_voiced,
             )
-            .await;
-
-        if !nickname_present_elsewhere {
-            let join_broadcast = ServerMessage::ChatUserJoined {
-                channel: channel_name.clone(),
-                nickname: session.nickname.clone(),
-                is_admin: session.is_admin,
-                is_shared: session.is_shared,
-            };
-            for &member_session_id in &result.member_session_ids {
-                if member_session_id != session_id {
-                    user_manager
-                        .send_to_session(member_session_id, join_broadcast.clone())
-                        .await;
-                }
-            }
-        }
-
-        // Voiced nicknames are gated on the voice feature and voice_listen permission.
-        let voiced = if wants_voiced {
-            let participants = voice_registry.get_participants(&channel_name).await;
-            if participants.is_empty() {
-                None
-            } else {
-                Some(participants)
-            }
-        } else {
-            None
-        };
-
-        joined_channels.push(ChannelJoinInfo {
-            channel: channel_name,
-            topic: result.topic,
-            topic_set_by: result.topic_set_by,
-            secret: result.secret,
-            members: member_nicknames,
-            voiced,
-        });
+            .await,
+        );
     }
     joined_channels
 }

@@ -32,7 +32,7 @@ use super::DirectWriter;
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, Outcome, dispatch_outcome, err_account_disabled_by_admin,
+    HandlerContext, LeaverNotify, Outcome, dispatch_outcome, err_account_disabled_by_admin,
     err_admin_cannot_have_group, err_bandwidth_weight_delegation,
     err_bandwidth_weight_inherit_would_elevate, err_bandwidth_weight_zero,
     err_cannot_change_guest_password, err_cannot_demote_last_admin, err_cannot_disable_last_admin,
@@ -1453,7 +1453,7 @@ where
                         ctx.voice_registry,
                         ctx.channel_manager,
                         &sessions,
-                        false,
+                        LeaverNotify::Skip,
                     )
                     .await;
                 }

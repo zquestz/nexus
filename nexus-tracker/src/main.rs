@@ -1,12 +1,12 @@
 use clap::Parser;
 use std::fs;
-use std::io::{self, IsTerminal};
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use nexus_common::address::normalize_socket_addr;
 use nexus_common::logging::{self, LogInitParams};
@@ -366,7 +366,7 @@ async fn run_tcp_accepts(
                     )
                     .await
                     {
-                        log_connection_error(&e, peer_addr);
+                        logging::log_connection_error(&e, peer_addr);
                     }
                 });
             }
@@ -407,7 +407,7 @@ async fn run_optional_ws_accepts(
                     )
                     .await
                     {
-                        log_connection_error(&e, peer_addr);
+                        logging::log_connection_error(&e, peer_addr);
                     }
                 });
             }
@@ -417,25 +417,6 @@ async fn run_optional_ws_accepts(
             }
         }
     }
-}
-
-/// Categorize a connection error: close_notify → silent; TLS / WS handshake-failed prefixes
-/// (scanners, crawlers, incompatible peers) → debug; everything else → error.
-/// Mirrors `nexus-server`'s shared logger.
-fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
-    let msg = error.to_string();
-    if msg.contains(constants::TLS_CLOSE_NOTIFY_MSG) {
-        return;
-    }
-    if msg.contains(nexus_common::TLS_HANDSHAKE_FAILED_PREFIX) {
-        debug!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR_TLS);
-        return;
-    }
-    if msg.contains(nexus_common::WS_HANDSHAKE_FAILED_PREFIX) {
-        debug!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR_WS);
-        return;
-    }
-    error!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR);
 }
 
 /// Resolve when SIGINT / SIGTERM (Ctrl+C on Windows) is received.

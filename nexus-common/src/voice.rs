@@ -149,7 +149,7 @@ impl VoiceMessageType {
 /// |                      Opus Payload (variable)                      |
 /// +----------------+----------------+----------------+----------------+
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct VoicePacket {
     /// Message type
     pub msg_type: VoiceMessageType,
@@ -161,6 +161,19 @@ pub struct VoicePacket {
     pub timestamp: u32,
     /// Opus-encoded audio data (empty for non-audio messages)
     pub payload: Vec<u8>,
+}
+
+/// Manual impl: the token is a bearer credential for UDP voice packets.
+impl fmt::Debug for VoicePacket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VoicePacket")
+            .field("msg_type", &self.msg_type)
+            .field("token", &"<REDACTED>")
+            .field("sequence", &self.sequence)
+            .field("timestamp", &self.timestamp)
+            .field("payload", &self.payload)
+            .finish()
+    }
 }
 
 impl VoicePacket {
@@ -257,7 +270,7 @@ impl VoicePacket {
 }
 
 /// Borrowed view of a voice packet sent over UDP/DTLS (client → server).
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct VoicePacketRef<'a> {
     /// Message type
     pub msg_type: VoiceMessageType,
@@ -269,6 +282,19 @@ pub struct VoicePacketRef<'a> {
     pub timestamp: u32,
     /// Opus-encoded audio data (empty for non-audio messages)
     pub payload: &'a [u8],
+}
+
+/// Manual impl: the token is a bearer credential for UDP voice packets.
+impl fmt::Debug for VoicePacketRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VoicePacketRef")
+            .field("msg_type", &self.msg_type)
+            .field("token", &"<REDACTED>")
+            .field("sequence", &self.sequence)
+            .field("timestamp", &self.timestamp)
+            .field("payload", &self.payload)
+            .finish()
+    }
 }
 
 impl<'a> VoicePacketRef<'a> {

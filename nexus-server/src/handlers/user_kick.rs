@@ -8,7 +8,7 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, KickReasonError, NicknameError};
 
 use super::{
-    HandlerContext, err_cannot_kick_admin, err_cannot_kick_self, err_database,
+    HandlerContext, LeaverNotify, err_cannot_kick_admin, err_cannot_kick_self, err_database,
     err_kick_reason_invalid_characters, err_kick_reason_too_long, err_kicked_by,
     err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid, err_nickname_not_online,
     err_nickname_too_long, err_not_logged_in, err_permission_denied,
@@ -204,7 +204,7 @@ where
                                 ctx.voice_registry,
                                 ctx.channel_manager,
                                 &sessions_to_kick,
-                                false,
+                                LeaverNotify::Skip,
                             )
                             .await;
 

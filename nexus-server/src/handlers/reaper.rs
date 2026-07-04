@@ -14,7 +14,7 @@ use crate::channels::ChannelManager;
 use crate::users::UserManager;
 use crate::voice::VoiceRegistry;
 
-use super::remove_user_sessions_with_cleanup;
+use super::{LeaverNotify, remove_user_sessions_with_cleanup};
 
 /// Drain dead session ids and tear them down via the canonical path. Runs until
 /// every `UserManager` clone (and thus every sender) is dropped at shutdown.
@@ -40,9 +40,9 @@ pub async fn run_dead_session_reaper(
 /// pass. Batches + dedupes so a fan-out burst that hit the same dead receiver
 /// many times collapses to a single teardown. Returns the deduped ids reaped.
 ///
-/// `notify_leaving_user = false`: the receiver is closed, so its own
-/// `VoiceUserLeft` can't be delivered. `remove_users` is the serialization
-/// point, so an id already swept by a normal disconnect is a no-op here.
+/// `LeaverNotify::Skip`: the receiver is closed, so its own `VoiceUserLeft`
+/// can't be delivered. `remove_users` is the serialization point, so an id
+/// already swept by a normal disconnect is a no-op here.
 pub(super) async fn reap_pending(
     first: u32,
     dead_session_rx: &mut mpsc::UnboundedReceiver<u32>,
@@ -62,7 +62,7 @@ pub(super) async fn reap_pending(
         voice_registry,
         channel_manager,
         &session_ids,
-        false,
+        LeaverNotify::Skip,
     )
     .await;
 

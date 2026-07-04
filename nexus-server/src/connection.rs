@@ -804,15 +804,15 @@ where
     // serialization point: if a forced path (kick/ban/delete) already removed this
     // session, `remove_users` returns empty and we do nothing — no double cleanup,
     // no double disconnect. Cleanup runs before `broadcast_disconnections` so
-    // ChatUserLeft / VoiceUserLeft precede UserDisconnected. `notify_leaving_user`
-    // is false: the user is already gone, there's nothing to tell them.
+    // ChatUserLeft / VoiceUserLeft precede UserDisconnected. `LeaverNotify::Skip`:
+    // the user is already gone, there's nothing to tell them.
     if let Some(id) = conn_state.session_id {
         let removed = handlers::remove_user_sessions_with_cleanup(
             &user_manager,
             &voice_registry,
             &channel_manager,
             &[id],
-            false,
+            handlers::LeaverNotify::Skip,
         )
         .await;
         for user in &removed {

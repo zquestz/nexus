@@ -6,10 +6,11 @@ use nexus_common::names::fold_name;
 use nexus_common::validators;
 use nexus_common::validators::{DEFAULT_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
 use sqlx::{SqliteConnection, SqlitePool};
+use tracing::warn;
 
-use super::permissions::{Permission, Permissions};
+use super::permissions::{OverrideType, Permission, Permissions};
 use super::util::{begin_immediate, clamp_db_bandwidth_weight, is_unique_violation};
-use crate::constants::ERR_USER_UPDATE_NON_ADMIN_SCOPE_REQUIRED;
+use crate::constants::{ERR_USER_UPDATE_NON_ADMIN_SCOPE_REQUIRED, LOG_UNKNOWN_OVERRIDE_TYPE};
 use crate::db::sql;
 
 pub struct CreateUserParams<'a> {
@@ -420,20 +421,46 @@ impl UserDb {
 
             for (perm_str, override_type) in &perm_rows {
                 if let Some(perm) = Permission::parse(perm_str) {
-                    if override_type == "grant" {
-                        permissions.permissions.insert(perm);
-                    } else if override_type == "revoke" {
-                        permissions.permissions.remove(&perm);
+                    match OverrideType::parse(override_type) {
+                        Some(OverrideType::Grant) => {
+                            permissions.permissions.insert(perm);
+                        }
+                        Some(OverrideType::Revoke) => {
+                            permissions.permissions.remove(&perm);
+                        }
+                        // Unreachable through SQL (schema CHECK pins
+                        // 'grant'/'revoke'); defense-in-depth for a widened
+                        // or corrupted database.
+                        None => warn!(
+                            permission = %perm_str,
+                            override_type = %override_type,
+                            "{}",
+                            LOG_UNKNOWN_OVERRIDE_TYPE
+                        ),
                     }
                 }
             }
         } else {
             // No group — legacy behavior (grants only)
             for (perm_str, override_type) in &perm_rows {
-                if override_type == "grant"
-                    && let Some(perm) = Permission::parse(perm_str)
-                {
-                    permissions.permissions.insert(perm);
+                let Some(perm) = Permission::parse(perm_str) else {
+                    continue;
+                };
+                match OverrideType::parse(override_type) {
+                    Some(OverrideType::Grant) => {
+                        permissions.permissions.insert(perm);
+                    }
+                    // No group to revoke against — revokes are intentionally inert here.
+                    Some(OverrideType::Revoke) => {}
+                    // Unreachable through SQL (schema CHECK pins
+                    // 'grant'/'revoke'); defense-in-depth for a widened
+                    // or corrupted database.
+                    None => warn!(
+                        permission = %perm_str,
+                        override_type = %override_type,
+                        "{}",
+                        LOG_UNKNOWN_OVERRIDE_TYPE
+                    ),
                 }
             }
         }
@@ -470,7 +497,7 @@ impl UserDb {
                 sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
                     .bind(user_id)
                     .bind(perm.as_str())
-                    .bind("revoke")
+                    .bind(OverrideType::Revoke.as_str())
                     .execute(&mut **tx)
                     .await?;
             }
@@ -2584,6 +2611,38 @@ mod tests {
         assert_eq!(vec.len(), 2);
         assert!(vec.contains(&Permission::ChatSend)); // from group
         assert!(vec.contains(&Permission::UserList)); // from grant override
+    }
+
+    #[tokio::test]
+    async fn test_unknown_override_type_rejected_by_schema() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // The schema CHECK pins override_type to 'grant'/'revoke', so a corrupt
+        // row can't be created through SQL. The `OverrideType::parse` None arm
+        // in `get_user_permissions_in_tx` is defense-in-depth behind this.
+        let result = sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
+            .bind(user.id)
+            .bind("user_list")
+            .bind("deny")
+            .execute(&pool)
+            .await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@ use iced::Task;
 use iced::widget::{Id, operation, scrollable};
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, MessageError};
+use nexus_common::validators::{self, MessageError, is_channel_target};
 
 use crate::commands::{
     self, ParseResult, complete_channel, complete_command, complete_nickname, last_word,
@@ -507,7 +507,7 @@ impl NexusApp {
             .connections
             .get_mut(&connection_id)
             .and_then(|conn| conn.voice_session.as_mut())
-            && session.target.starts_with('#')
+            && is_channel_target(&session.target)
             && fold_name(&session.target) == fold_name(channel)
         {
             session.leave_sent = true;
@@ -1072,7 +1072,7 @@ mod tests {
 
         let _ = app.handle_voice_address_resolved(
             1,
-            token,
+            token.into(),
             Ok(Some("127.0.0.1:7500".parse().unwrap())),
         );
 

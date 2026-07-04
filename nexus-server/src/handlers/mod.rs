@@ -142,10 +142,10 @@ use tracing::{error, warn};
 use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::server_message_to_frame_bytes;
 use nexus_common::names::fold_name;
-use nexus_common::protocol::ServerMessage;
+use nexus_common::protocol::{ChannelJoinInfo, ServerMessage};
 use nexus_common::validators::{self, NewsImageError, ServerImageError};
 
-use crate::channels::ChannelManager;
+use crate::channels::{ChannelManager, JoinResult};
 use crate::connection_io::send_server_message_with_write_timeout;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{Database, Permission};
@@ -402,6 +402,18 @@ pub(super) fn update_egress_user_weight<W>(ctx: &HandlerContext<'_, W>, user_id:
     }
 }
 
+/// Whether a departing session should receive its own `VoiceUserLeft`
+/// self-notification during teardown.
+///
+/// `Skip` when the connection is already gone or a `SessionEvent::Disconnect`
+/// has been queued (the self-notification would be undeliverable); `Notify`
+/// when the session stays live through the teardown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LeaverNotify {
+    Notify,
+    Skip,
+}
+
 /// Acquire the user-state read lock, remove the listed sessions, and run the
 /// common disconnect teardown. This is the entry point for callers that are not
 /// already inside `read_user_state`/`lock_user_state`.
@@ -410,7 +422,7 @@ pub async fn remove_user_sessions_with_cleanup(
     voice_registry: &VoiceRegistry,
     channel_manager: &ChannelManager,
     session_ids: &[u32],
-    notify_leaving_user: bool,
+    leaver_notify: LeaverNotify,
 ) -> Vec<UserSession> {
     let _user_state = user_manager.read_user_state().await;
     remove_user_sessions_with_cleanup_locked(
@@ -418,7 +430,7 @@ pub async fn remove_user_sessions_with_cleanup(
         voice_registry,
         channel_manager,
         session_ids,
-        notify_leaving_user,
+        leaver_notify,
     )
     .await
 }
@@ -433,7 +445,7 @@ pub async fn remove_user_sessions_with_cleanup_locked(
     voice_registry: &VoiceRegistry,
     channel_manager: &ChannelManager,
     session_ids: &[u32],
-    notify_leaving_user: bool,
+    leaver_notify: LeaverNotify,
 ) -> Vec<UserSession> {
     let removed = user_manager.remove_users(session_ids).await;
     cleanup_resources(
@@ -441,7 +453,7 @@ pub async fn remove_user_sessions_with_cleanup_locked(
         voice_registry,
         channel_manager,
         &removed,
-        notify_leaving_user,
+        leaver_notify,
     )
     .await;
     user_manager.broadcast_disconnections(&removed).await;
@@ -453,7 +465,7 @@ pub async fn remove_user_sessions_with_cleanup_locked(
 /// must already hold `read_user_state` or `lock_user_state`; otherwise use
 /// `remove_user_sessions_with_cleanup`. The actual teardown is session-id based
 /// and re-reads current session state from `remove_users`. Pass
-/// `notify_leaving_user = false` when the caller has already queued
+/// `LeaverNotify::Skip` when the caller has already queued
 /// `SessionEvent::Disconnect`; post-disconnect cleanup messages to that same
 /// connection are not deliverable.
 pub async fn remove_users_with_cleanup_locked(
@@ -461,7 +473,7 @@ pub async fn remove_users_with_cleanup_locked(
     voice_registry: &VoiceRegistry,
     channel_manager: &ChannelManager,
     sessions: &[UserSession],
-    notify_leaving_user: bool,
+    leaver_notify: LeaverNotify,
 ) -> Vec<UserSession> {
     let session_ids: Vec<u32> = sessions.iter().map(|u| u.session_id).collect();
     remove_user_sessions_with_cleanup_locked(
@@ -469,7 +481,7 @@ pub async fn remove_users_with_cleanup_locked(
         voice_registry,
         channel_manager,
         &session_ids,
-        notify_leaving_user,
+        leaver_notify,
     )
     .await
 }
@@ -491,15 +503,15 @@ pub fn send_reason_and_disconnect(session: &UserSession, mut reason: ServerMessa
 /// any voice session (notifying other participants). Does NOT remove sessions from
 /// the user manager or announce `UserDisconnected` — the caller owns that
 /// (`remove_users` before, `broadcast_disconnections` after, so cleanup messages
-/// precede the disconnect). `notify_leaving_user` forwards each leaver their own
-/// `VoiceUserLeft`: true while they're still live (kick/ban/etc.), false for a
-/// session that's already gone (graceful teardown).
+/// precede the disconnect). `leaver_notify` controls whether each leaver gets
+/// their own `VoiceUserLeft`: `Notify` while they're still live, `Skip` for a
+/// session that's already gone (graceful teardown, queued disconnect).
 pub async fn cleanup_resources(
     user_manager: &UserManager,
     voice_registry: &VoiceRegistry,
     channel_manager: &ChannelManager,
     sessions: &[UserSession],
-    notify_leaving_user: bool,
+    leaver_notify: LeaverNotify,
 ) {
     // Pass 1: remove all sessions from all channels, recording which nicknames left
     // each channel. Processing in bulk before the leave-check prevents duplicate
@@ -552,12 +564,84 @@ pub async fn cleanup_resources(
         {
             send_voice_leave_notifications(
                 &info,
-                notify_leaving_user.then_some(&session.tx),
+                (leaver_notify == LeaverNotify::Notify).then_some(&session.tx),
                 user_manager,
                 channel_manager,
             )
             .await;
         }
+    }
+}
+
+/// Finalize a successful channel join: snapshot the member nicknames, fire the
+/// first-presence `ChatUserJoined` broadcast, and gate the voiced list on
+/// `wants_voiced` (voice feature + `voice_listen`, resolved by the caller from
+/// the session). Shared by login auto-join and the explicit `ChatJoin` handler.
+///
+/// Must run inside the `read_user_state` guard — the first-presence broadcast
+/// serializes against renames. Only queues broadcasts (user-map / voice locks,
+/// never `user_state`); never touches the socket, so callers send their own
+/// response outside the guard.
+pub(super) async fn build_channel_join_info(
+    user_manager: &UserManager,
+    voice_registry: &VoiceRegistry,
+    session: &UserSession,
+    channel_name: String,
+    result: JoinResult,
+    wants_voiced: bool,
+) -> ChannelJoinInfo {
+    let session_id = session.session_id;
+
+    // Build member list as unique nicknames.
+    let member_nicknames = user_manager
+        .get_unique_nicknames_for_sessions(&result.member_session_ids)
+        .await;
+
+    // Membership is nickname-based: only broadcast when this nickname
+    // first becomes present (multiple sessions may share a nickname).
+    let nickname_present_elsewhere = user_manager
+        .sessions_contain_nickname(
+            &result.member_session_ids,
+            &session.nickname,
+            Some(session_id),
+        )
+        .await;
+
+    if !nickname_present_elsewhere {
+        let join_broadcast = ServerMessage::ChatUserJoined {
+            channel: channel_name.clone(),
+            nickname: session.nickname.clone(),
+            is_admin: session.is_admin,
+            is_shared: session.is_shared,
+        };
+        for &member_session_id in &result.member_session_ids {
+            if member_session_id != session_id {
+                user_manager
+                    .send_to_session(member_session_id, join_broadcast.clone())
+                    .await;
+            }
+        }
+    }
+
+    // Voiced nicknames are gated on the voice feature and voice_listen permission.
+    let voiced = if wants_voiced {
+        let participants = voice_registry.get_participants(&channel_name).await;
+        if participants.is_empty() {
+            None
+        } else {
+            Some(participants)
+        }
+    } else {
+        None
+    };
+
+    ChannelJoinInfo {
+        channel: channel_name,
+        topic: result.topic,
+        topic_set_by: result.topic_set_by,
+        secret: result.secret,
+        members: member_nicknames,
+        voiced,
     }
 }
 
@@ -798,7 +882,7 @@ mod tests {
             &voice_registry,
             &channel_manager,
             &removed,
-            true,
+            LeaverNotify::Notify,
         )
         .await;
 
@@ -870,7 +954,7 @@ mod tests {
             &voice_registry,
             &channel_manager,
             &[stale_snapshot],
-            true,
+            LeaverNotify::Notify,
         )
         .await;
 
@@ -926,7 +1010,7 @@ mod tests {
             &voice_registry,
             &channel_manager,
             &[alice1],
-            true,
+            LeaverNotify::Notify,
         )
         .await;
         assert!(
@@ -939,7 +1023,7 @@ mod tests {
             &voice_registry,
             &channel_manager,
             &[alice2],
-            true,
+            LeaverNotify::Notify,
         )
         .await;
 
@@ -1143,7 +1227,7 @@ mod tests {
             &voice_registry,
             &channel_manager,
             &[alice1],
-            true,
+            LeaverNotify::Notify,
         )
         .await;
         assert!(
@@ -1156,7 +1240,7 @@ mod tests {
             &voice_registry,
             &channel_manager,
             &[alice2],
-            true,
+            LeaverNotify::Notify,
         )
         .await;
 
@@ -1225,7 +1309,7 @@ mod tests {
             &voice_registry,
             &channel_manager,
             &[victim_session],
-            false,
+            LeaverNotify::Skip,
         )
         .await;
 

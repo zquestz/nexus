@@ -16,6 +16,7 @@ use global_hotkey::GlobalHotKeyEvent;
 use iced::Task;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
+use nexus_common::validators::is_channel_target;
 
 use crate::NexusApp;
 use crate::config::settings::ProxySettings;
@@ -62,7 +63,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        if target.starts_with('#')
+        if is_channel_target(&target)
             && conn
                 .pending_channel_leave
                 .as_ref()
@@ -99,7 +100,7 @@ impl NexusApp {
 
         // For channels, check if we're a member
         // Note: conn.channels is keyed by lowercase channel name WITH the # prefix
-        if target.starts_with('#') {
+        if is_channel_target(&target) {
             let channel_lower = fold_name(&target);
             if !conn.channels.contains_key(&channel_lower) {
                 return self.add_active_tab_message(

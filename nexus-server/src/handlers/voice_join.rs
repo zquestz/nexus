@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::is_channel_target;
 
 use crate::constants::{
     FEATURE_VOICE, HANDLER_VOICE_JOIN, LOG_VOICE_JOIN_NOT_LOGGED_IN,
@@ -92,7 +93,7 @@ where
             break 'locked VoiceJoinOutcome::Error(err_voice_already_joined(ctx.locale));
         }
 
-        let is_channel = target.starts_with('#');
+        let is_channel = is_channel_target(&target);
         let internal_target = if is_channel {
             if !ctx.channel_manager.is_member(&target, session_id).await {
                 break 'locked VoiceJoinOutcome::Error(err_voice_not_channel_member(

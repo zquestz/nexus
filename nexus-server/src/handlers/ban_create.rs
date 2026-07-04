@@ -12,10 +12,11 @@ use nexus_common::validators::{self, BanReasonError, DurationError, TargetError}
 
 use super::duration::{format_duration_remaining, parse_duration};
 use super::{
-    HandlerContext, Outcome, dispatch_outcome, err_ban_admin_by_ip, err_ban_admin_by_nickname,
-    err_ban_invalid_duration, err_ban_invalid_target, err_ban_self, err_database,
-    err_not_logged_in, err_permission_denied, err_reason_invalid, err_reason_too_long,
-    err_target_too_long, remove_users_with_cleanup_locked, send_reason_and_disconnect,
+    HandlerContext, LeaverNotify, Outcome, dispatch_outcome, err_ban_admin_by_ip,
+    err_ban_admin_by_nickname, err_ban_invalid_duration, err_ban_invalid_target, err_ban_self,
+    err_database, err_not_logged_in, err_permission_denied, err_reason_invalid,
+    err_reason_too_long, err_target_too_long, remove_users_with_cleanup_locked,
+    send_reason_and_disconnect,
 };
 use crate::constants::*;
 use crate::db::Permission;
@@ -188,7 +189,7 @@ where
             ctx.voice_registry,
             ctx.channel_manager,
             &sessions,
-            false,
+            LeaverNotify::Skip,
         )
         .await;
 

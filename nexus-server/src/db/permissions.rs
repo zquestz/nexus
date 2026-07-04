@@ -130,6 +130,35 @@ impl Permission {
     }
 }
 
+/// Type of a per-user permission override row (`user_permissions.override_type`).
+///
+/// `Grant` adds a permission on top of the user's group; `Revoke` denies a
+/// permission the group would otherwise provide. Stored as snake_case text
+/// (`grant` / `revoke`) — the SQL constants in `db/sql.rs` bake the same
+/// literals into their WHERE clauses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, AsRefStr)]
+#[strum(serialize_all = "snake_case")]
+pub enum OverrideType {
+    Grant,
+    Revoke,
+}
+
+impl OverrideType {
+    /// Convert to its database string (`grant` / `revoke`).
+    pub fn as_str(&self) -> &str {
+        self.as_ref()
+    }
+
+    /// Parse a database override string; `None` if unrecognized.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "grant" => Some(OverrideType::Grant),
+            "revoke" => Some(OverrideType::Revoke),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Permissions {
     pub(crate) permissions: HashSet<Permission>,
@@ -235,6 +264,21 @@ mod tests {
         assert_eq!(Permission::TrustList.as_str(), "trust_list");
         assert_eq!(Permission::VoiceListen.as_str(), "voice_listen");
         assert_eq!(Permission::VoiceTalk.as_str(), "voice_talk");
+    }
+
+    #[test]
+    fn test_override_type_snake_case_conversion() {
+        assert_eq!(OverrideType::Grant.as_str(), "grant");
+        assert_eq!(OverrideType::Revoke.as_str(), "revoke");
+    }
+
+    #[test]
+    fn test_override_type_parse() {
+        assert_eq!(OverrideType::parse("grant"), Some(OverrideType::Grant));
+        assert_eq!(OverrideType::parse("revoke"), Some(OverrideType::Revoke));
+        assert_eq!(OverrideType::parse("deny"), None);
+        assert_eq!(OverrideType::parse("GRANT"), None);
+        assert_eq!(OverrideType::parse(""), None);
     }
 
     #[test]
