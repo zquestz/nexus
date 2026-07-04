@@ -1,6 +1,6 @@
 [package]
 name = "nexus-tracker"
-version = "0.1.4"
+version = "0.1.5"
 edition.workspace = true
 license = "MIT"
 authors = ["Josh Ellithorpe <quest@mac.com>"]

@@ -40,9 +40,14 @@ cd nexus-trackerd
 
 #### Windows
 
-1. Download `nexus-trackerd-{version}-windows-x64.zip`
-2. Extract the zip file
-3. Run `nexus-trackerd.exe` from Command Prompt or PowerShell
+Download the appropriate zip for your Windows machine:
+
+| Architecture    | File                                          |
+| --------------- | --------------------------------------------- |
+| x64 (Intel/AMD) | `nexus-trackerd-{version}-windows-x64.zip`    |
+| ARM64           | `nexus-trackerd-{version}-windows-arm64.zip`  |
+
+Extract the zip file, then run `nexus-trackerd.exe` from Command Prompt or PowerShell.
 
 #### Linux
 
@@ -117,7 +122,7 @@ Start the tracker with default settings:
 You'll see output like:
 
 ```
-2026-04-28T09:00:05.360381Z  INFO Nexus Tracker v0.1.4
+2026-04-28T09:00:05.360381Z  INFO Nexus Tracker v0.1.5
 2026-04-28T09:00:05.360455Z  INFO Log level: info
 2026-04-28T09:00:05.360473Z  INFO Log directory: ~/.local/share/nexus-trackerd/logs
 2026-04-28T09:00:05.373620Z  INFO Generating self-signed TLS certificate...
