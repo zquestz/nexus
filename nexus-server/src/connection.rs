@@ -1271,6 +1271,13 @@ mod tests {
     use std::task::{Context, Poll};
     use std::time::Duration;
 
+    /// Harness guard for every awaited test step. Only a true hang should
+    /// ever hit this: it must stay far above real step latency (including
+    /// Argon2 logins on the blocking pool, which also rules out paused
+    /// virtual time here) so host CPU starvation can't flake these tests —
+    /// the previous 2s guard fired spuriously under heavy parallel load.
+    const TEST_STEP_TIMEOUT: Duration = Duration::from_secs(30);
+
     use nexus_common::framing::{FrameContexts, RawFrame};
     use nexus_common::io::{
         read_server_message_in_context, send_client_message_with_id, server_message_to_frame_bytes,
@@ -1411,14 +1418,14 @@ mod tests {
             drop(writer);
             drop(egress);
 
-            let server_result = time::timeout(Duration::from_secs(2), server_task)
+            let server_result = time::timeout(TEST_STEP_TIMEOUT, server_task)
                 .await
                 .expect("connection task should exit");
             server_result
                 .expect("connection task should not panic")
                 .expect("connection task should not fail");
 
-            time::timeout(Duration::from_secs(2), egress_task)
+            time::timeout(TEST_STEP_TIMEOUT, egress_task)
                 .await
                 .expect("egress task should exit")
                 .expect("egress task should not panic");
@@ -1539,7 +1546,7 @@ mod tests {
         connection: &mut TestConnection,
     ) -> nexus_common::io::ReceivedServerMessage {
         time::timeout(
-            Duration::from_secs(2),
+            TEST_STEP_TIMEOUT,
             read_server_message_in_context(
                 &mut connection.reader,
                 FrameContexts::SERVER_HANDSHAKE_RESPONSE
@@ -1555,7 +1562,7 @@ mod tests {
 
     async fn read_next_raw_frame(connection: &mut TestConnection) -> RawFrame {
         time::timeout(
-            Duration::from_secs(2),
+            TEST_STEP_TIMEOUT,
             connection
                 .reader
                 .read_frame_in_context(FrameContexts::BBS_SERVER),
@@ -1717,7 +1724,7 @@ mod tests {
         .await
         .expect("handshake send should succeed");
         let handshake = time::timeout(
-            Duration::from_secs(2),
+            TEST_STEP_TIMEOUT,
             nexus_common::io::read_server_handshake_response(&mut reader),
         )
         .await
@@ -1744,7 +1751,7 @@ mod tests {
         .await
         .expect("login send should succeed");
         let login = time::timeout(
-            Duration::from_secs(2),
+            TEST_STEP_TIMEOUT,
             nexus_common::io::read_server_login_response(&mut reader),
         )
         .await
@@ -1760,7 +1767,7 @@ mod tests {
 
         drop(reader);
         drop(writer);
-        time::timeout(Duration::from_secs(2), server_task)
+        time::timeout(TEST_STEP_TIMEOUT, server_task)
             .await
             .expect("connection task should exit")
             .expect("connection task should not panic")
@@ -1816,7 +1823,7 @@ mod tests {
         };
 
         let server_task = tokio::spawn(handle_connection_inner(server, params));
-        let register = time::timeout(Duration::from_secs(2), command_rx.recv())
+        let register = time::timeout(TEST_STEP_TIMEOUT, command_rx.recv())
             .await
             .expect("timed out waiting for Yggdrasil BBS registration")
             .expect("register command");
@@ -1835,7 +1842,7 @@ mod tests {
         }
 
         drop(client);
-        let unregister = time::timeout(Duration::from_secs(2), command_rx.recv())
+        let unregister = time::timeout(TEST_STEP_TIMEOUT, command_rx.recv())
             .await
             .expect("timed out waiting for Yggdrasil BBS unregister")
             .expect("unregister command");
@@ -1846,7 +1853,7 @@ mod tests {
             _ => panic!("expected Unregister"),
         }
 
-        time::timeout(Duration::from_secs(2), server_task)
+        time::timeout(TEST_STEP_TIMEOUT, server_task)
             .await
             .expect("connection task should exit")
             .expect("connection task should not panic")
@@ -2116,7 +2123,7 @@ mod tests {
         assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
 
         let closed = time::timeout(
-            Duration::from_secs(2),
+            TEST_STEP_TIMEOUT,
             connection
                 .reader
                 .read_frame_in_context(FrameContexts::BBS_SERVER),
@@ -2197,7 +2204,7 @@ mod tests {
         }
 
         let closed = time::timeout(
-            Duration::from_secs(2),
+            TEST_STEP_TIMEOUT,
             connection
                 .reader
                 .read_frame_in_context(FrameContexts::BBS_SERVER),
@@ -2237,7 +2244,7 @@ mod tests {
         }
 
         let closed = time::timeout(
-            Duration::from_secs(2),
+            TEST_STEP_TIMEOUT,
             connection
                 .reader
                 .read_frame_in_context(FrameContexts::BBS_SERVER),

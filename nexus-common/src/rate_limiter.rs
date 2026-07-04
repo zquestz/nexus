@@ -290,9 +290,16 @@ mod tests {
         rl.record_failure(ip(1));
         rl.record_failure(ip(1));
         assert_eq!(rl.check_only(ip(1)), RateCheck::Limited);
+        let before_sleep = std::time::Instant::now();
         thread::sleep(Duration::from_millis(1100));
+        let slept = before_sleep.elapsed();
         assert_eq!(rl.try_consume(ip(1)), RateCheck::Allowed);
-        assert_eq!(rl.try_consume(ip(1)), RateCheck::Limited);
+        // Proves refill restored ~one token rather than the full burst.
+        // Oversleep on a loaded host legitimately refills a second token
+        // (1 token/sec), so only assert inside the single-token window.
+        if slept < Duration::from_millis(1900) {
+            assert_eq!(rl.try_consume(ip(1)), RateCheck::Limited);
+        }
     }
 
     #[test]

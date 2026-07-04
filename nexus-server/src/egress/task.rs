@@ -1034,7 +1034,9 @@ mod tests {
         stop_task(handle, task).await;
     }
 
-    #[tokio::test]
+    // Paused virtual time: the 50ms no-dispatch window vs the ~100ms token
+    // cadence is deterministic instead of a real-clock race under host load.
+    #[tokio::test(start_paused = true)]
     async fn rate_limiter_defers_dispatch_after_burst_is_spent() {
         let (handle, task) = spawn_task_with_rate(EgressManager::new(nonzero(100)), 10);
         let connection = conn(1);
@@ -1078,7 +1080,9 @@ mod tests {
         stop_task(handle, task).await;
     }
 
-    #[tokio::test]
+    // Paused virtual time — same rationale as
+    // `rate_limiter_defers_dispatch_after_burst_is_spent`.
+    #[tokio::test(start_paused = true)]
     async fn live_rate_update_to_unlimited_resumes_deferred_dispatch() {
         let (handle, task) = spawn_task_with_rate(EgressManager::new(nonzero(100)), 10);
         let connection = conn(1);
