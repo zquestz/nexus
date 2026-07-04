@@ -9,9 +9,11 @@
 //!
 //! The adapter buffers incoming WebSocket binary messages and presents
 //! them as a contiguous byte stream for reading. For writing, it
-//! buffers bytes and emits them as one WebSocket binary message per
-//! `flush`. Text / Ping / Pong frames from peers are silently ignored
-//! (they're a layer below the protocol).
+//! coalesces bytes and emits them as Binary messages: at `flush`, and
+//! whenever [`WS_WRITE_CHUNK_SIZE`] accumulates — so unbounded frames
+//! stream with bounded memory instead of ballooning until flush. Text /
+//! Ping / Pong frames from peers are silently ignored (they're a layer
+//! below the protocol).
 //!
 //! Available behind the `websocket` Cargo feature; consumers that
 //! don't need WS plumbing don't pay for `tokio-tungstenite` /
@@ -24,7 +26,8 @@ use std::task::{Context, Poll};
 use futures_util::sink::Sink;
 use futures_util::stream::Stream;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::Bytes;
+use tokio_tungstenite::tungstenite::protocol::{Message, WebSocketConfig};
 
 /// Maximum size of a single inbound WebSocket message (1 MB).
 ///
@@ -33,6 +36,19 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 /// (news / server-image uploads). File-data chunks are 64 KB, matching
 /// TCP streaming behavior.
 pub const MAX_WS_MESSAGE_SIZE: usize = 1024 * 1024;
+
+/// Outbound chunking threshold for the adapter's write buffer (64 KB).
+///
+/// `poll_write` drains the buffer as one Binary message once it holds
+/// this much, so an unbounded frame (a direct-path file download, a
+/// trusted news listing) streams as bounded messages instead of
+/// accumulating whole in memory until `flush`. Bytes below the
+/// threshold still coalesce until `flush`, so ordinary protocol frames
+/// go out as one message each. Matches the 64 KB transfer streaming
+/// chunk and stays far under peers' [`MAX_WS_MESSAGE_SIZE`] inbound
+/// cap; WS message boundaries carry no protocol meaning (the
+/// connection is a byte stream), so chunked emission is transparent.
+pub const WS_WRITE_CHUNK_SIZE: usize = 64 * 1024;
 
 /// Error message for an empty WebSocket Binary frame.
 ///
@@ -58,7 +74,8 @@ pub const ERR_WS_EMPTY_BINARY_FRAME: &str =
 pub struct WebSocketAdapter<S> {
     inner: S,
     /// Pending bytes from the most recently received Binary message.
-    read_buffer: Vec<u8>,
+    /// `Bytes` so the tungstenite message moves in without a copy.
+    read_buffer: Bytes,
     /// Index into `read_buffer` of the next byte to surface to the reader.
     read_pos: usize,
     /// Outbound bytes accumulated since the last flush. Sent as one
@@ -73,7 +90,7 @@ impl<S> WebSocketAdapter<S> {
     pub fn new(inner: S) -> Self {
         Self {
             inner,
-            read_buffer: Vec::new(),
+            read_buffer: Bytes::new(),
             read_pos: 0,
             write_buffer: Vec::new(),
             closed: false,
@@ -124,7 +141,7 @@ where
                         ))));
                     }
 
-                    self.read_buffer = data.to_vec();
+                    self.read_buffer = data;
                     self.read_pos = 0;
 
                     let to_copy = self.read_buffer.len().min(buf.remaining());
@@ -161,65 +178,83 @@ where
     }
 }
 
+impl<S> WebSocketAdapter<S>
+where
+    S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
+{
+    /// Send the accumulated `write_buffer` as one Binary message once
+    /// the sink is ready. `Pending` leaves the buffer intact for the
+    /// retry. Does not flush the sink — `poll_flush` decides when
+    /// transmission must be pushed through.
+    fn poll_emit_buffer(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match Pin::new(&mut self.inner).poll_ready(cx) {
+            Poll::Ready(Ok(())) => {}
+            Poll::Ready(Err(e)) => {
+                return Poll::Ready(Err(io::Error::other(format!(
+                    "WebSocket ready error: {}",
+                    e
+                ))));
+            }
+            Poll::Pending => return Poll::Pending,
+        }
+
+        let data = std::mem::take(&mut self.write_buffer);
+        if let Err(e) = Pin::new(&mut self.inner).start_send(Message::Binary(data.into())) {
+            return Poll::Ready(Err(io::Error::other(format!(
+                "WebSocket send error: {}",
+                e
+            ))));
+        }
+        Poll::Ready(Ok(()))
+    }
+}
+
 impl<S> AsyncWrite for WebSocketAdapter<S>
 where
     S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
 {
     fn poll_write(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        // Buffer until flush so the entire frame goes out as one
-        // WebSocket Binary message.
-        self.write_buffer.extend_from_slice(buf);
-        Poll::Ready(Ok(buf.len()))
-    }
+        let this = self.get_mut();
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if self.write_buffer.is_empty() {
-            // Still need to flush the underlying sink for any prior send.
-            let inner = Pin::new(&mut self.inner);
-            return match inner.poll_flush(cx) {
-                Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
-                Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::other(format!(
-                    "WebSocket flush error: {}",
-                    e
-                )))),
-                Poll::Pending => Poll::Pending,
-            };
-        }
-
-        // Sink readiness check.
-        {
-            let inner = Pin::new(&mut self.inner);
-            match inner.poll_ready(cx) {
+        // Drain a full chunk before accepting more bytes. This bounds
+        // adapter memory at WS_WRITE_CHUNK_SIZE and propagates sink
+        // backpressure to the writer — Pending accepts nothing, so no
+        // bytes are lost.
+        while this.write_buffer.len() >= WS_WRITE_CHUNK_SIZE {
+            match this.poll_emit_buffer(cx) {
                 Poll::Ready(Ok(())) => {}
-                Poll::Ready(Err(e)) => {
-                    return Poll::Ready(Err(io::Error::other(format!(
-                        "WebSocket ready error: {}",
-                        e
-                    ))));
-                }
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Pending => return Poll::Pending,
             }
         }
 
-        let data = std::mem::take(&mut self.write_buffer);
-        let msg = Message::Binary(data.into());
+        // Accept at most one chunk's worth (partial writes are the
+        // AsyncWrite contract; `write_all` loops), keeping the buffer —
+        // and therefore every emitted Binary message — within
+        // WS_WRITE_CHUNK_SIZE. Bytes below the threshold coalesce until
+        // `flush`, so small protocol frames still go out as one message.
+        let capacity = WS_WRITE_CHUNK_SIZE - this.write_buffer.len();
+        let n = buf.len().min(capacity);
+        this.write_buffer.extend_from_slice(&buf[..n]);
+        Poll::Ready(Ok(n))
+    }
 
-        {
-            let inner = Pin::new(&mut self.inner);
-            if let Err(e) = inner.start_send(msg) {
-                return Poll::Ready(Err(io::Error::other(format!(
-                    "WebSocket send error: {}",
-                    e
-                ))));
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+
+        if !this.write_buffer.is_empty() {
+            match this.poll_emit_buffer(cx) {
+                Poll::Ready(Ok(())) => {}
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+                Poll::Pending => return Poll::Pending,
             }
         }
 
-        let inner = Pin::new(&mut self.inner);
-        match inner.poll_flush(cx) {
+        match Pin::new(&mut this.inner).poll_flush(cx) {
             Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
             Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::other(format!(
                 "WebSocket flush error: {}",
@@ -269,7 +304,12 @@ where
 
 /// Accept a WebSocket upgrade with a slowloris-defense timeout.
 ///
-/// Wraps [`tokio_tungstenite::accept_async`] in
+/// Caps tungstenite's message/frame reassembly limits to
+/// [`MAX_WS_MESSAGE_SIZE`] so an oversized inbound frame is rejected
+/// incrementally instead of after buffering tungstenite's 64 MiB
+/// default (the adapter's own size check then stays as
+/// defense-in-depth). Wraps
+/// [`tokio_tungstenite::accept_async_with_config`] in
 /// [`crate::WS_HANDSHAKE_TIMEOUT`]. On elapse or upgrade failure, returns
 /// an `io::Error` whose message is prefixed with
 /// [`crate::WS_HANDSHAKE_FAILED_PREFIX`] so the per-daemon
@@ -287,9 +327,12 @@ pub async fn accept_ws_with_timeout<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    let config = WebSocketConfig::default()
+        .max_message_size(Some(MAX_WS_MESSAGE_SIZE))
+        .max_frame_size(Some(MAX_WS_MESSAGE_SIZE));
     match tokio::time::timeout(
         crate::WS_HANDSHAKE_TIMEOUT,
-        tokio_tungstenite::accept_async(stream),
+        tokio_tungstenite::accept_async_with_config(stream, Some(config)),
     )
     .await
     {
@@ -314,6 +357,9 @@ mod tests {
         incoming: VecDeque<Result<Message, tokio_tungstenite::tungstenite::Error>>,
         outgoing: Vec<Message>,
         closed: bool,
+        /// Remaining `poll_ready` calls that report `Pending`, for
+        /// backpressure tests.
+        pending_ready_polls: usize,
     }
 
     impl MockWebSocket {
@@ -322,6 +368,7 @@ mod tests {
                 incoming: messages.into_iter().map(Ok).collect(),
                 outgoing: Vec::new(),
                 closed: false,
+                pending_ready_polls: 0,
             }
         }
     }
@@ -338,9 +385,14 @@ mod tests {
         type Error = tokio_tungstenite::tungstenite::Error;
 
         fn poll_ready(
-            self: Pin<&mut Self>,
-            _cx: &mut Context<'_>,
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
         ) -> Poll<Result<(), Self::Error>> {
+            if self.pending_ready_polls > 0 {
+                self.pending_ready_polls -= 1;
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
             Poll::Ready(Ok(()))
         }
 
@@ -460,6 +512,74 @@ mod tests {
         assert!(matches!(
             &adapter.inner.outgoing[0],
             Message::Binary(data) if data.as_ref() == b"hello world"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_large_write_emits_bounded_messages() {
+        let mock = MockWebSocket::new(vec![]);
+        let mut adapter = WebSocketAdapter::new(mock);
+
+        // 200 KB → three full 64 KB messages mid-write + the remainder
+        // at flush. Byte pattern catches reordering/loss on reassembly.
+        let data: Vec<u8> = (0..200 * 1024).map(|i| (i % 251) as u8).collect();
+        adapter.write_all(&data).await.unwrap();
+        adapter.flush().await.unwrap();
+
+        assert!(
+            adapter.inner.outgoing.len() >= 4,
+            "expected chunked messages, got {}",
+            adapter.inner.outgoing.len()
+        );
+        let mut reassembled = Vec::new();
+        for msg in &adapter.inner.outgoing {
+            match msg {
+                Message::Binary(bytes) => {
+                    assert!(
+                        bytes.len() <= WS_WRITE_CHUNK_SIZE,
+                        "message exceeds chunk cap: {}",
+                        bytes.len()
+                    );
+                    reassembled.extend_from_slice(bytes);
+                }
+                other => panic!("unexpected non-Binary message: {other:?}"),
+            }
+        }
+        assert_eq!(reassembled, data);
+    }
+
+    #[tokio::test]
+    async fn test_write_backpressure_when_sink_not_ready() {
+        let mut mock = MockWebSocket::new(vec![]);
+        mock.pending_ready_polls = 1;
+        let mut adapter = WebSocketAdapter::new(mock);
+
+        // Fill the buffer exactly to the emission threshold (accepted
+        // without emitting — drain happens on the next write).
+        let chunk = vec![0u8; WS_WRITE_CHUNK_SIZE];
+        adapter.write_all(&chunk).await.unwrap();
+        assert!(adapter.inner.outgoing.is_empty());
+
+        // Sink not ready: poll_write must return Pending WITHOUT
+        // accepting bytes, so nothing is lost under backpressure.
+        let extra = [1u8; 16];
+        let first =
+            std::future::poll_fn(|cx| Poll::Ready(Pin::new(&mut adapter).poll_write(cx, &extra)))
+                .await;
+        assert!(
+            matches!(first, Poll::Pending),
+            "expected Pending while sink not ready"
+        );
+        assert!(adapter.inner.outgoing.is_empty());
+
+        // Sink ready again: the retry drains the full chunk, then
+        // accepts the new bytes.
+        let n = adapter.write(&extra).await.unwrap();
+        assert_eq!(n, extra.len());
+        assert_eq!(adapter.inner.outgoing.len(), 1);
+        assert!(matches!(
+            &adapter.inner.outgoing[0],
+            Message::Binary(bytes) if bytes.len() == WS_WRITE_CHUNK_SIZE
         ));
     }
 

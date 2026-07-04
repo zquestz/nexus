@@ -310,6 +310,9 @@ Raw file bytes. The frame payload contains the binary file data.
 - Sent by client for uploads
 - Payload length indicates bytes in this chunk
 - May be skipped entirely if file is already complete
+- Over WebSocket transport, `FileData` payload bytes may span multiple
+  WebSocket Binary messages — message boundaries carry no protocol
+  meaning (the connection is a byte stream)
 
 **Frame format:**
 
