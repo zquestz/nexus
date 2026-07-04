@@ -98,7 +98,7 @@ impl NexusApp {
         self.send_search_request(conn_id, tab_id, query, viewing_root)
     }
 
-    /// Handle search result click (left-click) - opens new tab
+    /// Handle search result click (left-click on a directory) - opens new tab
     pub fn handle_file_search_result_clicked(
         &mut self,
         result: nexus_common::protocol::FileSearchResult,
@@ -172,7 +172,7 @@ impl NexusApp {
         Task::none()
     }
 
-    /// Handle search result context menu - Open (same as click)
+    /// Handle search result context menu - Open in a new tab
     pub fn handle_file_search_result_open(
         &mut self,
         result: nexus_common::protocol::FileSearchResult,
@@ -180,10 +180,10 @@ impl NexusApp {
         self.open_search_result_in_new_tab(result)
     }
 
-    /// Open a search result in a new tab
+    /// Open a search result in a new tab.
     ///
-    /// For directories: navigates into the directory
-    /// For files: navigates to the parent directory
+    /// For directories: navigates into the directory.
+    /// For files: navigates to the parent directory.
     fn open_search_result_in_new_tab(
         &mut self,
         result: nexus_common::protocol::FileSearchResult,
@@ -195,17 +195,13 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Determine the target path
         let target_path = if result.is_directory {
-            // Navigate into the directory
             strip_leading_slash(&result.path).to_string()
         } else {
-            // Navigate to parent directory
             let path = strip_leading_slash(&result.path);
             if let Some(pos) = path.rfind('/') {
                 path[..pos].to_string()
             } else {
-                // File is at root
                 String::new()
             }
         };

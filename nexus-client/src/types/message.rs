@@ -729,6 +729,8 @@ pub enum Message {
     CancelFiles,
     /// Files: Navigate to a directory path
     FileNavigate(String),
+    /// Files: Open a directory path in a new tab
+    FileOpenDirectoryInNewTab(String),
     /// Files: Navigate up one directory level
     FileNavigateUp,
     /// Files: Navigate to home directory
@@ -821,7 +823,7 @@ pub enum Message {
     FileSearchResultDownload(FileSearchResult),
     /// Files: Search result context menu - Info
     FileSearchResultInfo(FileSearchResult),
-    /// Files: Search result context menu - Open (same as click)
+    /// Files: Search result context menu - Open in a new tab
     FileSearchResultOpen(FileSearchResult),
     /// Files: Search results sort by column clicked
     FileSearchSortBy(FileSortColumn),

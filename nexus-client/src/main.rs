@@ -1403,6 +1403,9 @@ impl NexusApp {
             Message::ToggleFiles => self.handle_toggle_files(handlers::FilesOpenIntent::Toolbar),
             Message::CancelFiles => self.handle_cancel_files(),
             Message::FileNavigate(path) => self.handle_file_navigate(path),
+            Message::FileOpenDirectoryInNewTab(path) => {
+                self.handle_file_open_directory_in_new_tab(path)
+            }
             Message::FileNavigateUp => self.handle_file_navigate_up(),
             Message::FileNavigateHome => self.handle_file_navigate_home(),
             Message::FileRefresh => self.handle_file_refresh(),

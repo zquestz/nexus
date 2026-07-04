@@ -1,9 +1,10 @@
 //! File browser tab handlers
 
 use iced::Task;
+use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
-use crate::types::{Message, ResponseRouting};
+use crate::types::{FileTab, Message, PendingRequests, ResponseRouting};
 
 impl NexusApp {
     pub fn handle_file_tab_new(&mut self) -> Task<Message> {
@@ -24,6 +25,58 @@ impl NexusApp {
         let show_hidden = self.config.settings.show_hidden_files;
 
         self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
+    }
+
+    /// Open a directory in a new file browser tab.
+    pub fn handle_file_open_directory_in_new_tab(&mut self, path: String) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+
+        let (viewing_root, new_tab_id) = {
+            let Some(conn) = self.connections.get_mut(&conn_id) else {
+                return Task::none();
+            };
+
+            let viewing_root = conn.files_management.active_tab().viewing_root;
+            let new_tab = FileTab::new_at_path(path.clone(), viewing_root);
+            let new_tab_id = new_tab.id;
+
+            conn.files_management.tabs.push(new_tab);
+            conn.files_management.active_tab = conn.files_management.tabs.len() - 1;
+
+            (viewing_root, new_tab_id)
+        };
+
+        let show_hidden = self.config.settings.show_hidden_files;
+        let message = ClientMessage::FileList {
+            path,
+            root: viewing_root,
+            show_hidden,
+        };
+
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        match conn.send(message) {
+            Ok(message_id) => {
+                conn.pending_requests.track(
+                    message_id,
+                    ResponseRouting::PopulateFileList {
+                        tab_id: new_tab_id,
+                        uri_target: None,
+                    },
+                );
+            }
+            Err(err) => {
+                if let Some(tab) = conn.files_management.tab_by_id_mut(new_tab_id) {
+                    tab.error = Some(err);
+                }
+            }
+        }
+
+        Task::none()
     }
 
     /// Switch to a file tab by ID

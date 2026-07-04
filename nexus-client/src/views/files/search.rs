@@ -29,10 +29,6 @@ use crate::widgets::MenuButton;
 /// Used for displaying the "Path" column in search results, showing where each
 /// result is located. Returns the parent directory with a leading slash for display
 /// (e.g., "/Documents" for a file at "/Documents/file.txt").
-///
-/// Note: Similar parent-path extraction logic exists in `open_search_result_in_new_tab()`
-/// in `handlers/files.rs`, but that version returns without the leading slash since
-/// it's used for server requests rather than display.
 pub(super) fn parent_path(path: &str) -> String {
     // Remove leading slash if present for processing
     let path = path.strip_prefix('/').unwrap_or(path);
@@ -120,7 +116,7 @@ pub(super) fn lazy_search_results_table(deps: SearchResultsDeps) -> Element<'sta
                     name_content
                 };
 
-                // Build context menu - always show since Open is always available
+                // Build context menu - Open is always available.
                 ContextMenu::new(row_element, move || {
                     build_lazy_search_context_menu(result.clone(), perms)
                 })
@@ -338,7 +334,7 @@ fn build_lazy_search_context_menu(
         );
     }
 
-    // Open (always available - same as left-click)
+    // Open (directory result opens itself, file result opens its parent directory)
     menu_items.push(
         MenuButton::new(shaped_text(t("context-menu-open")).size(TEXT_SIZE))
             .padding(CONTEXT_MENU_ITEM_PADDING)

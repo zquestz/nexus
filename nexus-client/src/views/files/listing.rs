@@ -227,7 +227,25 @@ fn build_lazy_context_menu(
     bypass_via_ownership: bool,
 ) -> Element<'static, Message> {
     let mut menu_items: Vec<Element<'_, Message>> = vec![];
-    let mut has_clipboard_section = false;
+
+    // Open directories in a new tab.
+    if is_dir {
+        menu_items.push(
+            MenuButton::new(shaped_text(t("context-menu-open")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(menu_button_style)
+                .on_press(Message::FileOpenDirectoryInNewTab(entry_path.to_string()))
+                .into(),
+        );
+        menu_items.push(
+            container(Space::new())
+                .width(Fill)
+                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+                .style(separator_style)
+                .into(),
+        );
+    }
 
     // Download
     if perms.file_download {
@@ -293,7 +311,6 @@ fn build_lazy_context_menu(
                 ))
                 .into(),
         );
-        has_clipboard_section = true;
     }
 
     // Copy
@@ -309,7 +326,6 @@ fn build_lazy_context_menu(
                 ))
                 .into(),
         );
-        has_clipboard_section = true;
     }
 
     // Paste
@@ -322,11 +338,17 @@ fn build_lazy_context_menu(
                 .on_press(Message::FilePasteInto(entry_path.to_string()))
                 .into(),
         );
-        has_clipboard_section = true;
     }
 
+    // Rename and Delete are both granted by either the global permission
+    // or by ownership of the enclosing `[NEXUS-DB-username]` drop box.
+    // Rename is safe under the bypass because the destination is always
+    // in the same parent directory — it can't escape the drop box.
+    let can_rename = perms.file_rename || bypass_via_ownership;
+    let can_delete = perms.file_delete || bypass_via_ownership;
+
     // Normal actions separator
-    if has_clipboard_section && (perms.file_info || perms.file_rename) {
+    if perms.file_info || can_rename {
         menu_items.push(
             container(Space::new())
                 .width(Fill)
@@ -347,13 +369,6 @@ fn build_lazy_context_menu(
                 .into(),
         );
     }
-
-    // Rename and Delete are both granted by either the global permission
-    // or by ownership of the enclosing `[NEXUS-DB-username]` drop box.
-    // Rename is safe under the bypass because the destination is always
-    // in the same parent directory — it can't escape the drop box.
-    let can_rename = perms.file_rename || bypass_via_ownership;
-    let can_delete = perms.file_delete || bypass_via_ownership;
 
     // Rename
     if can_rename {
