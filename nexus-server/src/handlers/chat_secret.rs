@@ -158,7 +158,8 @@ mod tests {
     use crate::channels::JoinPolicy;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
-        TestContext, create_test_context, login_user, login_user_with_features, read_server_message,
+        TestContext, create_test_context, login_observer_user, login_user,
+        login_user_with_features, read_server_message,
     };
 
     async fn read_queued_server_message(test_ctx: &mut TestContext) -> ServerMessage {
@@ -459,6 +460,75 @@ mod tests {
                 assert!(error.is_some());
             }
             _ => panic!("Expected ChatSecretResponse, got {:?}", response),
+        }
+    }
+
+    /// Secret-mode `ChatUpdated` is member-visible channel state, not gated
+    /// by the `ChatSecret` edit permission: a member WITHOUT `ChatSecret`
+    /// must still receive the broadcast.
+    #[tokio::test]
+    async fn test_chat_secret_broadcast_reaches_member_without_chat_secret() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[
+                Permission::ChatJoin,
+                Permission::ChatCreate,
+                Permission::ChatSecret,
+            ],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        let _ = handle_chat_join(
+            "#general".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+
+        // Member with the chat feature but WITHOUT ChatSecret.
+        let (observer_id, mut observer_rx) = login_observer_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+        test_ctx
+            .channel_manager
+            .join("#general", observer_id, JoinPolicy::ExistingOnly)
+            .await
+            .expect("observer should join #general");
+
+        let result = handle_chat_secret(
+            "#general".to_string(),
+            true,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let _ = read_server_message(&mut test_ctx).await; // ChatSecretResponse
+
+        let (message, _) = observer_rx
+            .try_recv()
+            .expect("member without ChatSecret should receive ChatUpdated")
+            .expect_message();
+        match message {
+            ServerMessage::ChatUpdated {
+                channel, secret, ..
+            } => {
+                assert_eq!(channel, "#general");
+                assert_eq!(secret, Some(true));
+            }
+            other => panic!("Expected ChatUpdated, got {other:?}"),
         }
     }
 

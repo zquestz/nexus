@@ -178,7 +178,7 @@ Response containing directory entries.
 | `error`         | string  | If failure | Error message                                                                                                  |
 | `path`          | string  | If success | Resolved directory path                                                                                        |
 | `entries`       | array   | If success | Array of `FileEntry` objects                                                                                   |
-| `can_upload`    | boolean | If success | True if the current directory is an upload or dropbox folder                                                   |
+| `can_upload`    | boolean | Always     | True if the current directory is an upload or dropbox folder                                                   |
 | `dropbox_owner` | string  | Optional   | Username of the `[NEXUS-DB-username]` drop box enclosing the listed directory (`null`/omitted when not in one) |
 
 **Success example:**
@@ -743,10 +743,12 @@ Directories can have special types indicated by name suffixes:
 | _(none)_           | `default`      | ✅            | ✅            | ❌     | `file_delete` / `file_rename` only |
 | ` [NEXUS-UL]`      | `upload`       | ✅            | ✅            | ✅     | `file_delete` / `file_rename` only |
 | ` [NEXUS-DB]`      | `dropbox`      | Admins only   | Admins only   | ✅     | `file_delete` / `file_rename` only |
-| ` [NEXUS-DB-user]` | `dropbox_user` | User + Admins | User + Admins | ✅     | global perm OR is owner            |
+| ` [NEXUS-DB-user]` | `dropbox:user` | User + Admins | User + Admins | ✅     | global perm OR is owner            |
 
 **Notes:**
 
+- The user drop box `dir_type` wire value embeds the owner after a colon:
+  a folder named `Inbox [NEXUS-DB-alice]` lists with `"dir_type": "dropbox:alice"`
 - Space is required before the bracket
 - Suffixes are case-insensitive
 - Client should strip suffix for display (e.g., `Uploads [NEXUS-UL]` → "Uploads")

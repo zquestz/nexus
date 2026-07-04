@@ -143,7 +143,7 @@ Use `/me` for action-style messages:
 /me waves hello
 ```
 
-Displays as: `* alice waves hello`
+Displays as: `*** alice waves hello`
 
 ### Escaping Commands
 

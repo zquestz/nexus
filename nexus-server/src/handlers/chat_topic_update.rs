@@ -201,7 +201,7 @@ mod tests {
     use crate::channels::JoinPolicy;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        DEFAULT_TEST_LOCALE, TestContext, create_test_context, login_user,
+        DEFAULT_TEST_LOCALE, TestContext, create_test_context, login_observer_user, login_user,
         login_user_with_features, read_server_message,
     };
     use nexus_common::validators::DEFAULT_CHANNEL;
@@ -699,6 +699,67 @@ mod tests {
             }
             _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
         }
+    }
+
+    /// Topic `ChatUpdated` IS permission-gated: `ChatTopic` is an explicit
+    /// topic-view permission, so a member without it must NOT receive the
+    /// broadcast.
+    #[tokio::test]
+    async fn test_chattopic_broadcast_skips_member_without_chat_topic() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[
+                Permission::ChatJoin,
+                Permission::ChatCreate,
+                Permission::ChatTopicEdit,
+            ],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+        test_ctx
+            .channel_manager
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
+            .await
+            .expect("alice should create #general");
+
+        // Member with the chat feature but WITHOUT the ChatTopic view permission.
+        let (observer_id, mut observer_rx) = login_observer_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::ChatJoin],
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+        test_ctx
+            .channel_manager
+            .join("#general", observer_id, JoinPolicy::ExistingOnly)
+            .await
+            .expect("observer should join #general");
+
+        let result = handle_chat_topic_update(
+            "New topic".to_string(),
+            "#general".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::ChatTopicUpdateResponse { success: true, .. }
+        ));
+
+        assert!(
+            observer_rx.try_recv().is_err(),
+            "member without ChatTopic must not receive the topic ChatUpdated"
+        );
     }
 
     #[tokio::test]

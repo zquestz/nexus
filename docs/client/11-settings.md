@@ -70,10 +70,10 @@ Leave blank to be prompted for a nickname when connecting to shared accounts.
 
 Enable GPU-accelerated rendering instead of software rendering.
 
-- Default: disabled
+- Default: enabled
 - **Requires an application restart** to take effect
 
-Enable this if you experience sluggish UI performance. Disable it if you encounter graphical glitches or crashes.
+Disable this if you encounter graphical glitches or crashes; software rendering is slower but more compatible.
 
 ### GPU Backend
 
@@ -155,7 +155,7 @@ Controls how long user message history is retained on disk. User message convers
 **Notes:**
 
 - Only user messages are saved; console and channel history is not persisted
-- Stored locally at `~/.local/share/nexus/history/` (Linux/macOS) or `%APPDATA%\nexus\history\` (Windows)
+- Stored locally at `~/.local/share/nexus/history/` (Linux), `~/Library/Application Support/nexus/history/` (macOS), or `%APPDATA%\nexus\history\` (Windows)
 - Changing this setting only affects new connections
 - Disabling does not delete existing history files
 
@@ -300,7 +300,7 @@ Nexus uses WebRTC AudioProcessing 2.0 (the same technology as Discord, Google Me
 | ---------------------------- | -------- | ----------------------------------------------------------------- |
 | **Microphone Boost**         | Off      | Pre-gain for quiet mics: Off, +6 dB, +12 dB, or +18 dB            |
 | **Noise Suppression**        | Moderate | Off, Low, Moderate, High, or Very High background noise filtering |
-| **Echo Cancellation**        | Off      | Removes speaker audio picked up by your microphone                |
+| **Echo Cancellation**        | On       | Removes speaker audio picked up by your microphone                |
 | **Automatic Gain Control**   | On       | Normalizes your volume automatically                              |
 | **Keyboard Noise Reduction** | Off      | Suppresses transient sounds like keyboard clicks and mouse clicks |
 
@@ -308,7 +308,7 @@ Nexus uses WebRTC AudioProcessing 2.0 (the same technology as Discord, Google Me
 
 **Noise Suppression** has five levels. Higher levels remove more background noise but may introduce slight speech distortion. Moderate is a good balance for most environments. Use High or Very High in noisy locations like cafes or open offices.
 
-**Why is echo cancellation off by default?** Most users wear headphones, which don't cause echo. Echo cancellation adds processing overhead and is only needed when using speakers. Enable it if others hear themselves echoing back.
+**Echo cancellation** is on by default and automatically estimates the delay between your speakers and microphone, so speaker users don't feed other participants their own voice back. If you always wear headphones (which don't cause echo) you can turn it off to shave a little processing overhead.
 
 **Why is keyboard noise reduction off by default?** Transient suppression can occasionally clip the start of words. Enable it if you type while talking and want to reduce keyboard noise for others.
 
@@ -470,7 +470,7 @@ events are the display path for terminal server disconnect reasons.
 - Click **Cancel** to discard changes
 - Press **Escape** to cancel
 
-Settings are saved to `~/.config/nexus/config.json` (Linux/macOS) or `%APPDATA%\nexus\config.json` (Windows).
+Settings are saved to `~/.config/nexus/config.json` (Linux), `~/Library/Application Support/nexus/config.json` (macOS), or `%APPDATA%\nexus\config.json` (Windows).
 
 ## Keyboard Shortcuts
 
@@ -486,7 +486,8 @@ Settings are saved to `~/.config/nexus/config.json` (Linux/macOS) or `%APPDATA%\
 
 Check that you have write permission to the config directory:
 
-- Linux/macOS: `~/.config/nexus/`
+- Linux: `~/.config/nexus/`
+- macOS: `~/Library/Application Support/nexus/`
 - Windows: `%APPDATA%\nexus\`
 
 ### Notifications not appearing

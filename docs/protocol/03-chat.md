@@ -327,7 +327,7 @@ Send a chat message to a channel.
   (whitespace, control characters, additional `#`). A failure here
   sends a generic `Error` message; the connection stays open.
   (`ChatSend` has no typed `ChatSendResponse` — successful sends fan
-  out via `ChatReceive` broadcasts to other members, and a per-send
+  out via `ChatMessage` broadcasts to other members, and a per-send
   ack would be unreasonably chatty.)
 
 **Example:**

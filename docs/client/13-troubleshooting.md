@@ -332,7 +332,8 @@ In both cases, no login credentials were sent — both stages run before authent
 **Solutions:**
 
 1. Check write permissions for config directory:
-   - Linux/macOS: `~/.config/nexus/`
+   - Linux: `~/.config/nexus/`
+   - macOS: `~/Library/Application Support/nexus/`
    - Windows: `%APPDATA%\nexus\`
 2. Ensure disk has free space
 3. Check if antivirus is blocking file writes
@@ -342,8 +343,11 @@ In both cases, no login credentials were sent — both stages run before authent
 **Solution:** Delete the config file to reset to defaults:
 
 ```
-# Linux/macOS
+# Linux
 rm ~/.config/nexus/config.json
+
+# macOS
+rm ~/Library/Application\ Support/nexus/config.json
 
 # Windows
 del %APPDATA%\nexus\config.json

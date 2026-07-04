@@ -215,8 +215,8 @@ Create a new news item.
 
 **Field validation.**
 
-- `body`: ≤4096 characters, no control characters except newline and
-  tab.
+- `body`: ≤4096 characters, no control characters except newline,
+  carriage return, and tab.
 - `image`: ≤700 KB data URI, must be a well-formed
   `data:image/<type>;base64,...` URI for one of the allowed image
   types (PNG, JPEG, WebP, SVG).

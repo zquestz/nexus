@@ -20,14 +20,14 @@ deliberately left out of scope.
 
 ## Security
 
-| Feature                  | Hotline | KDX | Wired | Nexus | Notes                                               |
-| ------------------------ | :-----: | :-: | :---: | :---: | --------------------------------------------------- |
-| Encryption               |   ❌    | ✅  |  ✅   |  ⚡   | KDX: Blowfish; Wired: TLS; Nexus: Mandatory TLS 1.3 |
-| Certificate verification |   ❌    | ❌  |  ✅   |  ✅   | TOFU model with SHA-256 fingerprints                |
-| Password hashing         |   ❌    | ❌  |  ✅   |  ⚡   | Nexus: Argon2id                                     |
-| IP trust lists           |   ❌    | ✅  |  ❌   |  ✅   |                                                     |
-| CIDR range bans          |   ❌    | ❌  |  ❌   |  ✅   |                                                     |
-| Timed bans               |   ❌    | ✅  |  ✅   |  ✅   |                                                     |
+| Feature                  | Hotline | KDX | Wired | Nexus | Notes                                           |
+| ------------------------ | :-----: | :-: | :---: | :---: | ----------------------------------------------- |
+| Encryption               |   ❌    | ✅  |  ✅   |  ⚡   | KDX: Blowfish; Wired: TLS; Nexus: Mandatory TLS |
+| Certificate verification |   ❌    | ❌  |  ✅   |  ✅   | TOFU model with SHA-256 fingerprints            |
+| Password hashing         |   ❌    | ❌  |  ✅   |  ⚡   | Nexus: Argon2id                                 |
+| IP trust lists           |   ❌    | ✅  |  ❌   |  ✅   |                                                 |
+| CIDR range bans          |   ❌    | ❌  |  ❌   |  ✅   |                                                 |
+| Timed bans               |   ❌    | ✅  |  ✅   |  ✅   |                                                 |
 
 ## User Management
 
@@ -106,7 +106,7 @@ deliberately left out of scope.
 
 | Feature                       | Description                                                                |
 | ----------------------------- | -------------------------------------------------------------------------- |
-| Mandatory TLS 1.3             | Security by default, no opt-out                                            |
+| Mandatory TLS                 | Security by default, no opt-out                                            |
 | TOFU certificate verification | Trust on first use with fingerprint storage                                |
 | Argon2id password hashing     | Modern password security                                                   |
 | CIDR range IP bans/trusts     | Network-level access control                                               |

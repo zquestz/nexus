@@ -270,7 +270,7 @@ Nexus uses the same audio processing technology as Discord, Google Meet, and oth
 | ---------------------------- | -------- | ----------------------------------------------------------------- |
 | **Microphone Boost**         | Off      | Pre-gain for quiet mics: Off, +6 dB, +12 dB, or +18 dB            |
 | **Noise Suppression**        | Moderate | Off, Low, Moderate, High, or Very High background noise filtering |
-| **Echo Cancellation**        | Off      | Removes speaker audio picked up by your microphone                |
+| **Echo Cancellation**        | On       | Removes speaker audio picked up by your microphone                |
 | **Automatic Gain Control**   | On       | Normalizes your volume so you're not too quiet or too loud        |
 | **Keyboard Noise Reduction** | Off      | Suppresses transient sounds like keyboard clicks and mouse clicks |
 
@@ -278,7 +278,7 @@ Nexus uses the same audio processing technology as Discord, Google Meet, and oth
 
 **Noise Suppression** has five levels. Higher levels remove more background noise but may introduce slight speech distortion. Moderate is a good balance for most environments. Use High or Very High in noisy locations like cafes or open offices.
 
-**Why is echo cancellation off by default?** Most users wear headphones, which don't cause echo. Echo cancellation adds processing overhead and is only needed when using speakers. Enable it if others hear themselves echoing back.
+**Echo cancellation** is on by default and automatically estimates the delay between your speakers and microphone, so speaker users don't feed other participants their own voice back. If you always wear headphones (which don't cause echo) you can turn it off to shave a little processing overhead.
 
 **Why is keyboard noise reduction off by default?** Transient suppression can occasionally clip the start of words. Enable it if you type while talking and want to reduce keyboard noise for others.
 
@@ -341,7 +341,7 @@ The same VU meter style is used in both the settings mic test and the voice bar 
 
 **Echo or feedback:**
 
-- Enable **Echo Cancellation** in Settings > Audio
+- Make sure **Echo Cancellation** is enabled in Settings > Audio (it is on by default)
 - Use headphones instead of speakers
 - Move microphone away from speakers
 

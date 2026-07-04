@@ -198,7 +198,8 @@ Send a broadcast message to all connected users.
 
 **Field validation.** `message`: non-empty after trim, ≤1024
 characters, no newlines, no other control characters. A failure here
-is treated as a protocol violation and disconnects the connection.
+returns a `UserBroadcastResponse` with `success: false`; the
+connection stays open.
 
 **Example:**
 
@@ -294,11 +295,11 @@ Unicode is fully supported, including:
 
 The `to_nickname` field uses the same validation as usernames:
 
-| Rule        | Value                                                     | Error             |
+| Rule | Value | Error |
 | ----------- | --------------------------------------------------------- | ----------------- | ---------------- |
-| Not empty   | Required field                                            | Nickname is empty |
-| Max length  | 32 characters                                             | Nickname too long |
-| Valid chars | Unicode letters and ASCII graphic (no spaces, no `/\:.<>" | ?\*#`)            | Invalid nickname |
+| Not empty | Required field | Nickname is empty |
+| Max length | 32 characters | Nickname too long |
+| Valid chars | Unicode letters and ASCII graphic (no spaces, no `/\:.<>" | ?\*#`) | Invalid nickname |
 
 ## User Message Routing
 
@@ -347,13 +348,15 @@ Sending a message to yourself is not allowed. The server returns:
 | ------------------------------- | ----------------------------------- | --------------- |
 | Not logged in                   | Sent before authentication          | Disconnected    |
 | Authentication error            | Invalid session                     | Disconnected    |
-| Message cannot be empty         | Empty or whitespace-only message    | Disconnected    |
-| Message too long                | Exceeds 1024 characters             | Disconnected    |
-| Message cannot contain newlines | Contains `\n` or `\r`               | Disconnected    |
-| Invalid characters              | Contains control characters         | Disconnected    |
+| Message cannot be empty         | Empty or whitespace-only message    | Stays connected |
+| Message too long                | Exceeds 1024 characters             | Stays connected |
+| Message cannot contain newlines | Contains `\n` or `\r`               | Stays connected |
+| Invalid characters              | Contains control characters         | Stays connected |
 | Permission denied               | Missing `user_broadcast` permission | Stays connected |
 
-Note: Broadcast validation errors disconnect the client (more strict), while user message validation errors keep the connection open.
+Note: Like user messages, broadcast validation and permission errors
+return a typed failure response and keep the connection open; only
+missing authentication disconnects.
 
 ## Broadcast vs Chat
 

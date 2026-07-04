@@ -152,18 +152,17 @@ The `error_kind` field provides machine-readable error classification for progra
 
 ### Transfer Errors
 
-| Value                 | Description                    | Typical Response             |
-| --------------------- | ------------------------------ | ---------------------------- |
-| `not_found`           | Path doesn't exist             | Show error                   |
-| `permission`          | Permission denied              | Show error                   |
-| `invalid`             | Invalid input (malformed path) | Show error                   |
-| `unsupported_version` | Protocol version not supported | Show incompatibility message |
-| `disk_full`           | Disk full                      | Free space and retry         |
-| `hash_mismatch`       | BLAKE3 verification failed     | Restart transfer             |
-| `io_error`            | File I/O error                 | Show error, retry later      |
-| `protocol_error`      | Invalid/unexpected data        | Reconnect                    |
-| `exists`              | File already exists (upload)   | Admin must delete existing   |
-| `conflict`            | Active file operation          | Retry later                  |
+| Value            | Description                    | Typical Response           |
+| ---------------- | ------------------------------ | -------------------------- |
+| `not_found`      | Path doesn't exist             | Show error                 |
+| `permission`     | Permission denied              | Show error                 |
+| `invalid`        | Invalid input (malformed path) | Show error                 |
+| `capacity`       | Not enough free space          | Free space and retry       |
+| `hash_mismatch`  | BLAKE3 verification failed     | Restart transfer           |
+| `io_error`       | File I/O error                 | Show error, retry later    |
+| `protocol_error` | Invalid/unexpected data        | Reconnect                  |
+| `exists`         | File already exists (upload)   | Admin must delete existing |
+| `conflict`       | Active file operation          | Retry later                |
 
 ### Tracker Errors
 

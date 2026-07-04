@@ -162,6 +162,15 @@ Permissions control what actions users can perform. Admins have all permissions 
 
 **Note:** `voice_listen` is required to join a voice session. Without `voice_talk`, users can listen but not speak.
 
+### Tracker Permissions
+
+| Permission       | Allows                                                          |
+| ---------------- | --------------------------------------------------------------- |
+| `tracker_add`    | Add a tracker to the server's tracker list                      |
+| `tracker_edit`   | Edit a tracker's configuration and accept a changed fingerprint |
+| `tracker_list`   | View the server's configured trackers and their runtime status  |
+| `tracker_remove` | Remove a tracker from the server's tracker list                 |
+
 ### Group Permissions
 
 | Permission     | Allows                |
