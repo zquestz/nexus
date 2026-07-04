@@ -444,14 +444,15 @@ fn handle_voice_command(cmd: VoiceCommand, runtime: &mut VoiceCommandRuntime<'_>
             }
         }
         VoiceCommand::MuteUser(nickname) => {
+            let nickname_key = fold_name(&nickname);
             // Stop any already queued or codec-buffered audio immediately.
             if runtime.participants.set_muted(&nickname, true) {
                 runtime.mixer.mute_user_and_clear(&nickname);
             } else {
-                runtime.mixer.remove_user_state(&nickname);
+                runtime.mixer.remove_user_state(&nickname_key);
             }
-            runtime.jitter_pool.remove(&nickname);
-            runtime.decoder_pool.remove(&nickname);
+            runtime.jitter_pool.remove(&nickname_key);
+            runtime.decoder_pool.remove(&nickname_key);
         }
         VoiceCommand::UnmuteUser(nickname) => {
             runtime.participants.set_muted(&nickname, false);
@@ -461,17 +462,20 @@ fn handle_voice_command(cmd: VoiceCommand, runtime: &mut VoiceCommandRuntime<'_>
             runtime.participants.add_user(&nickname);
         }
         VoiceCommand::UserLeft(nickname) => {
+            let nickname_key = fold_name(&nickname);
             runtime.participants.remove_user(&nickname);
             emit_speaking_stopped(runtime.participants, &nickname, runtime.event_tx);
             // Clean up decoder, jitter, and queued mixer buffers for the user who left.
-            runtime.mixer.remove_user_state(&nickname);
-            runtime.jitter_pool.remove(&nickname);
-            runtime.decoder_pool.remove(&nickname);
+            runtime.mixer.remove_user_state(&nickname_key);
+            runtime.jitter_pool.remove(&nickname_key);
+            runtime.decoder_pool.remove(&nickname_key);
         }
         VoiceCommand::UserRenamed { old, new, muted } => {
+            let old_key = fold_name(&old);
+            let new_key = fold_name(&new);
             let old_was_known = runtime.participants.rename_user(&old, &new, muted);
             emit_speaking_stopped(runtime.participants, &old, runtime.event_tx);
-            if old_was_known && fold_name(&old) != fold_name(&new) {
+            if old_was_known && old_key != new_key {
                 emit_speaking_stopped(runtime.participants, &new, runtime.event_tx);
             }
 
@@ -480,10 +484,9 @@ fn handle_voice_command(cmd: VoiceCommand, runtime: &mut VoiceCommandRuntime<'_>
                 runtime.jitter_pool.rename_user(&old, &new);
                 runtime.mixer.rename_user(&old, &new, muted);
             } else {
-                runtime.decoder_pool.remove(&old);
-                runtime.jitter_pool.remove(&old);
-                runtime.mixer.remove_user_state(&old);
-                let new_key = fold_name(&new);
+                runtime.decoder_pool.remove(&old_key);
+                runtime.jitter_pool.remove(&old_key);
+                runtime.mixer.remove_user_state(&old_key);
                 if runtime.participants.is_known_key(&new_key)
                     && runtime.participants.is_muted_key(&new_key)
                 {
@@ -815,18 +818,18 @@ async fn run_voice_session(
                     Some(VoiceDtlsEvent::VoiceReceived { sender, sequence, timestamp, payload }) => {
                         let sender_key = fold_name(&sender);
                         if !participants.is_known_key(&sender_key) {
-                            decoder_pool.remove(&sender);
-                            jitter_pool.remove(&sender);
+                            decoder_pool.remove(&sender_key);
+                            jitter_pool.remove(&sender_key);
                             continue;
                         }
                         if !participants.should_buffer_received_voice_key(&sender_key) {
-                            decoder_pool.remove(&sender);
-                            jitter_pool.remove(&sender);
+                            decoder_pool.remove(&sender_key);
+                            jitter_pool.remove(&sender_key);
                             continue;
                         }
                         // Decode and buffer the audio
-                        if let Ok(samples) = decoder_pool.decode(&sender, &payload)
-                            && jitter_pool.push(&sender, sequence, timestamp, samples)
+                        if let Ok(samples) = decoder_pool.decode(&sender_key, &payload)
+                            && jitter_pool.push(&sender_key, sequence, timestamp, samples)
                         {
                             emit_speaking_started(&mut participants, &sender, &event_tx);
                         }

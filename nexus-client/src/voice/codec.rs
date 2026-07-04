@@ -194,7 +194,9 @@ impl VoiceDecoder {
 /// Maintains one decoder per sender to preserve codec state for
 /// better packet loss concealment.
 pub struct DecoderPool {
-    /// Decoders keyed by sender nickname (lowercase)
+    /// Decoders keyed by folded sender key (`fold_name` of the nickname).
+    /// Hot-path methods take the pre-folded key so the 100 Hz decode path
+    /// never re-folds; only the rename path folds internally.
     decoders: HashMap<String, VoiceDecoder>,
 }
 
@@ -211,22 +213,20 @@ impl DecoderPool {
     /// Creates a new decoder for the sender if one doesn't exist.
     ///
     /// # Arguments
-    /// * `sender` - Nickname of the sender
+    /// * `sender_key` - Folded sender key (`fold_name` of the nickname)
     /// * `data` - Encoded Opus frame
     ///
     /// # Returns
     /// * `Ok(Vec<f32>)` - Decoded audio samples
     /// * `Err(String)` - Error message if decoding failed
-    pub fn decode(&mut self, sender: &str, data: &[u8]) -> Result<Vec<f32>, String> {
-        let key = fold_name(sender);
-
-        let decoder = if let Some(d) = self.decoders.get_mut(&key) {
+    pub fn decode(&mut self, sender_key: &str, data: &[u8]) -> Result<Vec<f32>, String> {
+        let decoder = if let Some(d) = self.decoders.get_mut(sender_key) {
             d
         } else {
             let new_decoder = VoiceDecoder::new()?;
-            self.decoders.insert(key.clone(), new_decoder);
+            self.decoders.insert(sender_key.to_string(), new_decoder);
             self.decoders
-                .get_mut(&key)
+                .get_mut(sender_key)
                 .expect(ERR_DECODER_MISSING_AFTER_INSERT)
         };
 
@@ -238,27 +238,25 @@ impl DecoderPool {
     /// Generates concealed audio using the sender's decoder state.
     ///
     /// # Arguments
-    /// * `sender` - Nickname of the sender
+    /// * `sender_key` - Folded sender key (`fold_name` of the nickname)
     ///
     /// # Returns
     /// * `Ok(Vec<f32>)` - Concealed audio samples
     /// * `Err(String)` - Error message if PLC failed or sender unknown
-    pub fn decode_lost(&mut self, sender: &str) -> Result<Vec<f32>, String> {
-        let key = fold_name(sender);
-
+    pub fn decode_lost(&mut self, sender_key: &str) -> Result<Vec<f32>, String> {
         let decoder = self
             .decoders
-            .get_mut(&key)
-            .ok_or_else(|| format!("No decoder for sender: {}", sender))?;
+            .get_mut(sender_key)
+            .ok_or_else(|| format!("No decoder for sender: {}", sender_key))?;
 
         decoder.decode_lost()
     }
 
-    /// Remove a sender's decoder
+    /// Remove a sender's decoder by folded key
     ///
     /// Call this when a user leaves voice to free resources.
-    pub fn remove(&mut self, sender: &str) {
-        self.decoders.remove(&fold_name(sender));
+    pub fn remove(&mut self, sender_key: &str) {
+        self.decoders.remove(sender_key);
     }
 
     /// Re-key a sender's decoder after a nickname rename.
@@ -368,22 +366,22 @@ mod tests {
         let samples = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
         let encoded = encoder.encode(&samples).unwrap();
 
-        // Decode from two different senders
-        let decoded1 = pool.decode("Alice", &encoded);
+        // Decode from two different senders (callers pass pre-folded keys)
+        let decoded1 = pool.decode(&fold_name("Alice"), &encoded);
         assert!(decoded1.is_ok());
         assert_eq!(pool.decoders.len(), 1);
 
-        let decoded2 = pool.decode("Bob", &encoded);
+        let decoded2 = pool.decode(&fold_name("Bob"), &encoded);
         assert!(decoded2.is_ok());
         assert_eq!(pool.decoders.len(), 2);
 
-        // Same sender reuses decoder
-        let decoded3 = pool.decode("alice", &encoded); // lowercase
+        // Same sender reuses decoder: folding at the call site collapses case
+        let decoded3 = pool.decode(&fold_name("alice"), &encoded);
         assert!(decoded3.is_ok());
         assert_eq!(pool.decoders.len(), 2); // Still 2, not 3
 
         // Remove a sender
-        pool.remove("Alice");
+        pool.remove(&fold_name("Alice"));
         assert_eq!(pool.decoders.len(), 1);
 
         // Clear all
@@ -394,7 +392,7 @@ mod tests {
     #[test]
     fn test_decoder_pool_rename_user_rekeys_decoder() {
         let mut pool = DecoderPool::new();
-        let _ = pool.decode("Alice", &[]);
+        let _ = pool.decode(&fold_name("Alice"), &[]);
 
         pool.rename_user("Alice", "Alicia");
 
@@ -406,8 +404,8 @@ mod tests {
     #[test]
     fn test_decoder_pool_rename_user_keeps_existing_new_on_collision() {
         let mut pool = DecoderPool::new();
-        let _ = pool.decode("Alice", &[]);
-        let _ = pool.decode("Alicia", &[]);
+        let _ = pool.decode(&fold_name("Alice"), &[]);
+        let _ = pool.decode(&fold_name("Alicia"), &[]);
 
         pool.rename_user("Alice", "Alicia");
 

@@ -92,6 +92,10 @@ pub const ERR_HKDF_OUTPUT_LENGTH: &str = "32 bytes is a valid output length for 
 /// after `insert`. Programmer-error in the codec map.
 pub const ERR_DECODER_MISSING_AFTER_INSERT: &str = "Decoder should exist after insert";
 
+/// Panic message: a mixer user buffer was not present immediately
+/// after `insert`. Programmer-error in the mixer map.
+pub const ERR_MIXER_BUFFER_MISSING_AFTER_INSERT: &str = "Mixer buffer should exist after insert";
+
 /// Panic message: the jitter buffer's `next_sequence` was `None` after
 /// the initialization branch above set it. Programmer-error.
 pub const ERR_NEXT_SEQUENCE_NONE: &str = "next_sequence should be Some after initialization above";

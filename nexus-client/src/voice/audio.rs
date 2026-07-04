@@ -21,6 +21,7 @@ use nexus_common::voice::{
 };
 
 use super::resample::{InputResampler, OutputResampler, needs_resampling};
+use crate::constants::ERR_MIXER_BUFFER_MISSING_AFTER_INSERT;
 
 // =============================================================================
 // Constants
@@ -843,10 +844,9 @@ impl MixerState {
         has_audio
     }
 
-    fn remove_user_state(&mut self, nickname: &str) {
-        let key = fold_name(nickname);
-        self.user_buffers.remove(&key);
-        self.muted.remove(&key);
+    fn remove_user_state(&mut self, sender_key: &str) {
+        self.user_buffers.remove(sender_key);
+        self.muted.remove(sender_key);
     }
 
     fn mute_user_and_clear(&mut self, nickname: &str) {
@@ -855,18 +855,23 @@ impl MixerState {
         self.user_buffers.remove(&key);
     }
 
-    fn queue_audio(&mut self, nickname: &str, samples: &[f32]) {
+    fn queue_audio(&mut self, sender_key: &str, samples: &[f32]) {
         // Skip if deafened or user is muted
-        if self.deafened || self.muted.contains(&fold_name(nickname)) {
+        if self.deafened || self.muted.contains(sender_key) {
             return;
         }
 
-        // Get or create buffer for this user
-        let key = fold_name(nickname);
-        let buffer = self
-            .user_buffers
-            .entry(key)
-            .or_insert_with(UserAudioBuffer::new);
+        // Get or create buffer for this user; get_mut-first so the steady
+        // state (buffer exists, 100 Hz per talker) allocates nothing.
+        let buffer = if let Some(b) = self.user_buffers.get_mut(sender_key) {
+            b
+        } else {
+            self.user_buffers
+                .insert(sender_key.to_string(), UserAudioBuffer::new());
+            self.user_buffers
+                .get_mut(sender_key)
+                .expect(ERR_MIXER_BUFFER_MISSING_AFTER_INSERT)
+        };
 
         buffer.samples.extend_from_slice(samples);
 
@@ -1049,10 +1054,10 @@ impl AudioMixer {
         }
     }
 
-    /// Clear queued audio and mute state for a user by nickname.
-    pub fn remove_user_state(&mut self, nickname: &str) {
+    /// Clear queued audio and mute state for a user by folded sender key.
+    pub fn remove_user_state(&mut self, sender_key: &str) {
         if let Ok(mut state) = self.state.lock() {
-            state.remove_user_state(nickname);
+            state.remove_user_state(sender_key);
         }
     }
 
@@ -1082,13 +1087,13 @@ impl AudioMixer {
         self.error_rx.try_recv().ok()
     }
 
-    /// Queue audio from a user for playback
+    /// Queue audio from a user (by folded sender key) for playback
     ///
     /// Audio is buffered per-user and mixed together at playback time.
     /// Samples should be f32 normalized to [-1.0, 1.0] at 48kHz.
-    pub fn queue_audio(&self, nickname: &str, samples: &[f32]) {
+    pub fn queue_audio(&self, sender_key: &str, samples: &[f32]) {
         if let Ok(mut state) = self.state.lock() {
-            state.queue_audio(nickname, samples);
+            state.queue_audio(sender_key, samples);
         }
     }
 }
@@ -1548,7 +1553,7 @@ mod tests {
             .insert(fold_name("Alice"), UserAudioBuffer::new());
         state.muted.insert(fold_name("Alice"));
 
-        state.remove_user_state("Alice");
+        state.remove_user_state(&fold_name("Alice"));
 
         assert!(!state.user_buffers.contains_key(&fold_name("Alice")));
         assert!(!state.muted.contains(&fold_name("Alice")));
@@ -1572,8 +1577,8 @@ mod tests {
         let mut state = MixerState::new(0.0);
         state.mute_user_and_clear("Alice");
 
-        state.queue_audio("Alice", &[0.25, 0.5]);
-        state.queue_audio("Bob", &[0.75]);
+        state.queue_audio(&fold_name("Alice"), &[0.25, 0.5]);
+        state.queue_audio(&fold_name("Bob"), &[0.75]);
 
         assert!(!state.user_buffers.contains_key(&fold_name("Alice")));
         assert_eq!(state.user_buffers[&fold_name("Bob")].samples, vec![0.75]);

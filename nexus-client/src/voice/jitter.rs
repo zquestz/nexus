@@ -258,7 +258,10 @@ impl Default for JitterBuffer {
 ///
 /// Maintains one jitter buffer per sender.
 pub struct JitterBufferPool {
-    /// Jitter buffers keyed by sender nickname (lowercase)
+    /// Jitter buffers keyed by folded sender key (`fold_name` of the
+    /// nickname). Hot-path methods take the pre-folded key so the
+    /// per-packet path never re-folds; only the rename path folds
+    /// internally.
     buffers: std::collections::HashMap<String, JitterBuffer>,
 }
 
@@ -270,18 +273,28 @@ impl JitterBufferPool {
         }
     }
 
-    /// Push a packet for a sender
-    pub fn push(&mut self, sender: &str, sequence: u32, timestamp: u32, samples: Vec<f32>) -> bool {
-        let key = fold_name(sender);
-        self.buffers
-            .entry(key)
-            .or_default()
-            .push(sequence, timestamp, samples)
+    /// Push a packet for a sender (`sender_key`: folded via `fold_name`)
+    pub fn push(
+        &mut self,
+        sender_key: &str,
+        sequence: u32,
+        timestamp: u32,
+        samples: Vec<f32>,
+    ) -> bool {
+        // get_mut-first so the steady state (buffer exists) allocates nothing.
+        if let Some(buffer) = self.buffers.get_mut(sender_key) {
+            buffer.push(sequence, timestamp, samples)
+        } else {
+            self.buffers
+                .entry(sender_key.to_string())
+                .or_default()
+                .push(sequence, timestamp, samples)
+        }
     }
 
-    /// Remove a sender's jitter buffer
-    pub fn remove(&mut self, sender: &str) {
-        self.buffers.remove(&fold_name(sender));
+    /// Remove a sender's jitter buffer by folded key
+    pub fn remove(&mut self, sender_key: &str) {
+        self.buffers.remove(sender_key);
     }
 
     /// Re-key a sender's jitter buffer after a nickname rename.
@@ -555,25 +568,30 @@ mod tests {
     fn test_jitter_buffer_pool() {
         let mut pool = JitterBufferPool::new();
 
-        // Push for two senders
-        pool.push("Alice", 0, 0, make_samples());
-        pool.push("Bob", 0, 0, make_samples());
+        // Push for two senders (callers pass pre-folded keys)
+        pool.push(&fold_name("Alice"), 0, 0, make_samples());
+        pool.push(&fold_name("Bob"), 0, 0, make_samples());
 
         assert_eq!(pool.buffers.len(), 2);
 
-        // Case insensitive
-        pool.push("alice", 1, VOICE_SAMPLES_PER_FRAME, make_samples());
+        // Folding at the call site collapses case to one buffer
+        pool.push(
+            &fold_name("alice"),
+            1,
+            VOICE_SAMPLES_PER_FRAME,
+            make_samples(),
+        );
         assert_eq!(pool.buffers.len(), 2);
 
         // Remove one
-        pool.remove("Alice");
+        pool.remove(&fold_name("Alice"));
         assert_eq!(pool.buffers.len(), 1);
     }
 
     #[test]
     fn test_jitter_buffer_pool_rename_user_rekeys_buffer() {
         let mut pool = JitterBufferPool::new();
-        pool.push("Alice", 0, 0, make_samples());
+        pool.push(&fold_name("Alice"), 0, 0, make_samples());
 
         pool.rename_user("Alice", "Alicia");
 
@@ -585,8 +603,8 @@ mod tests {
     #[test]
     fn test_jitter_buffer_pool_rename_user_keeps_existing_new_on_collision() {
         let mut pool = JitterBufferPool::new();
-        pool.push("Alice", 0, 0, make_samples());
-        pool.push("Alicia", 0, 0, make_samples());
+        pool.push(&fold_name("Alice"), 0, 0, make_samples());
+        pool.push(&fold_name("Alicia"), 0, 0, make_samples());
 
         pool.rename_user("Alice", "Alicia");
 
