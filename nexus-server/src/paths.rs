@@ -8,13 +8,32 @@
 
 use std::path::PathBuf;
 
+use crate::constants::{DATA_DIR_NAME, ERR_NO_DATA_DIR};
+
+/// Resolve the server data directory: CLI override, else platform default.
+///
+/// Lives beside [`data_dir`] so the cfg(test) temp-root redirect below
+/// covers every caller — including the `nexusd` binary's tests, which
+/// compile this crate without `cfg(test)` of their own.
+///
+/// Panics only when the platform can't supply a data directory
+/// (`dirs::data_dir()` is `None`) — platform-broken, not operator-actionable.
+pub fn resolve_data_dir(override_path: Option<PathBuf>) -> PathBuf {
+    if let Some(p) = override_path {
+        return p;
+    }
+    data_dir()
+        .map(|d| d.join(DATA_DIR_NAME))
+        .expect(ERR_NO_DATA_DIR)
+}
+
 #[cfg(not(test))]
-pub(crate) fn data_dir() -> Option<PathBuf> {
+pub fn data_dir() -> Option<PathBuf> {
     dirs::data_dir()
 }
 
 #[cfg(test)]
-pub(crate) fn data_dir() -> Option<PathBuf> {
+pub fn data_dir() -> Option<PathBuf> {
     Some(test_root().join("data"))
 }
 
@@ -47,5 +66,23 @@ mod tests {
             "base dir must redirect under temp in tests, got {root:?}"
         );
         assert_eq!(data_dir(), Some(root.join("data")));
+    }
+
+    #[test]
+    fn resolve_data_dir_override_returned_verbatim() {
+        let override_path = PathBuf::from("/var/lib/nexusd-custom");
+        assert_eq!(resolve_data_dir(Some(override_path.clone())), override_path);
+    }
+
+    #[test]
+    fn resolve_data_dir_default_redirects_under_temp() {
+        // No override → resolution must land under the cfg(test) temp root,
+        // never the operator's real data directory.
+        let dir = resolve_data_dir(None);
+        assert!(
+            dir.starts_with(std::env::temp_dir()),
+            "default data dir must redirect under temp in tests, got {dir:?}"
+        );
+        assert!(dir.ends_with(DATA_DIR_NAME));
     }
 }

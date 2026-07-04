@@ -1,25 +1,5 @@
 //! Nexus BBS Server
 
-mod args;
-mod channels;
-mod connection;
-mod connection_io;
-mod connection_tracker;
-mod constants;
-mod db;
-mod files;
-mod flood;
-mod handlers;
-mod i18n;
-mod ip_rule_cache;
-mod paths;
-mod tracker;
-mod transfers;
-mod upnp;
-mod users;
-mod voice;
-mod websocket;
-
 use std::fs;
 use std::io;
 use std::net::SocketAddr;
@@ -36,7 +16,10 @@ use nexus_common::validators::{
     DEFAULT_BANDWIDTH_CHUNK_SIZE, MAX_BANDWIDTH_CHUNK_SIZE, MIN_BANDWIDTH_CHUNK_SIZE,
     validate_bandwidth_chunk_size,
 };
-pub(crate) use nexus_server::{egress, scheduler};
+use nexus_server::{
+    args, channels, connection, connection_tracker, constants, db, egress, files, flood, handlers,
+    ip_rule_cache, paths, scheduler, tracker, transfers, upnp, users, voice, websocket,
+};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
@@ -65,7 +48,7 @@ async fn main() {
 
     let mut cli = Cli::parse();
 
-    let data_dir = resolve_data_dir(cli.data_dir.take());
+    let data_dir = paths::resolve_data_dir(cli.data_dir.take());
 
     if let Err(e) = logging::init(LogInitParams {
         data_dir: &data_dir,
@@ -726,19 +709,6 @@ async fn main() {
     }
 }
 
-/// Resolve the server data directory: CLI override, else platform default.
-///
-/// Panics only when the platform can't supply a data directory
-/// (`dirs::data_dir()` is `None`) — platform-broken, not operator-actionable.
-fn resolve_data_dir(override_path: Option<std::path::PathBuf>) -> std::path::PathBuf {
-    if let Some(p) = override_path {
-        return p;
-    }
-    crate::paths::data_dir()
-        .map(|d| d.join(DATA_DIR_NAME))
-        .expect(ERR_NO_DATA_DIR)
-}
-
 /// Create the data directory and lock it owner-only on Unix — it hosts the
 /// database, TLS key, and logs, so a loose parent undercuts per-file modes.
 ///
@@ -1056,24 +1026,6 @@ async fn setup_shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_resolve_data_dir_override_returned_verbatim() {
-        let override_path = std::path::PathBuf::from("/var/lib/nexusd-custom");
-        assert_eq!(resolve_data_dir(Some(override_path.clone())), override_path);
-    }
-
-    #[test]
-    fn resolve_data_dir_default_redirects_under_temp() {
-        // No override → resolution must land under the cfg(test) temp root,
-        // never the operator's real data directory.
-        let dir = resolve_data_dir(None);
-        assert!(
-            dir.starts_with(std::env::temp_dir()),
-            "default data dir must redirect under temp in tests, got {dir:?}"
-        );
-        assert!(dir.ends_with(DATA_DIR_NAME));
-    }
 
     #[test]
     fn resolve_egress_chunk_size_accepts_valid_bounds() {
