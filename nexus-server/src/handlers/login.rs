@@ -9,7 +9,7 @@ use tracing::{debug, error, info, warn};
 
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ChannelJoinInfo, ServerMessage};
-use nexus_common::rate_limiter::RateCheck;
+use nexus_common::rate_limiter::{RateCheck, RateLimiter};
 use nexus_common::validators::{
     self, AvatarError, FeaturesError, LocaleError, NicknameError, PasswordError, UsernameError,
 };
@@ -28,6 +28,7 @@ use super::{
     err_nickname_unavailable, err_password_too_long, err_username_empty, err_username_invalid,
     err_username_too_long,
 };
+use crate::channels::{ChannelManager, JoinPolicy};
 use crate::constants::{
     FEATURE_CHAT, FEATURE_VOICE, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
     LOG_EGRESS_TRANSITION_FAILED, LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN,
@@ -38,12 +39,13 @@ use crate::constants::{
     LOG_LOGIN_RATE_LIMITED, LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS, SUPPORTED_FEATURES,
 };
 use crate::db::sql::GUEST_USERNAME;
-use crate::db::{self, LoginSnapshotError, Permission};
+use crate::db::{self, Database, LoginSnapshotError, Permission, UserAccount};
 use crate::egress::task::EgressHandle;
 use crate::ip_rule_cache::IpAdmission;
 use crate::scheduler::ConnectionId;
 use crate::users::manager::{AddUserError, UserManager};
-use crate::users::user::NewSessionParams;
+use crate::users::user::{NewSessionParams, UserSession};
+use crate::voice::VoiceRegistry;
 
 /// Login request parameters
 pub struct LoginRequest {
@@ -159,6 +161,346 @@ async fn validate_login_avatar(
     }
 }
 
+/// Read-only environment for [`authenticate_or_bootstrap`], bundled so the
+/// helper stays free of the handler's `W` generic (matching the ctx-free
+/// helper style in this file).
+struct AuthEnv<'a> {
+    db: &'a Database,
+    login_limiter: &'a RateLimiter,
+    peer_addr: SocketAddr,
+    login_ip_trusted: bool,
+}
+
+/// Phase 2 of login: resolve the account — verify credentials for an
+/// existing account, or bootstrap the first admin on a fresh server.
+/// Debits the failed-login limiter on every unauthenticated rejection via
+/// `debit` (trusted IPs exempt; successes never debit); never touches the
+/// socket — every `Err` is the translated rejection message.
+///
+/// Returns `(account, avatar_validated)`: the bootstrap path validates
+/// the avatar before hashing, so the caller must skip re-validation.
+async fn authenticate_or_bootstrap(
+    env: &AuthEnv<'_>,
+    username: &str,
+    password: &str,
+    avatar: &Option<String>,
+    locale: &str,
+) -> Result<(UserAccount, bool), String> {
+    let debit = || {
+        if !env.login_ip_trusted {
+            env.login_limiter.record_failure(env.peer_addr.ip());
+        }
+    };
+
+    let account = match env.db.users.get_user_by_username(username).await {
+        Ok(acc) => acc,
+        Err(e) => {
+            error!(ip = %env.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_ERROR);
+            return Err(err_database(locale));
+        }
+    };
+
+    if let Some(account) = account {
+        // Guest accounts have an empty hash, which requires an empty password.
+        let password_valid = if account.hashed_password.is_empty() {
+            password.is_empty()
+        } else {
+            match db::verify_password_async(password.to_owned(), account.hashed_password.clone())
+                .await
+            {
+                Ok(valid) => valid,
+                Err(e) => {
+                    error!(ip = %env.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
+                    return Err(err_authentication(locale));
+                }
+            }
+        };
+
+        if !password_valid {
+            warn!(ip = %env.peer_addr, target = %username, "{}", LOG_LOGIN_INVALID_CREDENTIALS);
+            debit();
+            return Err(err_invalid_credentials(locale));
+        }
+
+        if !account.enabled {
+            warn!(ip = %env.peer_addr, target = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
+            debit();
+            return Err(if fold_name(username) == GUEST_USERNAME {
+                err_guest_disabled(locale)
+            } else {
+                err_account_disabled(locale, username)
+            });
+        }
+
+        return Ok((account, false));
+    }
+
+    // Unknown username. This COUNT is one query the wrong-password path
+    // (account found → verify) doesn't run, so it's a deliberate timing
+    // asymmetry — but it's tens of µs against the dummy verify's ~50–500 ms
+    // Argon2 (and network jitter), far below any measurable signal, so it's
+    // not a usable enumeration oracle. Not hoisted onto every login to
+    // equalize, since that would add a query to the valid-login hot path to
+    // chase a sub-noise residual.
+    let has_non_guest_users = match env.db.users.has_non_guest_users().await {
+        Ok(has_users) => has_users,
+        Err(e) => {
+            error!(ip = %env.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_ERROR);
+            return Err(err_database(locale));
+        }
+    };
+
+    if has_non_guest_users {
+        // Equalize timing against the wrong-password path so response time
+        // does not reveal whether the username exists. The helper runs the
+        // real verify path against a fixed dummy hash; the result is
+        // intentionally discarded — externally this is invalid credentials
+        // either way.
+        let _ = db::verify_unknown_user_password_for_timing(password.to_owned()).await;
+        debit();
+        return Err(err_invalid_credentials(locale));
+    }
+
+    if let Err(error_msg) = validate_login_avatar(avatar, locale, env.peer_addr).await {
+        debit();
+        return Err(error_msg);
+    }
+
+    let min_strength = env.db.config.get_min_password_strength().await;
+    let hashed_password = match db::hash_password_async(password.to_owned(), min_strength, false)
+        .await
+    {
+        Ok(hash) => hash,
+        Err(e) => {
+            error!(ip = %env.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
+            // Attacker-influenced on a fresh server: hash_password
+            // revalidates password strength, so a weak password fails
+            // here. Debit like any other failed unauthenticated login.
+            debit();
+            return Err(err_failed_to_create_user(locale, username));
+        }
+    };
+
+    // First user becomes admin; the DB method enforces atomicity.
+    match env
+        .db
+        .users
+        .create_first_user_if_none_exist(username, &hashed_password)
+        .await
+    {
+        Ok(Some(account)) => {
+            info!(user = %username, ip = %env.peer_addr, "{}", LOG_LOGIN_FIRST_ADMIN);
+            // Avatar already validated above (before the hash work).
+            Ok((account, true))
+        }
+        Ok(None) => {
+            // Reuse the invalid-credentials error so we don't reveal whether
+            // the username exists.
+            debit();
+            Err(err_invalid_credentials(locale))
+        }
+        Err(e) => {
+            error!(ip = %env.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_CREATE_USER_ERROR);
+            Err(err_failed_to_create_user(locale, username))
+        }
+    }
+}
+
+/// Phase 3 of login: shared accounts must present a unique nickname —
+/// validated, colliding with no username (case-insensitive) and no active
+/// session's nickname. Regular accounts ignore the field. This is the
+/// pre-lock check; the `'locked` block re-checks both collisions under the
+/// user-state guard. Never touches the socket.
+async fn validate_shared_nickname(
+    db: &Database,
+    user_manager: &UserManager,
+    account_is_shared: bool,
+    nickname: Option<String>,
+    username: &str,
+    peer_addr: SocketAddr,
+    locale: &str,
+) -> Result<Option<String>, String> {
+    if !account_is_shared {
+        return Ok(None);
+    }
+
+    let Some(nickname) = nickname else {
+        return Err(err_nickname_required(locale));
+    };
+
+    if let Err(e) = validators::validate_nickname(&nickname) {
+        return Err(match e {
+            NicknameError::Empty => err_nickname_empty(locale),
+            NicknameError::TooLong => {
+                err_nickname_too_long(locale, validators::MAX_NICKNAME_LENGTH)
+            }
+            NicknameError::InvalidCharacters => err_nickname_invalid(locale),
+        });
+    }
+
+    // A nickname must not collide with any existing username (case-insensitive).
+    match db.users.username_exists(&nickname).await {
+        Ok(true) => {
+            return Err(err_nickname_unavailable(locale));
+        }
+        Ok(false) => {}
+        Err(e) => {
+            error!(ip = %peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
+            return Err(err_database(locale));
+        }
+    }
+
+    // …nor with an active session's nickname (case-insensitive).
+    if user_manager.is_nickname_in_use(&nickname).await {
+        return Err(err_nickname_unavailable(locale));
+    }
+
+    Ok(Some(nickname))
+}
+
+/// Auto-join the admin-configured channels for a freshly created session,
+/// returning the join infos for the LoginResponse. Must run inside the
+/// `read_user_state` guard: the first-presence `ChatUserJoined` broadcasts
+/// below serialize against renames. Per-channel errors (missing channel
+/// without ChatCreate, at capacity, …) skip that channel by design.
+/// `wants_voiced` gates the voiced list on the voice feature plus
+/// `voice_listen`, both resolved by the caller from the session.
+async fn auto_join_channels(
+    channel_manager: &ChannelManager,
+    user_manager: &UserManager,
+    voice_registry: &VoiceRegistry,
+    session: &UserSession,
+    channel_names: Vec<String>,
+    policy: JoinPolicy,
+    wants_voiced: bool,
+) -> Vec<ChannelJoinInfo> {
+    let session_id = session.session_id;
+    let mut joined_channels = Vec::new();
+    for channel_name in channel_names {
+        // Skip on any error (missing channel + no ChatCreate, at limit, …).
+        let Ok(result) = channel_manager
+            .join(&channel_name, session_id, policy)
+            .await
+        else {
+            continue;
+        };
+
+        // Build member list as unique nicknames.
+        let member_nicknames = user_manager
+            .get_unique_nicknames_for_sessions(&result.member_session_ids)
+            .await;
+
+        // Membership is nickname-based: only broadcast when this nickname
+        // first becomes present (multiple sessions may share a nickname).
+        let nickname_present_elsewhere = user_manager
+            .sessions_contain_nickname(
+                &result.member_session_ids,
+                &session.nickname,
+                Some(session_id),
+            )
+            .await;
+
+        if !nickname_present_elsewhere {
+            let join_broadcast = ServerMessage::ChatUserJoined {
+                channel: channel_name.clone(),
+                nickname: session.nickname.clone(),
+                is_admin: session.is_admin,
+                is_shared: session.is_shared,
+            };
+            for &member_session_id in &result.member_session_ids {
+                if member_session_id != session_id {
+                    user_manager
+                        .send_to_session(member_session_id, join_broadcast.clone())
+                        .await;
+                }
+            }
+        }
+
+        // Voiced nicknames are gated on the voice feature and voice_listen permission.
+        let voiced = if wants_voiced {
+            let participants = voice_registry.get_participants(&channel_name).await;
+            if participants.is_empty() {
+                None
+            } else {
+                Some(participants)
+            }
+        } else {
+            None
+        };
+
+        joined_channels.push(ChannelJoinInfo {
+            channel: channel_name,
+            topic: result.topic,
+            topic_set_by: result.topic_set_by,
+            secret: result.secret,
+            members: member_nicknames,
+            voiced,
+        });
+    }
+    joined_channels
+}
+
+/// Phase 1 of login: protocol gates and input validation, plus feature
+/// activation. Pure (no DB, no limiter, no socket) — every rejection is
+/// the translated message for the caller's `send_error_and_disconnect`.
+fn validate_login_inputs(
+    username: &str,
+    password: &str,
+    features: Vec<String>,
+    locale: &str,
+    handshake_complete: bool,
+    already_logged_in: bool,
+    peer_addr: SocketAddr,
+) -> Result<Vec<String>, String> {
+    if !handshake_complete {
+        warn!(ip = %peer_addr, "{}", LOG_LOGIN_HANDSHAKE_REQUIRED);
+        return Err(err_handshake_required(locale));
+    }
+
+    if already_logged_in {
+        warn!(ip = %peer_addr, "{}", LOG_LOGIN_ALREADY_LOGGED_IN);
+        return Err(err_already_logged_in(locale));
+    }
+
+    if let Err(e) = validators::validate_username(username) {
+        return Err(match e {
+            UsernameError::Empty => err_username_empty(locale),
+            UsernameError::TooLong => {
+                err_username_too_long(locale, validators::MAX_USERNAME_LENGTH)
+            }
+            UsernameError::InvalidCharacters => err_username_invalid(locale),
+        });
+    }
+
+    // Empty password is allowed (guest login); only length is rejected here.
+    if let Err(PasswordError::TooLong) = validators::validate_password_input(password) {
+        return Err(err_password_too_long(
+            locale,
+            validators::MAX_PASSWORD_LENGTH,
+        ));
+    }
+
+    if let Err(e) = validators::validate_locale(locale) {
+        return Err(match e {
+            LocaleError::TooLong => err_locale_too_long(locale, validators::MAX_LOCALE_LENGTH),
+            LocaleError::InvalidCharacters => err_locale_invalid_characters(locale),
+        });
+    }
+
+    if let Err(e) = validators::validate_features(&features) {
+        return Err(match e {
+            FeaturesError::TooMany => err_features_too_many(locale, validators::MAX_FEATURES_COUNT),
+            FeaturesError::EmptyFeature => err_features_empty_feature(locale),
+            FeaturesError::FeatureTooLong => {
+                err_features_feature_too_long(locale, validators::MAX_FEATURE_LENGTH)
+            }
+            FeaturesError::InvalidCharacters => err_features_invalid_characters(locale),
+        });
+    }
+
+    Ok(activate_supported_features(features))
+}
+
 pub async fn handle_login<W>(
     request: LoginRequest,
     session_id: &mut Option<u32>,
@@ -184,69 +526,22 @@ where
         raw_username
     };
 
-    if !handshake_complete {
-        warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_HANDSHAKE_REQUIRED);
-        return ctx
-            .send_error_and_disconnect(&err_handshake_required(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
-
-    if session_id.is_some() {
-        warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_ALREADY_LOGGED_IN);
-        return ctx
-            .send_error_and_disconnect(&err_already_logged_in(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
-
-    if let Err(e) = validators::validate_username(&username) {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(&locale),
-            UsernameError::TooLong => {
-                err_username_too_long(&locale, validators::MAX_USERNAME_LENGTH)
-            }
-            UsernameError::InvalidCharacters => err_username_invalid(&locale),
-        };
-        return ctx
-            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
-            .await;
-    }
-
-    // Empty password is allowed (guest login); only length is rejected here.
-    if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
-        return ctx
-            .send_error_and_disconnect(
-                &err_password_too_long(&locale, validators::MAX_PASSWORD_LENGTH),
-                Some(HANDLER_LOGIN),
-            )
-            .await;
-    }
-
-    if let Err(e) = validators::validate_locale(&locale) {
-        let error_msg = match e {
-            LocaleError::TooLong => err_locale_too_long(&locale, validators::MAX_LOCALE_LENGTH),
-            LocaleError::InvalidCharacters => err_locale_invalid_characters(&locale),
-        };
-        return ctx
-            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
-            .await;
-    }
-
-    if let Err(e) = validators::validate_features(&features) {
-        let error_msg = match e {
-            FeaturesError::TooMany => {
-                err_features_too_many(&locale, validators::MAX_FEATURES_COUNT)
-            }
-            FeaturesError::EmptyFeature => err_features_empty_feature(&locale),
-            FeaturesError::FeatureTooLong => {
-                err_features_feature_too_long(&locale, validators::MAX_FEATURE_LENGTH)
-            }
-            FeaturesError::InvalidCharacters => err_features_invalid_characters(&locale),
-        };
-        return ctx
-            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
-            .await;
-    }
-    let activated_features = activate_supported_features(features);
+    let activated_features = match validate_login_inputs(
+        &username,
+        &password,
+        features,
+        &locale,
+        handshake_complete,
+        session_id.is_some(),
+        ctx.peer_addr,
+    ) {
+        Ok(activated) => activated,
+        Err(error_msg) => {
+            return ctx
+                .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
+                .await;
+        }
+    };
 
     // Per-IP failed-login limiter, checked before the account lookup and any
     // Argon2 work. The rejection is uniform for every username — limited IPs
@@ -262,213 +557,40 @@ where
             .await;
     }
 
-    let account = match ctx.db.users.get_user_by_username(&username).await {
-        Ok(acc) => acc,
-        Err(e) => {
-            error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(&locale), Some(HANDLER_LOGIN))
-                .await;
-        }
+    let auth_env = AuthEnv {
+        db: ctx.db,
+        login_limiter: ctx.login_limiter.as_ref(),
+        peer_addr: ctx.peer_addr,
+        login_ip_trusted,
     };
-
-    let mut avatar_validated = false;
-    let authenticated_account = if let Some(account) = account {
-        // Guest accounts have an empty hash, which requires an empty password.
-        let password_valid = if account.hashed_password.is_empty() {
-            password.is_empty()
-        } else {
-            match db::verify_password_async(password.clone(), account.hashed_password.clone()).await
-            {
-                Ok(valid) => valid,
-                Err(e) => {
-                    error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_authentication(&locale),
-                            Some(HANDLER_LOGIN),
-                        )
-                        .await;
-                }
-            }
-        };
-
-        if password_valid {
-            if !account.enabled {
-                warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
-                if !login_ip_trusted {
-                    ctx.login_limiter.record_failure(login_ip);
-                }
-                let error_msg = if fold_name(&username) == GUEST_USERNAME {
-                    err_guest_disabled(&locale)
-                } else {
-                    err_account_disabled(&locale, &username)
-                };
+    let (authenticated_account, avatar_validated) =
+        match authenticate_or_bootstrap(&auth_env, &username, &password, &avatar, &locale).await {
+            Ok(authenticated) => authenticated,
+            Err(error_msg) => {
                 return ctx
                     .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
                     .await;
             }
-            account
-        } else {
-            warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_INVALID_CREDENTIALS);
-            if !login_ip_trusted {
-                ctx.login_limiter.record_failure(login_ip);
-            }
-            return ctx
-                .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
-                .await;
-        }
-    } else {
-        // Unknown username. This COUNT is one query the wrong-password path
-        // (account found → verify) doesn't run, so it's a deliberate timing
-        // asymmetry — but it's tens of µs against the dummy verify's ~50–500 ms
-        // Argon2 (and network jitter), far below any measurable signal, so it's
-        // not a usable enumeration oracle. Not hoisted onto every login to
-        // equalize, since that would add a query to the valid-login hot path to
-        // chase a sub-noise residual.
-        let has_non_guest_users = match ctx.db.users.has_non_guest_users().await {
-            Ok(has_users) => has_users,
-            Err(e) => {
-                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_ERROR);
-                return ctx
-                    .send_error_and_disconnect(&err_database(&locale), Some(HANDLER_LOGIN))
-                    .await;
-            }
         };
-
-        if has_non_guest_users {
-            // Equalize timing against the wrong-password path so response time
-            // does not reveal whether the username exists. The helper runs the
-            // real verify path against a fixed dummy hash; the result is
-            // intentionally discarded — externally this is invalid credentials
-            // either way.
-            let _ = db::verify_unknown_user_password_for_timing(password.clone()).await;
-            if !login_ip_trusted {
-                ctx.login_limiter.record_failure(login_ip);
-            }
-            return ctx
-                .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
-                .await;
-        }
-
-        if let Err(error_msg) = validate_login_avatar(&avatar, &locale, ctx.peer_addr).await {
-            if !login_ip_trusted {
-                ctx.login_limiter.record_failure(login_ip);
-            }
-            return ctx
-                .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
-                .await;
-        }
-        avatar_validated = true;
-
-        let min_strength = ctx.db.config.get_min_password_strength().await;
-        let hashed_password = match db::hash_password_async(password.clone(), min_strength, false)
-            .await
-        {
-            Ok(hash) => hash,
-            Err(e) => {
-                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
-                // Attacker-influenced on a fresh server: hash_password
-                // revalidates password strength, so a weak password fails
-                // here. Debit like any other failed unauthenticated login.
-                if !login_ip_trusted {
-                    ctx.login_limiter.record_failure(login_ip);
-                }
-                return ctx
-                    .send_error_and_disconnect(
-                        &err_failed_to_create_user(&locale, &username),
-                        Some(HANDLER_LOGIN),
-                    )
-                    .await;
-            }
-        };
-
-        // First user becomes admin; the DB method enforces atomicity.
-        match ctx
-            .db
-            .users
-            .create_first_user_if_none_exist(&username, &hashed_password)
-            .await
-        {
-            Ok(Some(account)) => {
-                info!(user = %username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_FIRST_ADMIN);
-                account
-            }
-            Ok(None) => {
-                // Reuse the invalid-credentials error so we don't reveal whether
-                // the username exists.
-                if !login_ip_trusted {
-                    ctx.login_limiter.record_failure(login_ip);
-                }
-                return ctx
-                    .send_error_and_disconnect(
-                        &err_invalid_credentials(&locale),
-                        Some(HANDLER_LOGIN),
-                    )
-                    .await;
-            }
-            Err(e) => {
-                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_CREATE_USER_ERROR);
-                return ctx
-                    .send_error_and_disconnect(
-                        &err_failed_to_create_user(&locale, &username),
-                        Some(HANDLER_LOGIN),
-                    )
-                    .await;
-            }
-        }
-    };
 
     // Shared accounts require a unique nickname; regular accounts ignore it.
-    let validated_nickname = if authenticated_account.is_shared {
-        let Some(nickname) = nickname else {
-            return ctx
-                .send_error_and_disconnect(&err_nickname_required(&locale), Some(HANDLER_LOGIN))
-                .await;
-        };
-
-        if let Err(e) = validators::validate_nickname(&nickname) {
-            let error_msg = match e {
-                NicknameError::Empty => err_nickname_empty(&locale),
-                NicknameError::TooLong => {
-                    err_nickname_too_long(&locale, validators::MAX_NICKNAME_LENGTH)
-                }
-                NicknameError::InvalidCharacters => err_nickname_invalid(&locale),
-            };
+    let validated_nickname = match validate_shared_nickname(
+        ctx.db,
+        ctx.user_manager,
+        authenticated_account.is_shared,
+        nickname,
+        &username,
+        ctx.peer_addr,
+        &locale,
+    )
+    .await
+    {
+        Ok(validated) => validated,
+        Err(error_msg) => {
             return ctx
                 .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
                 .await;
         }
-
-        // A nickname must not collide with any existing username (case-insensitive).
-        match ctx.db.users.username_exists(&nickname).await {
-            Ok(true) => {
-                return ctx
-                    .send_error_and_disconnect(
-                        &err_nickname_unavailable(&locale),
-                        Some(HANDLER_LOGIN),
-                    )
-                    .await;
-            }
-            Ok(false) => {}
-            Err(e) => {
-                error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
-                return ctx
-                    .send_error_and_disconnect(&err_database(&locale), Some(HANDLER_LOGIN))
-                    .await;
-            }
-        }
-
-        // …nor with an active session's nickname (case-insensitive).
-        if ctx.user_manager.is_nickname_in_use(&nickname).await {
-            return ctx
-                .send_error_and_disconnect(&err_nickname_unavailable(&locale), Some(HANDLER_LOGIN))
-                .await;
-        }
-
-        Some(nickname)
-    } else {
-        None
     };
 
     if !avatar_validated
@@ -640,72 +762,21 @@ where
         };
 
         let auto_join_policy = if has_chat_create_permission {
-            crate::channels::JoinPolicy::CreateIfMissing
+            JoinPolicy::CreateIfMissing
         } else {
-            crate::channels::JoinPolicy::ExistingOnly
+            JoinPolicy::ExistingOnly
         };
 
-        let mut joined_channels = Vec::new();
-        for channel_name in auto_join_channel_names {
-            // Skip on any error (missing channel + no ChatCreate, at limit, …).
-            let Ok(result) = ctx
-                .channel_manager
-                .join(&channel_name, id, auto_join_policy)
-                .await
-            else {
-                continue;
-            };
-
-            // Build member list as unique nicknames.
-            let member_nicknames = ctx
-                .user_manager
-                .get_unique_nicknames_for_sessions(&result.member_session_ids)
-                .await;
-
-            // Membership is nickname-based: only broadcast when this nickname
-            // first becomes present (multiple sessions may share a nickname).
-            let nickname_present_elsewhere = ctx
-                .user_manager
-                .sessions_contain_nickname(&result.member_session_ids, &session.nickname, Some(id))
-                .await;
-
-            if !nickname_present_elsewhere {
-                let join_broadcast = ServerMessage::ChatUserJoined {
-                    channel: channel_name.clone(),
-                    nickname: session.nickname.clone(),
-                    is_admin: session.is_admin,
-                    is_shared: session.is_shared,
-                };
-                for &member_session_id in &result.member_session_ids {
-                    if member_session_id != id {
-                        ctx.user_manager
-                            .send_to_session(member_session_id, join_broadcast.clone())
-                            .await;
-                    }
-                }
-            }
-
-            // Voiced nicknames are gated on the voice feature and voice_listen permission.
-            let voiced = if has_voice_feature && has_voice_listen_permission {
-                let participants = ctx.voice_registry.get_participants(&channel_name).await;
-                if participants.is_empty() {
-                    None
-                } else {
-                    Some(participants)
-                }
-            } else {
-                None
-            };
-
-            joined_channels.push(ChannelJoinInfo {
-                channel: channel_name,
-                topic: result.topic,
-                topic_set_by: result.topic_set_by,
-                secret: result.secret,
-                members: member_nicknames,
-                voiced,
-            });
-        }
+        let joined_channels = auto_join_channels(
+            ctx.channel_manager,
+            ctx.user_manager,
+            ctx.voice_registry,
+            &session,
+            auto_join_channel_names,
+            auto_join_policy,
+            has_voice_feature && has_voice_listen_permission,
+        )
+        .await;
 
         // Resolved effective permissions. Admins get an empty list; the client
         // infers "all" from the is_admin flag.
