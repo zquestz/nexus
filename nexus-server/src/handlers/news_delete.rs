@@ -5,12 +5,6 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
-use crate::constants::{
-    HANDLER_NEWS_DELETE, LOG_NEWS_DELETE_ADMIN, LOG_NEWS_DELETE_DB_ERROR_DELETE,
-    LOG_NEWS_DELETE_DB_ERROR_GET, LOG_NEWS_DELETE_NOT_LOGGED_IN, LOG_NEWS_DELETE_PERMISSION_DENIED,
-    LOG_NEWS_DELETE_SUCCESS,
-};
-
 use nexus_common::protocol::{NewsAction, ServerMessage};
 
 #[cfg(test)]
@@ -19,7 +13,11 @@ use super::{
     HandlerContext, err_cannot_delete_admin_news, err_database, err_news_not_found,
     err_not_logged_in, err_permission_denied,
 };
-use crate::constants::FEATURE_NEWS;
+use crate::constants::{
+    FEATURE_NEWS, HANDLER_NEWS_DELETE, LOG_NEWS_DELETE_ADMIN, LOG_NEWS_DELETE_DB_ERROR_DELETE,
+    LOG_NEWS_DELETE_DB_ERROR_GET, LOG_NEWS_DELETE_NOT_LOGGED_IN, LOG_NEWS_DELETE_PERMISSION_DENIED,
+    LOG_NEWS_DELETE_SUCCESS,
+};
 use crate::db::Permission;
 
 pub async fn handle_news_delete<W>(

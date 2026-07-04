@@ -168,7 +168,7 @@ impl fmt::Debug for VoicePacket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VoicePacket")
             .field("msg_type", &self.msg_type)
-            .field("token", &"<REDACTED>")
+            .field("token", &crate::REDACTED)
             .field("sequence", &self.sequence)
             .field("timestamp", &self.timestamp)
             .field("payload", &self.payload)
@@ -289,7 +289,7 @@ impl fmt::Debug for VoicePacketRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VoicePacketRef")
             .field("msg_type", &self.msg_type)
-            .field("token", &"<REDACTED>")
+            .field("token", &crate::REDACTED)
             .field("sequence", &self.sequence)
             .field("timestamp", &self.timestamp)
             .field("payload", &self.payload)

@@ -8,6 +8,7 @@ use iced::Task;
 
 use crate::NexusApp;
 use crate::i18n::t;
+use crate::tray::{TrayManager, TrayState, build_tooltip};
 use crate::types::{ActivePanel, ChatMessage, ChatTab, InputId, Message};
 
 /// Delay before restoring focus after window show/restore.
@@ -255,8 +256,6 @@ impl NexusApp {
     ///
     /// Called after state changes that might affect the tray icon.
     pub fn update_tray_state(&mut self) {
-        use crate::tray::{TrayState, build_tooltip};
-
         // Early return if no tray manager
         if self.tray_manager.is_none() {
             return;
@@ -379,8 +378,6 @@ impl NexusApp {
     ///
     /// Returns a Task that may show an error message if tray creation fails.
     pub fn update_tray_from_settings(&mut self) -> Task<Message> {
-        use crate::tray::TrayManager;
-
         if self.config.settings.show_tray_icon {
             // Create tray if not exists
             if self.tray_manager.is_none() {

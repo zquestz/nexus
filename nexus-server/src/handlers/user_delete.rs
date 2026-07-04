@@ -8,11 +8,6 @@ use tracing::{error, info, warn};
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
-use crate::constants::{
-    HANDLER_USER_DELETE, LOG_USER_DELETE_ADMIN, LOG_USER_DELETE_DB_ERROR,
-    LOG_USER_DELETE_NOT_LOGGED_IN, LOG_USER_DELETE_PERMISSION_DENIED, LOG_USER_DELETE_SUCCESS,
-};
-
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
@@ -20,6 +15,10 @@ use super::{
     err_cannot_delete_admin, err_cannot_delete_guest, err_cannot_delete_last_admin,
     err_cannot_delete_self, err_database, err_not_logged_in, err_permission_denied,
     err_user_not_found, remove_users_with_cleanup_locked, send_reason_and_disconnect,
+};
+use crate::constants::{
+    HANDLER_USER_DELETE, LOG_USER_DELETE_ADMIN, LOG_USER_DELETE_DB_ERROR,
+    LOG_USER_DELETE_NOT_LOGGED_IN, LOG_USER_DELETE_PERMISSION_DENIED, LOG_USER_DELETE_SUCCESS,
 };
 use crate::db::Permission;
 use crate::db::sql::GUEST_USERNAME;

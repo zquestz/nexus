@@ -495,25 +495,25 @@ mod tests {
         let config = FloodConfig::new(1, 20);
         let now = std::time::Instant::now();
 
-        let guest_one = manager
-            .add_user(shared_session_params(7, "GuestOne", 1))
+        let shared_one = manager
+            .add_user(shared_session_params(7, "SharedOne", 1))
             .await
             .expect("first shared session should log in");
-        let guest_two = manager
-            .add_user(shared_session_params(7, "GuestTwo", 1))
+        let shared_two = manager
+            .add_user(shared_session_params(7, "SharedTwo", 1))
             .await
             .expect("second shared session should log in");
 
         assert!(matches!(
-            manager.check_message_flood(guest_one, &config, now).await,
+            manager.check_message_flood(shared_one, &config, now).await,
             Some(FloodCheck::Allowed)
         ));
         assert!(matches!(
-            manager.check_message_flood(guest_one, &config, now).await,
+            manager.check_message_flood(shared_one, &config, now).await,
             Some(FloodCheck::Limited { .. })
         ));
         assert!(matches!(
-            manager.check_message_flood(guest_two, &config, now).await,
+            manager.check_message_flood(shared_two, &config, now).await,
             Some(FloodCheck::Allowed)
         ));
     }
@@ -1079,7 +1079,7 @@ mod tests {
             .add_user(broadcast_session_params(
                 2,
                 "shared_acct",
-                "guest1",
+                "shared1",
                 true,
                 false,
                 Some("data:avatar-x".to_string()),
@@ -1092,7 +1092,7 @@ mod tests {
             .add_user(broadcast_session_params(
                 2,
                 "shared_acct",
-                "guest2",
+                "shared2",
                 true,
                 false,
                 None,
@@ -1114,7 +1114,7 @@ mod tests {
                 nickname,
             } => {
                 assert_eq!(session_id, g1);
-                assert_eq!(nickname, "guest1");
+                assert_eq!(nickname, "shared1");
             }
             other => panic!("expected UserDisconnected, got {other:?}"),
         }

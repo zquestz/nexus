@@ -75,7 +75,10 @@ impl std::fmt::Debug for ClientTracker {
             .field("name", &self.name)
             .field("address", &self.address)
             .field("port", &self.port)
-            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .field("certificate_fingerprint", &self.certificate_fingerprint)
             .finish()
     }
@@ -105,7 +108,7 @@ mod tests {
         };
         let debug = format!("{:?}", t);
         assert!(!debug.contains("super-secret"));
-        assert!(debug.contains("[REDACTED]"));
+        assert!(debug.contains(nexus_common::REDACTED));
     }
 
     #[test]

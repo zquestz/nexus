@@ -61,7 +61,10 @@ impl std::fmt::Debug for ProxySettings {
             .field("address", &self.address)
             .field("port", &self.port)
             .field("username", &self.username)
-            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .field("allow_voice_bypass", &self.allow_voice_bypass)
             .finish()
     }

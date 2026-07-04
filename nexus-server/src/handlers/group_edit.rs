@@ -5,8 +5,6 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
-use crate::constants::*;
-
 use nexus_common::protocol::ServerMessage;
 
 #[cfg(test)]
@@ -14,6 +12,7 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_database, err_group_not_found, err_not_logged_in, err_permission_denied,
 };
+use crate::constants::*;
 use crate::db::Permission;
 
 pub async fn handle_group_edit<W>(

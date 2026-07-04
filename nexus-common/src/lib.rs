@@ -119,6 +119,12 @@ pub const TLS_HANDSHAKE_FAILED_PREFIX: &str = "TLS handshake failed: ";
 /// [`TLS_HANDSHAKE_FAILED_PREFIX`].
 pub const WS_HANDSHAKE_FAILED_PREFIX: &str = "WebSocket handshake failed: ";
 
+/// Marker printed in `Debug` output and logs in place of a password,
+/// passphrase, token, or other secret. Every manual `Debug` impl that
+/// redacts a field uses this constant so the marker stays uniform
+/// across all crates.
+pub const REDACTED: &str = "[REDACTED]";
+
 /// RFC 6761-defined loopback hostname. Used by hostname-comparison
 /// code paths (e.g. proxy-bypass detection) that need to recognize the
 /// user-typed literal `"localhost"` as referring to the local machine

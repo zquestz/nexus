@@ -179,7 +179,7 @@ impl std::fmt::Debug for TrackerRecord {
         // is shown verbatim so a reader can distinguish "open tracker"
         // from "password set but redacted".
         let password: &dyn std::fmt::Debug = match &self.password {
-            Some(_) => &"<REDACTED>",
+            Some(_) => &nexus_common::REDACTED,
             None => &Option::<String>::None,
         };
         f.debug_struct("TrackerRecord")
@@ -434,7 +434,7 @@ mod tests {
             "raw password leaked into Debug output: {dbg}"
         );
         assert!(
-            dbg.contains("<REDACTED>"),
+            dbg.contains(nexus_common::REDACTED),
             "expected redaction marker, got: {dbg}"
         );
     }
@@ -444,7 +444,7 @@ mod tests {
         let record = make_record(None);
         let dbg = format!("{record:?}");
         assert!(
-            !dbg.contains("<REDACTED>"),
+            !dbg.contains(nexus_common::REDACTED),
             "should not redact when no password is set: {dbg}"
         );
         assert!(

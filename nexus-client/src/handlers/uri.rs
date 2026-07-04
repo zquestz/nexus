@@ -5,11 +5,13 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::validate_connection_address;
 
+use super::network::{ConnectionContext, ConnectionSource};
 use crate::NexusApp;
 use crate::handlers::FilesOpenIntent;
 use crate::i18n::{get_locale, t, t_args};
+use crate::network::types::ConnectError;
 use crate::network::{ConnectionParams, FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS, ProxyConfig};
-use crate::types::{ChatMessage, ChatTab, Message, NetworkConnection};
+use crate::types::{ChatMessage, ChatTab, Message, NetworkConnection, ReconnectAction};
 use crate::uri::{NexusPath, NexusUri};
 
 struct UriConnectionLookup {
@@ -339,10 +341,6 @@ impl NexusApp {
         display_name: String,
         path: Option<NexusPath>,
     ) -> Task<Message> {
-        use super::network::{ConnectionContext, ConnectionSource};
-        use crate::network::types::ConnectError;
-        use crate::types::ReconnectAction;
-
         match result {
             Ok(conn) => {
                 // Try to find a matching bookmark for this connection.

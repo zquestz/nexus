@@ -4,6 +4,7 @@ use iced::Task;
 
 use crate::NexusApp;
 use crate::types::{ActivePanel, InputId, Message};
+use crate::views::constants::PERMISSION_FILE_SEARCH;
 
 /// How the Files panel should open.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,8 +20,6 @@ impl NexusApp {
     // ==================== Panel Toggle ====================
 
     pub fn handle_toggle_files(&mut self, intent: FilesOpenIntent) -> Task<Message> {
-        use crate::views::constants::PERMISSION_FILE_SEARCH;
-
         let uri_path = match intent {
             FilesOpenIntent::Toolbar => None,
             FilesOpenIntent::UriPath(path) if path.is_empty() => None,

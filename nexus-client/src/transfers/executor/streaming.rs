@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 
 use nexus_common::framing::{FrameError, FrameHeader, FrameReader, FrameWriter, MessageId};
@@ -194,8 +194,6 @@ where
     R: tokio::io::AsyncBufRead + Unpin,
     F: FnMut(u64),
 {
-    use tokio::io::AsyncWriteExt;
-
     let mut remaining = header.payload_length;
     let mut total_written: u64 = 0;
     let mut buffer = [0u8; BUFFER_SIZE];
@@ -305,8 +303,6 @@ where
     W: tokio::io::AsyncWrite + Unpin,
     F: FnMut(u64),
 {
-    use tokio::io::AsyncWriteExt;
-
     // For zero-byte files, no FileData frame is sent per protocol spec:
     // "0-byte files: FileStart sent, receiver sends FileStartResponse, no FileData, proceed to next file"
     if bytes_to_send == 0 {

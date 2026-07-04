@@ -109,6 +109,16 @@ pub const ERR_VOICE_THREAD_TOKIO_RUNTIME: &str = "Failed to create tokio runtime
 /// after construction. Programmer-error.
 pub const ERR_PATH_EMPTY: &str = "non-empty path";
 
+/// Panic message: our own `PROTOCOL_VERSION` constant failed semver parsing.
+/// Programmer-error caught at the first handshake in any run.
+pub const ERR_PROTOCOL_VERSION_UNPARSEABLE: &str =
+    "PROTOCOL_VERSION is a canonical semver constant";
+
+/// Panic message: our own `TRACKER_PROTOCOL_VERSION` constant failed semver
+/// parsing. Programmer-error caught at the first tracker query in any run.
+pub const ERR_TRACKER_PROTOCOL_VERSION_UNPARSEABLE: &str =
+    "TRACKER_PROTOCOL_VERSION is a canonical semver constant";
+
 // =============================================================================
 // Runtime diagnostic details (wrapped by localized UI messages where shown)
 // =============================================================================

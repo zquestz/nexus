@@ -10,6 +10,8 @@ use std::collections::{BinaryHeap, HashMap, VecDeque};
 
 use nexus_common::validators::{DEFAULT_ADMIN_BANDWIDTH_WEIGHT, MIN_BANDWIDTH_WEIGHT};
 
+use crate::constants::ERR_SCHEDULER_PEEKED_ENTRY_MISSING;
+
 const VIRTUAL_TIME_SCALE: u128 = 1_000_000;
 
 /// A start-ordered heap is compacted (superseded entries dropped) once its
@@ -711,7 +713,10 @@ impl<T> Wf2qScheduler<T> {
             if top.0.start > threshold {
                 break;
             }
-            let Reverse(entry) = self.pending_heap.pop().expect("peeked entry exists");
+            let Reverse(entry) = self
+                .pending_heap
+                .pop()
+                .expect(ERR_SCHEDULER_PEEKED_ENTRY_MISSING);
             if self.entry_is_current(&entry.0) {
                 self.eligible_heap.push(Reverse(ByFinish(entry.0)));
             }

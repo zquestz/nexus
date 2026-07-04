@@ -5,14 +5,13 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{debug, warn};
 
+use nexus_common::protocol::ServerMessage;
+
+use super::{HandlerContext, err_not_logged_in, err_permission_denied};
 use crate::constants::{
     HANDLER_FILE_REINDEX, LOG_FILE_REINDEX_IN_PROGRESS, LOG_FILE_REINDEX_NOT_LOGGED_IN,
     LOG_FILE_REINDEX_PERMISSION_DENIED, LOG_FILE_REINDEX_TRIGGERED,
 };
-
-use nexus_common::protocol::ServerMessage;
-
-use super::{HandlerContext, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
 pub async fn handle_file_reindex<W>(

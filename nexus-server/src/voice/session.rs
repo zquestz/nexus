@@ -34,7 +34,7 @@ pub struct VoiceSession {
 impl fmt::Debug for VoiceSession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VoiceSession")
-            .field("token", &"<REDACTED>")
+            .field("token", &nexus_common::REDACTED)
             .field("nickname", &self.nickname)
             .field("nickname_folded", &self.nickname_folded)
             .field("target", &self.target)
@@ -113,7 +113,7 @@ mod tests {
 
         let dbg = format!("{session:?}");
         assert!(!dbg.contains(&token), "{dbg}");
-        assert!(dbg.contains("<REDACTED>"), "{dbg}");
+        assert!(dbg.contains(nexus_common::REDACTED), "{dbg}");
         assert!(dbg.contains("alice"), "{dbg}");
     }
 

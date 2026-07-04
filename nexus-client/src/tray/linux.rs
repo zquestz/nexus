@@ -7,7 +7,7 @@ use std::pin::Pin;
 use std::sync::OnceLock;
 
 use iced::Subscription;
-use iced::futures::Stream;
+use iced::futures::{SinkExt, Stream};
 use iced::stream;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::mpsc;
@@ -326,8 +326,6 @@ fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
     Box::pin(stream::channel(
         16,
         |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-            use iced::futures::SinkExt;
-
             // Take the receiver from the global static
             let rx = TRAY_RX.get().expect(ERR_TRAY_RX_UNINITIALIZED);
 

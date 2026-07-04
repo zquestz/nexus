@@ -28,9 +28,9 @@ pub struct PasswordChangeState {
 impl std::fmt::Debug for PasswordChangeState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PasswordChangeState")
-            .field("current_password", &"[REDACTED]")
-            .field("new_password", &"[REDACTED]")
-            .field("confirm_password", &"[REDACTED]")
+            .field("current_password", &nexus_common::REDACTED)
+            .field("new_password", &nexus_common::REDACTED)
+            .field("confirm_password", &nexus_common::REDACTED)
             .field("error", &self.error)
             .field("return_to_panel", &self.return_to_panel)
             .field("is_submitting", &self.is_submitting)

@@ -5,16 +5,15 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
-use crate::constants::{
-    HANDLER_NEWS_LIST, LOG_NEWS_LIST_DB_ERROR, LOG_NEWS_LIST_NOT_LOGGED_IN,
-    LOG_NEWS_LIST_PERMISSION_DENIED,
-};
-
 use nexus_common::protocol::{NewsItem, ServerMessage};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
+use crate::constants::{
+    HANDLER_NEWS_LIST, LOG_NEWS_LIST_DB_ERROR, LOG_NEWS_LIST_NOT_LOGGED_IN,
+    LOG_NEWS_LIST_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 
 pub async fn handle_news_list<W>(

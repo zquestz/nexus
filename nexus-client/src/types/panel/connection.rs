@@ -66,7 +66,7 @@ impl std::fmt::Debug for ConnectionFormState {
             .field("server_address", &self.server_address)
             .field("port", &self.port)
             .field("username", &self.username)
-            .field("password", &"[REDACTED]")
+            .field("password", &nexus_common::REDACTED)
             .field("nickname", &self.nickname)
             .field("fingerprint", &self.fingerprint)
             .field("error", &self.error)

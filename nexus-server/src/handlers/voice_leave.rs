@@ -5,13 +5,12 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
-use crate::constants::{FEATURE_VOICE, HANDLER_VOICE_LEAVE, LOG_VOICE_LEAVE_NOT_LOGGED_IN};
-
 use nexus_common::protocol::ServerMessage;
 
 use super::{
     HandlerContext, err_not_logged_in, err_voice_feature_not_enabled, err_voice_not_joined,
 };
+use crate::constants::{FEATURE_VOICE, HANDLER_VOICE_LEAVE, LOG_VOICE_LEAVE_NOT_LOGGED_IN};
 use crate::voice::send_voice_leave_notifications;
 
 /// Remove the user from their voice session and broadcast VoiceUserLeft.

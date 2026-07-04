@@ -98,6 +98,7 @@ tls = [
 image-decode = ["dep:image", "dep:base64", "dep:usvg"]
 
 [dev-dependencies]
+strum = { version = "0.28", features = ["derive"] }
 tempfile = "3.20"
 
 [lib]

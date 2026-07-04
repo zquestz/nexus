@@ -442,13 +442,13 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        // Shared account "guests": the transfer's nickname is the per-session
+        // Shared account "shared_acct": the transfer's nickname is the per-session
         // name "Alice", distinct from the account username.
         let (transfer, _rx) = registry.register(TransferRegistration {
             user_id: 1,
             peer_addr: addr,
             nickname: "Alice".to_string(),
-            username: "guests".to_string(),
+            username: "shared_acct".to_string(),
             is_admin: false,
             is_shared: true,
             direction: TransferDirection::Download,
@@ -456,7 +456,7 @@ mod tests {
             total_size: 1024,
         });
 
-        // Rename the shared account "guests" -> "visitors".
+        // Rename the shared account "shared_acct" -> "visitors".
         registry.update_user(1, "visitors", false);
 
         let info = transfer.to_transfer_info();

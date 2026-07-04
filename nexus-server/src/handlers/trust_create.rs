@@ -6,8 +6,6 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
-
-use crate::constants::*;
 use nexus_common::validators::{self, DurationError, TargetError, TrustReasonError};
 
 use super::duration::parse_duration;
@@ -16,6 +14,7 @@ use super::{
     err_reason_invalid, err_reason_too_long, err_target_too_long, err_trust_invalid_duration,
     err_trust_invalid_target,
 };
+use crate::constants::*;
 use crate::db::Permission;
 use crate::ip_rule_cache::canonicalize_target;
 use crate::users::UserManager;

@@ -482,7 +482,7 @@ where
             let phase = client_read_phase(&conn_state);
             let reader = frame_reader
                 .take()
-                .expect("frame reader must be available when no read is pending");
+                .expect(ERR_FRAME_READER_MISSING_WHILE_IDLE);
             pending_client_read = Some(start_client_read(reader, phase));
         }
 

@@ -11,15 +11,14 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::is_channel_target;
 
-use crate::constants::{
-    FEATURE_VOICE, HANDLER_VOICE_JOIN, LOG_VOICE_JOIN_NOT_LOGGED_IN,
-    LOG_VOICE_JOIN_PERMISSION_DENIED,
-};
-
 use super::{
     HandlerContext, err_not_logged_in, err_voice_already_joined, err_voice_feature_not_enabled,
     err_voice_invalid_target, err_voice_listen_required, err_voice_not_channel_member,
     err_voice_target_feature_not_enabled, err_voice_target_not_online,
+};
+use crate::constants::{
+    FEATURE_VOICE, HANDLER_VOICE_JOIN, LOG_VOICE_JOIN_NOT_LOGGED_IN,
+    LOG_VOICE_JOIN_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 use crate::voice::VoiceSession;

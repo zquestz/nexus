@@ -5,11 +5,6 @@ use std::io;
 
 use tracing::{error, warn};
 
-use crate::constants::{
-    HANDLER_USER_LIST, LOG_USER_LIST_DB_ERROR, LOG_USER_LIST_NOT_LOGGED_IN,
-    LOG_USER_LIST_PERMISSION_DENIED,
-};
-
 use tokio::io::AsyncWrite;
 
 use nexus_common::names::fold_name;
@@ -17,6 +12,10 @@ use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_common::validators::resolve_bandwidth_weight;
 
 use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
+use crate::constants::{
+    HANDLER_USER_LIST, LOG_USER_LIST_DB_ERROR, LOG_USER_LIST_NOT_LOGGED_IN,
+    LOG_USER_LIST_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 use crate::users::manager::UserManager;
 use crate::users::user::UserSession;

@@ -12,7 +12,7 @@ use crossbeam_channel::TryRecvError;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use iced::Subscription;
-use iced::futures::Stream;
+use iced::futures::{SinkExt, Stream};
 use iced::stream;
 
 use crate::config::audio::PttMode;
@@ -242,8 +242,6 @@ fn ptt_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
     Box::pin(stream::channel(
         PTT_STREAM_CHANNEL_SIZE,
         |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-            use iced::futures::SinkExt;
-
             // Get the global hotkey event receiver
             let receiver = GlobalHotKeyEvent::receiver();
 

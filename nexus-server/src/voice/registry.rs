@@ -9,7 +9,9 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::session::VoiceSession;
-use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
+use crate::constants::{
+    ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_VOICE_SESSION_MISSING_AFTER_CHECK,
+};
 
 /// Result of a successful `VoiceRegistry::add`.
 pub struct AddOutcome {
@@ -301,7 +303,7 @@ impl VoiceRegistry {
 
         sessions
             .get_mut(&token)
-            .expect("token existence checked above")
+            .expect(ERR_VOICE_SESSION_MISSING_AFTER_CHECK)
             .set_udp_addr(addr);
         BindUdpAddrOutcome::Bound
     }

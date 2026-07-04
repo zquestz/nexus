@@ -36,7 +36,7 @@
 //! Available behind the `upnp` Cargo feature so consumers without UPnP
 //! plumbing don't pay for `igd-next`.
 
-use std::net::{IpAddr, SocketAddrV4};
+use std::net::{IpAddr, SocketAddrV4, UdpSocket};
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -351,8 +351,6 @@ impl UpnpGateway {
     /// interface would be used to reach an external address. No
     /// packets are sent — it's a pure routing-table query.
     fn get_local_ipv4() -> Result<std::net::Ipv4Addr, String> {
-        use std::net::UdpSocket;
-
         let socket = UdpSocket::bind(UDP_BIND_ADDRESS)
             .map_err(|e| format!("{}{}", ERR_CREATE_UDP_SOCKET, e))?;
         socket

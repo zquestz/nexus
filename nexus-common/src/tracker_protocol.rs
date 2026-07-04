@@ -55,6 +55,10 @@ pub struct ServerEntry {
 /// `TrackerServerRegister` → server connection, `TrackerServerList` → client connection.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
+// Test-only variant-name iteration: the limits-table fixture in
+// `framing/limits.rs` asserts every variant has a MESSAGE_TYPE_LIMITS row.
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub enum TrackerClientMessage {
     /// Request the current list of registered servers.
     ///
@@ -116,6 +120,10 @@ pub enum TrackerClientMessage {
 /// Tracker server response messages.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
+// Test-only variant-name iteration: the limits-table fixture in
+// `framing/limits.rs` asserts every variant has a MESSAGE_TYPE_LIMITS row.
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub enum TrackerServerMessage {
     /// Generic error sent when the tracker must abort the connection
     /// without a typed flow response (frame-level violations, role
@@ -185,7 +193,7 @@ impl std::fmt::Debug for TrackerClientMessage {
                 version,
             } => f
                 .debug_struct("TrackerServerList")
-                .field("password", &password.as_ref().map(|_| "<REDACTED>"))
+                .field("password", &password.as_ref().map(|_| crate::REDACTED))
                 .field("locale", locale)
                 .field("version", version)
                 .finish(),
@@ -203,7 +211,7 @@ impl std::fmt::Debug for TrackerClientMessage {
                 allows_guest,
             } => f
                 .debug_struct("TrackerServerRegister")
-                .field("password", &password.as_ref().map(|_| "<REDACTED>"))
+                .field("password", &password.as_ref().map(|_| crate::REDACTED))
                 .field("locale", locale)
                 .field("name", name)
                 .field("description", description)
@@ -321,7 +329,7 @@ mod tests {
         };
         let debug = format!("{:?}", msg);
         assert!(!debug.contains("super-secret"));
-        assert!(debug.contains("<REDACTED>"));
+        assert!(debug.contains(crate::REDACTED));
     }
 
     #[test]

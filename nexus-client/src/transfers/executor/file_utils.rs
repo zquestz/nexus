@@ -10,14 +10,15 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 use tokio::fs::File;
-use tokio::io::{AsyncSeekExt, SeekFrom};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
-use nexus_common::FALLBACK_FILE_NAME;
 use nexus_common::framing::FrameWriter;
 use nexus_common::hash::StreamingHasher;
 use nexus_common::protocol::ClientMessage;
+use nexus_common::{FALLBACK_FILE_NAME, HASH_BUFFER_SIZE, KEEPALIVE_INTERVAL};
 
 use super::streaming::send_transfer_control_message;
 use super::{PART_SUFFIX, TransferError};
@@ -97,10 +98,6 @@ pub async fn hash_file_with_keepalives<W>(
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    use nexus_common::{HASH_BUFFER_SIZE, KEEPALIVE_INTERVAL};
-    use std::time::Instant;
-    use tokio::io::AsyncReadExt;
-
     let mut hasher = StreamingHasher::new();
     let file = File::open(path).await.map_err(|_| TransferError::IoError)?;
     let mut reader = tokio::io::BufReader::new(file);

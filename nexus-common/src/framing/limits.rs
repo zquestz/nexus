@@ -2231,9 +2231,17 @@ pub fn known_message_types() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use strum::IntoEnumIterator;
+
     use super::*;
-    use crate::protocol::{ChatAction, ClientMessage, ServerInfo, ServerMessage};
-    use crate::tracker_protocol::{ServerEntry, TrackerClientMessage, TrackerServerMessage};
+    use crate::protocol::{
+        ChatAction, ClientMessage, ClientMessageDiscriminants, ServerInfo, ServerMessage,
+        ServerMessageDiscriminants,
+    };
+    use crate::tracker_protocol::{
+        ServerEntry, TrackerClientMessage, TrackerClientMessageDiscriminants, TrackerServerMessage,
+        TrackerServerMessageDiscriminants,
+    };
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH,
         MAX_CHAT_TOPIC_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH,
@@ -2709,6 +2717,28 @@ mod tests {
             SHARED_MESSAGE_COUNT,
             TRACKER_CLIENT_MESSAGE_COUNT,
             TRACKER_SERVER_MESSAGE_COUNT,
+        );
+    }
+
+    /// Every protocol enum variant must have a `MESSAGE_TYPE_LIMITS` row.
+    /// This is the guard behind the hand-maintained counts above: a new
+    /// variant whose limits row AND count bump are both forgotten would
+    /// otherwise pass silently until a live frame of that type hit a reader.
+    /// Variant names equal wire tags (`#[serde(tag = "type")]`, no renames).
+    #[test]
+    fn every_protocol_variant_has_a_limits_row() {
+        let all_variant_names = ClientMessageDiscriminants::iter()
+            .map(|d| format!("{d:?}"))
+            .chain(ServerMessageDiscriminants::iter().map(|d| format!("{d:?}")))
+            .chain(TrackerClientMessageDiscriminants::iter().map(|d| format!("{d:?}")))
+            .chain(TrackerServerMessageDiscriminants::iter().map(|d| format!("{d:?}")));
+
+        let missing: Vec<String> = all_variant_names
+            .filter(|name| frame_type_info(name).is_none())
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "variants without a MESSAGE_TYPE_LIMITS row: {missing:?}"
         );
     }
 

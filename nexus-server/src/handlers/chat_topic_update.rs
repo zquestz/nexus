@@ -5,11 +5,6 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
-use crate::constants::{
-    HANDLER_CHAT_TOPIC_UPDATE, LOG_CHAT_TOPIC_DB_ERROR, LOG_CHAT_TOPIC_NOT_LOGGED_IN,
-    LOG_CHAT_TOPIC_PERMISSION_DENIED,
-};
-
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, ChatTopicError};
 
@@ -18,7 +13,10 @@ use super::{
     err_database, err_not_logged_in, err_permission_denied, err_topic_contains_newlines,
     err_topic_invalid_characters, err_topic_too_long,
 };
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{
+    FEATURE_CHAT, HANDLER_CHAT_TOPIC_UPDATE, LOG_CHAT_TOPIC_DB_ERROR, LOG_CHAT_TOPIC_NOT_LOGGED_IN,
+    LOG_CHAT_TOPIC_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 
 enum TopicUpdateOutcome {

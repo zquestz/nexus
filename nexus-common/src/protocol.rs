@@ -108,6 +108,10 @@ fn default_group_weight() -> u16 {
 /// Client request messages
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
+// Test-only variant-name iteration: the limits-table fixture in
+// `framing/limits.rs` asserts every variant has a MESSAGE_TYPE_LIMITS row.
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub enum ClientMessage {
     /// Create or update an IP ban
     BanCreate {
@@ -660,13 +664,17 @@ impl From<VoiceJoinToken> for Uuid {
 
 impl std::fmt::Debug for VoiceJoinToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("<REDACTED>")
+        f.write_str(crate::REDACTED)
     }
 }
 
 /// Server response messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
+// Test-only variant-name iteration: the limits-table fixture in
+// `framing/limits.rs` asserts every variant has a MESSAGE_TYPE_LIMITS row.
+#[cfg_attr(test, derive(strum::EnumDiscriminants))]
+#[cfg_attr(test, strum_discriminants(derive(strum::EnumIter)))]
 pub enum ServerMessage {
     /// Response to BanCreate request
     BanCreateResponse {
@@ -1126,13 +1134,13 @@ pub enum ServerMessage {
         username: String,
         message: String,
     },
+    ServerInfoUpdated {
+        server_info: ServerInfo,
+    },
     ServerInfoUpdateResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
-    },
-    ServerInfoUpdated {
-        server_info: ServerInfo,
     },
     /// Response to TrackerAcceptFingerprint request
     TrackerAcceptFingerprintResponse {
@@ -1779,9 +1787,9 @@ impl std::fmt::Debug for TrackerInfo {
         // Redact the registration password — it's a shared secret that
         // never belongs in operator logs. The `Option` wrapper is
         // preserved on the redacted path so a reader can distinguish
-        // `Some("<REDACTED>")` (password set, hidden) from `None`
+        // `Some(crate::REDACTED)` (password set, hidden) from `None`
         // (open tracker, no password).
-        let password = self.password.as_ref().map(|_| "<REDACTED>");
+        let password = self.password.as_ref().map(|_| crate::REDACTED);
         f.debug_struct("TrackerInfo")
             .field("id", &self.id)
             .field("address", &self.address)
@@ -1820,7 +1828,7 @@ fn debug_prefix(value: &str, max_bytes: usize) -> &str {
 }
 
 fn redact_optional_secret(value: &Option<String>) -> Option<&'static str> {
-    value.as_ref().map(|_| "<REDACTED>")
+    value.as_ref().map(|_| crate::REDACTED)
 }
 
 impl std::fmt::Debug for ClientMessage {
@@ -2019,7 +2027,7 @@ impl std::fmt::Debug for ClientMessage {
             } => f
                 .debug_struct("Login")
                 .field("username", username)
-                .field("password", &"<REDACTED>")
+                .field("password", &crate::REDACTED)
                 .field("features", features)
                 .field("locale", locale)
                 .field(
@@ -2210,7 +2218,7 @@ impl std::fmt::Debug for ClientMessage {
                 .field("revokes", revokes)
                 .field("bandwidth_weight", bandwidth_weight)
                 .field("inherit_bandwidth_weight", inherit_bandwidth_weight)
-                .field("password", &"<REDACTED>")
+                .field("password", &crate::REDACTED)
                 .finish(),
             ClientMessage::UserDelete { id } => {
                 f.debug_struct("UserDelete").field("id", id).finish()
@@ -2258,9 +2266,9 @@ impl std::fmt::Debug for ClientMessage {
             } => f
                 .debug_struct("UserUpdate")
                 .field("id", id)
-                .field("current_password", &"<REDACTED>")
+                .field("current_password", &crate::REDACTED)
                 .field("username", username)
-                .field("password", &"<REDACTED>")
+                .field("password", &crate::REDACTED)
                 .field("is_admin", is_admin)
                 .field("enabled", enabled)
                 .field("permissions", permissions)
@@ -2312,7 +2320,7 @@ mod tests {
             "raw password leaked into Debug output: {dbg}"
         );
         assert!(
-            dbg.contains("<REDACTED>"),
+            dbg.contains(crate::REDACTED),
             "expected redaction marker, got: {dbg}"
         );
     }
@@ -2322,7 +2330,7 @@ mod tests {
         let info = make_tracker_info(None);
         let dbg = format!("{info:?}");
         assert!(
-            !dbg.contains("<REDACTED>"),
+            !dbg.contains(crate::REDACTED),
             "should not redact when no password is set: {dbg}"
         );
         assert!(
@@ -2345,7 +2353,7 @@ mod tests {
             !dbg.contains("supersecret"),
             "password leaked through ServerMessage::Debug: {dbg}"
         );
-        assert!(dbg.contains("<REDACTED>"));
+        assert!(dbg.contains(crate::REDACTED));
     }
 
     #[test]
@@ -2424,7 +2432,7 @@ mod tests {
         let debug_output = format!("{:?}", msg);
         assert!(!debug_output.contains("create_secret"));
         assert!(debug_output.contains("password"));
-        assert!(debug_output.contains("<REDACTED>"));
+        assert!(debug_output.contains(crate::REDACTED));
     }
 
     #[test]
@@ -2439,7 +2447,7 @@ mod tests {
         };
         let dbg = format!("{:?}", with_password);
         assert!(!dbg.contains("tracker_secret"));
-        assert!(dbg.contains("password: Some(\"<REDACTED>\")"), "{dbg}");
+        assert!(dbg.contains("password: Some(\"[REDACTED]\")"), "{dbg}");
 
         let without_password = ClientMessage::TrackerAdd {
             address: "tracker.example.com".to_string(),
@@ -2451,7 +2459,7 @@ mod tests {
         };
         let dbg = format!("{:?}", without_password);
         assert!(dbg.contains("password: None"), "{dbg}");
-        assert!(!dbg.contains("<REDACTED>"));
+        assert!(!dbg.contains(crate::REDACTED));
     }
 
     #[test]
@@ -2467,7 +2475,7 @@ mod tests {
         };
         let dbg = format!("{:?}", with_password);
         assert!(!dbg.contains("tracker_secret"));
-        assert!(dbg.contains("password: Some(\"<REDACTED>\")"), "{dbg}");
+        assert!(dbg.contains("password: Some(\"[REDACTED]\")"), "{dbg}");
 
         let without_password = ClientMessage::TrackerUpdate {
             id: 7,
@@ -2480,7 +2488,7 @@ mod tests {
         };
         let dbg = format!("{:?}", without_password);
         assert!(dbg.contains("password: None"), "{dbg}");
-        assert!(!dbg.contains("<REDACTED>"));
+        assert!(!dbg.contains(crate::REDACTED));
     }
 
     #[test]
@@ -2496,7 +2504,7 @@ mod tests {
 
         let dbg = format!("{msg:?}");
         assert!(!dbg.contains(&token.to_string()), "{dbg}");
-        assert!(dbg.contains("<REDACTED>"), "{dbg}");
+        assert!(dbg.contains(crate::REDACTED), "{dbg}");
 
         let json = serde_json::to_string(&msg).expect("serialize voice join response");
         assert!(
@@ -4765,7 +4773,7 @@ mod tests {
         // shape from anyone reading the debug output.
         assert!(debug_output.contains("current_password"));
         assert!(debug_output.contains("password"));
-        assert_eq!(debug_output.matches("<REDACTED>").count(), 2);
+        assert_eq!(debug_output.matches(crate::REDACTED).count(), 2);
         assert!(debug_output.contains("newname"));
         assert!(debug_output.contains("id"));
     }

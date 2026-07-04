@@ -39,7 +39,10 @@ impl std::fmt::Debug for ProxyConfig {
             .field("address", &self.address)
             .field("port", &self.port)
             .field("username", &self.username)
-            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .finish()
     }
 }
@@ -94,7 +97,7 @@ impl std::fmt::Debug for ConnectionParams {
             .field("server_address", &self.server_address)
             .field("port", &self.port)
             .field("username", &self.username)
-            .field("password", &"[REDACTED]")
+            .field("password", &nexus_common::REDACTED)
             .field("nickname", &self.nickname)
             .field("locale", &self.locale)
             .field("avatar", &self.avatar.as_ref().map(|_| "[data]"))
@@ -415,7 +418,10 @@ impl std::fmt::Debug for TrackerQueryParams {
         f.debug_struct("TrackerQueryParams")
             .field("address", &self.address)
             .field("port", &self.port)
-            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .field("expected_fingerprint", &self.expected_fingerprint)
             .field("locale", &self.locale)
             .field("version", &self.version)

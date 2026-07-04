@@ -149,7 +149,7 @@ impl fmt::Debug for UserAccount {
         f.debug_struct("UserAccount")
             .field("id", &self.id)
             .field("username", &self.username)
-            .field("hashed_password", &"<REDACTED>")
+            .field("hashed_password", &nexus_common::REDACTED)
             .field("is_admin", &self.is_admin)
             .field("is_shared", &self.is_shared)
             .field("enabled", &self.enabled)
@@ -1265,7 +1265,7 @@ mod tests {
             "raw password hash leaked into Debug output: {dbg}"
         );
         assert!(
-            dbg.contains("<REDACTED>"),
+            dbg.contains(nexus_common::REDACTED),
             "expected redaction marker, got: {dbg}"
         );
     }

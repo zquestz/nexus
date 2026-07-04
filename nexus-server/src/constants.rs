@@ -269,6 +269,19 @@ pub const ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK: &str =
 /// Used by `db::bans::row_to_ban` / `db::trusts::row_to_trust`.
 pub const ERR_VALID_IP_PREFIX: &str = "valid prefix";
 
+/// expect() message — the connection loop takes the frame reader only while
+/// no read is pending and returns it when the read completes. Programmer-error.
+pub const ERR_FRAME_READER_MISSING_WHILE_IDLE: &str =
+    "frame reader must be available when no read is pending";
+
+/// expect() message — `migrate_eligible` pops only after a successful peek
+/// on the same heap. Programmer-error.
+pub const ERR_SCHEDULER_PEEKED_ENTRY_MISSING: &str = "peeked entry exists";
+
+/// expect() message — `bind_udp_addr` looks up a token whose presence was
+/// verified earlier in the same locked scope. Programmer-error.
+pub const ERR_VOICE_SESSION_MISSING_AFTER_CHECK: &str = "token existence checked above";
+
 /// debug_assert message — a string reached the cache/DB write boundary without
 /// `canonicalize_target`. The handler layer is the single IP-canonicalization funnel.
 pub const ERR_TARGET_NOT_CANONICAL: &str =

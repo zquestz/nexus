@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
 
 use crate::constants::*;
+use crate::files::path::resolve_path;
 
 use nexus_common::framing::{
     DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader, FrameWriter, MessageId,
@@ -445,8 +446,6 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    use crate::files::path::resolve_path;
-
     let user = transfer.user();
     validate_transfer_path(destination, locale)?;
 

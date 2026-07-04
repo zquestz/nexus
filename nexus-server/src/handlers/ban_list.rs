@@ -5,11 +5,10 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
-use crate::constants::*;
-
 use nexus_common::protocol::{BanInfo, ServerMessage};
 
 use super::{HandlerContext, err_not_logged_in, err_permission_denied};
+use crate::constants::*;
 use crate::db::Permission;
 
 /// Returns all active (non-expired) bans.

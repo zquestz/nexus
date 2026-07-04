@@ -81,7 +81,10 @@ pub struct RegisterParams {
 impl std::fmt::Debug for RegisterParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RegisterParams")
-            .field("password", &self.password.as_ref().map(|_| "<REDACTED>"))
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .field("locale", &self.locale)
             .field("name", &self.name)
             .field("description", &self.description)

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crossbeam_channel::TryRecvError;
 use iced::Subscription;
-use iced::futures::Stream;
+use iced::futures::{SinkExt, Stream};
 use iced::stream;
 
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -211,8 +211,6 @@ fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
     Box::pin(stream::channel(
         16,
         |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-            use iced::futures::SinkExt;
-
             'poll: loop {
                 // Check for tray icon events (clicks)
                 let tray_receiver = TrayIconEvent::receiver();

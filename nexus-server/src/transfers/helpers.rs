@@ -4,6 +4,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use rand::RngExt;
 use tokio::io::AsyncWriteExt;
 use tokio::time::timeout;
 
@@ -319,7 +320,6 @@ where
 /// Random 8-hex-char (32-bit) transfer ID for log correlation. NOT
 /// cryptographically secure; never use for auth or anything security-sensitive.
 pub(crate) fn generate_transfer_id() -> String {
-    use rand::RngExt;
     let bytes: [u8; 4] = rand::rng().random();
     hex::encode(bytes)
 }

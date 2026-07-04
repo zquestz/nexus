@@ -45,7 +45,10 @@ impl fmt::Debug for NexusUri {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NexusUri")
             .field("user", &self.user)
-            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .field("host", &self.host)
             .field("port", &self.port)
             .field("path", &self.path)

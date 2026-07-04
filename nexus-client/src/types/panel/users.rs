@@ -419,7 +419,7 @@ impl std::fmt::Debug for UserManagementState {
             .field("group_management", &self.group_management)
             .field("return_to_panel", &self.return_to_panel)
             .field("username", &self.username)
-            .field("password", &"[REDACTED]")
+            .field("password", &nexus_common::REDACTED)
             .field("is_admin", &self.is_admin)
             .field("is_shared", &self.is_shared)
             .field("enabled", &self.enabled)

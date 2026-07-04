@@ -6,8 +6,6 @@ use std::sync::atomic::Ordering;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
-use crate::constants::*;
-
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
     BandwidthWeightError, MIN_BANDWIDTH_WEIGHT, validate_bandwidth_weight,
@@ -24,6 +22,7 @@ use super::{
     err_bandwidth_weight_zero, err_database, err_group_already_exists, err_not_logged_in,
     err_permission_denied,
 };
+use crate::constants::*;
 use crate::db::{Permission, Permissions};
 
 pub async fn handle_group_create<W>(

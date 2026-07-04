@@ -5,16 +5,14 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
-use crate::constants::{
-    HANDLER_CHAT_LIST, LOG_CHAT_LIST_NOT_LOGGED_IN, LOG_CHAT_LIST_PERMISSION_DENIED,
-};
-
 use nexus_common::protocol::{ChannelInfo, ServerMessage};
 
 use super::{
     HandlerContext, err_chat_feature_not_enabled, err_not_logged_in, err_permission_denied,
 };
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{
+    FEATURE_CHAT, HANDLER_CHAT_LIST, LOG_CHAT_LIST_NOT_LOGGED_IN, LOG_CHAT_LIST_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 
 pub async fn handle_chat_list<W>(

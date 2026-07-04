@@ -971,10 +971,10 @@ mod tests {
     async fn test_chat_join_shared_account_different_nicknames_broadcast() {
         let mut test_ctx = create_test_context().await;
 
-        let guest1_session = add_shared_session(
+        let shared1_session = add_shared_session(
             &mut test_ctx,
-            "guest",
-            "Guest1",
+            "shared_acct",
+            "Shared1",
             &[Permission::ChatJoin, Permission::ChatCreate],
             vec![FEATURE_CHAT.to_string()],
         )
@@ -982,31 +982,31 @@ mod tests {
 
         let _ = handle_chat_join(
             "#general".to_string(),
-            Some(guest1_session),
+            Some(shared1_session),
             &mut test_ctx.handler_context(),
         )
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        let guest2_session = add_shared_session(
+        let shared2_session = add_shared_session(
             &mut test_ctx,
-            "guest",
-            "Guest2",
+            "shared_acct",
+            "Shared2",
             &[Permission::ChatJoin],
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        // Guest2 joins #general - should broadcast ChatUserJoined
-        // because nickname "Guest2" is different from "Guest1"
+        // Shared2 joins #general - should broadcast ChatUserJoined
+        // because nickname "Shared2" is different from "Shared1"
         let _ = handle_chat_join(
             "#general".to_string(),
-            Some(guest2_session),
+            Some(shared2_session),
             &mut test_ctx.handler_context(),
         )
         .await;
 
-        // Read Guest2's ChatJoinResponse
+        // Read Shared2's ChatJoinResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
@@ -1015,13 +1015,13 @@ mod tests {
                 assert!(success);
                 let members = members.unwrap();
                 assert_eq!(members.len(), 2);
-                assert!(members.contains(&"Guest1".to_string()));
-                assert!(members.contains(&"Guest2".to_string()));
+                assert!(members.contains(&"Shared1".to_string()));
+                assert!(members.contains(&"Shared2".to_string()));
             }
             _ => panic!("Expected ChatJoinResponse, got {:?}", response),
         }
 
-        // Verify ChatUserJoined was sent for Guest2
+        // Verify ChatUserJoined was sent for Shared2
         let (msg, _) = test_ctx
             .rx
             .recv()
@@ -1036,7 +1036,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(channel, "#general");
-                assert_eq!(nickname, "Guest2");
+                assert_eq!(nickname, "Shared2");
                 assert!(is_shared);
             }
             _ => panic!("Expected ChatUserJoined, got {:?}", msg),

@@ -152,7 +152,7 @@ impl std::fmt::Debug for TrackerBrowserMode {
                 .field("name", name)
                 .field("address", address)
                 .field("port", port)
-                .field("password", &"[REDACTED]")
+                .field("password", &nexus_common::REDACTED)
                 .field("fingerprint", fingerprint)
                 .finish(),
             Self::ConfirmRemove { id, name } => f
@@ -293,7 +293,7 @@ impl std::fmt::Debug for TrackerBrowserState {
             .field("add_name", &self.add_name)
             .field("add_address", &self.add_address)
             .field("add_port", &self.add_port)
-            .field("add_password", &"[REDACTED]")
+            .field("add_password", &nexus_common::REDACTED)
             .field("add_fingerprint", &self.add_fingerprint)
             .finish()
     }

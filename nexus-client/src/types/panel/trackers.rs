@@ -232,7 +232,7 @@ impl std::fmt::Debug for TrackerManagementMode {
                 .field("address", address)
                 .field("port", port)
                 .field("fingerprint", fingerprint)
-                .field("password", &"[REDACTED]")
+                .field("password", &nexus_common::REDACTED)
                 .field("enabled", enabled)
                 .finish(),
             Self::ConfirmRemove { id, name } => f
@@ -362,7 +362,7 @@ impl std::fmt::Debug for TrackerManagementState {
             .field("add_address", &self.add_address)
             .field("add_port", &self.add_port)
             .field("add_fingerprint", &self.add_fingerprint)
-            .field("add_password", &"[REDACTED]")
+            .field("add_password", &nexus_common::REDACTED)
             .field("add_enabled", &self.add_enabled)
             .finish()
     }

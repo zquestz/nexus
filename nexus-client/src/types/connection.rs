@@ -62,7 +62,7 @@ impl std::fmt::Debug for ConnectionInfo {
             .field("transfer_port", &self.transfer_port)
             .field("certificate_fingerprint", &self.certificate_fingerprint)
             .field("username", &self.username)
-            .field("password", &"[REDACTED]")
+            .field("password", &nexus_common::REDACTED)
             .field("nickname", &self.nickname)
             .finish()
     }

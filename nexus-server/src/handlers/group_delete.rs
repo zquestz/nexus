@@ -5,8 +5,6 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
-use crate::constants::*;
-
 use nexus_common::protocol::ServerMessage;
 
 #[cfg(test)]
@@ -15,6 +13,7 @@ use super::{
     HandlerContext, err_database, err_group_not_empty_delete, err_group_not_found,
     err_not_logged_in, err_permission_denied,
 };
+use crate::constants::*;
 use crate::db::{DeleteGroupResult, Permission};
 
 pub async fn handle_group_delete<W>(

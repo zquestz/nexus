@@ -36,7 +36,10 @@ pub struct VoiceState {
 impl fmt::Debug for VoiceState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VoiceState")
-            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "token",
+                &self.token.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .field("leave_sent", &self.leave_sent)
             .field("can_transmit", &self.can_transmit)
             .field("transmit_initialized", &self.transmit_initialized)

@@ -10,11 +10,10 @@
 
 use tokio::sync::mpsc;
 
+use super::{LeaverNotify, remove_user_sessions_with_cleanup};
 use crate::channels::ChannelManager;
 use crate::users::UserManager;
 use crate::voice::VoiceRegistry;
-
-use super::{LeaverNotify, remove_user_sessions_with_cleanup};
 
 /// Drain dead session ids and tear them down via the canonical path. Runs until
 /// every `UserManager` clone (and thus every sender) is dropped at shutdown.

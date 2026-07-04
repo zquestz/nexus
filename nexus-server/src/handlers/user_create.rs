@@ -7,13 +7,6 @@ use std::sync::atomic::Ordering;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
-use crate::constants::{
-    HANDLER_USER_CREATE, LOG_USER_CREATE_DB_ERROR, LOG_USER_CREATE_HASH_ERROR,
-    LOG_USER_CREATE_NOT_LOGGED_IN, LOG_USER_CREATE_PERMISSION_DENIED, LOG_USER_CREATE_SUCCESS,
-    LOG_USER_CREATE_UNOWNED_GROUP, LOG_USER_CREATE_UNOWNED_PERMISSION,
-    LOG_USER_CREATE_UNOWNED_REVOKE,
-};
-
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
@@ -33,6 +26,12 @@ use super::{
     err_permissions_too_many, err_shared_cannot_be_admin, err_shared_invalid_permissions,
     err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
     err_username_is_active_nickname, err_username_too_long,
+};
+use crate::constants::{
+    HANDLER_USER_CREATE, LOG_USER_CREATE_DB_ERROR, LOG_USER_CREATE_HASH_ERROR,
+    LOG_USER_CREATE_NOT_LOGGED_IN, LOG_USER_CREATE_PERMISSION_DENIED, LOG_USER_CREATE_SUCCESS,
+    LOG_USER_CREATE_UNOWNED_GROUP, LOG_USER_CREATE_UNOWNED_PERMISSION,
+    LOG_USER_CREATE_UNOWNED_REVOKE,
 };
 use crate::db::{CreateUserParams, Permission, Permissions, hash_password_async};
 use crate::users::user::UserSession;

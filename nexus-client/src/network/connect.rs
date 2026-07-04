@@ -9,6 +9,7 @@ use nexus_common::io::{
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{DEFAULT_TRANSFER_PORT, PROTOCOL_VERSION};
 
+use crate::constants::ERR_PROTOCOL_VERSION_UNPARSEABLE;
 use crate::i18n::{t, t_args, translate_protocol_io_error};
 use crate::types::{ConnectionInfo, NetworkConnection};
 
@@ -223,7 +224,7 @@ where
                     )
                 })?;
                 let client_v = nexus_common::version::Version::parse(PROTOCOL_VERSION)
-                    .expect("PROTOCOL_VERSION is a canonical semver constant");
+                    .expect(ERR_PROTOCOL_VERSION_UNPARSEABLE);
                 let compat = nexus_common::version::check_compatibility(&server_v, &client_v);
                 if !compat.is_compatible() {
                     return Err(t_args(

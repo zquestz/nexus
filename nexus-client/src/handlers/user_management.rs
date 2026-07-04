@@ -11,8 +11,9 @@ use nexus_common::validators::{
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    ActivePanel, ChatMessage, ChatTab, GroupManagementMode, InputId, Message, PasswordChangeState,
-    PendingRequests, ResponseRouting, UserManagementMode, UserManagementSortColumn,
+    ActivePanel, ChatMessage, ChatTab, DisconnectAction, DisconnectDialogState,
+    GroupManagementMode, InputId, Message, PasswordChangeState, PendingRequests, ResponseRouting,
+    UserManagementMode, UserManagementSortColumn,
 };
 use crate::views::constants::PERMISSION_USER_INFO;
 
@@ -935,7 +936,6 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            use crate::types::DisconnectDialogState;
             conn.disconnect_dialog = Some(DisconnectDialogState::new(nickname));
             return self.focus_field(InputId::DisconnectDialogReason);
         }
@@ -993,8 +993,6 @@ impl NexusApp {
 
     /// Handle disconnect dialog submit (kick or ban)
     pub fn handle_disconnect_dialog_submit(&mut self) -> Task<Message> {
-        use crate::types::DisconnectAction;
-
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
             && let Some(ref dialog) = conn.disconnect_dialog

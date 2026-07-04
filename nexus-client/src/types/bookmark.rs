@@ -1,6 +1,7 @@
 //! Server bookmark types
 
 use nexus_common::DEFAULT_PORT;
+use serde::de::{self, Unexpected, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
@@ -11,8 +12,6 @@ fn deserialize_port<'de, D>(deserializer: D) -> Result<u16, D::Error>
 where
     D: Deserializer<'de>,
 {
-    use serde::de::{self, Unexpected, Visitor};
-
     struct PortVisitor;
 
     impl<'de> Visitor<'de> for PortVisitor {
@@ -101,7 +100,7 @@ impl std::fmt::Debug for ServerBookmark {
             .field("address", &self.address)
             .field("port", &self.port)
             .field("username", &self.username)
-            .field("password", &"[REDACTED]")
+            .field("password", &nexus_common::REDACTED)
             .field("nickname", &self.nickname)
             .field("auto_connect", &self.auto_connect)
             .field("certificate_fingerprint", &self.certificate_fingerprint)

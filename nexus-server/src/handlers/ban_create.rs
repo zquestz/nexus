@@ -14,9 +14,9 @@ use super::duration::{format_duration_remaining, parse_duration};
 use super::{
     HandlerContext, LeaverNotify, Outcome, dispatch_outcome, err_ban_admin_by_ip,
     err_ban_admin_by_nickname, err_ban_invalid_duration, err_ban_invalid_target, err_ban_self,
-    err_database, err_not_logged_in, err_permission_denied, err_reason_invalid,
-    err_reason_too_long, err_target_too_long, remove_users_with_cleanup_locked,
-    send_reason_and_disconnect,
+    err_banned_permanent, err_banned_with_expiry, err_database, err_not_logged_in,
+    err_permission_denied, err_reason_invalid, err_reason_too_long, err_target_too_long,
+    remove_users_with_cleanup_locked, send_reason_and_disconnect,
 };
 use crate::constants::*;
 use crate::db::Permission;
@@ -402,9 +402,6 @@ where
 }
 
 fn build_ban_disconnect_message(locale: &str, expires_at: Option<i64>) -> ServerMessage {
-    use super::err_banned_permanent;
-    use super::err_banned_with_expiry;
-
     let message = if let Some(expiry) = expires_at {
         let remaining = format_duration_remaining(locale, expiry);
         err_banned_with_expiry(locale, &remaining)

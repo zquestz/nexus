@@ -7,7 +7,8 @@
 
 use std::net::IpAddr;
 
-use nexus_common::upnp::{PortMapping, PortMappingProtocol, UpnpGateway};
+use nexus_common::upnp::PortMappingProtocol::{TCP, UDP};
+use nexus_common::upnp::{PortMapping, UpnpGateway};
 
 pub use nexus_common::upnp::{UpnpGateway as Gateway, spawn_lease_renewal_task};
 
@@ -31,8 +32,6 @@ pub async fn setup(
     websocket_port: Option<u16>,
     transfer_websocket_port: Option<u16>,
 ) -> Result<UpnpGateway, String> {
-    use PortMappingProtocol::{TCP, UDP};
-
     let mut ports = vec![
         PortMapping {
             protocol: TCP,

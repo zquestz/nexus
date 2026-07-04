@@ -7,11 +7,10 @@ use tracing::{error, warn};
 
 use nexus_common::protocol::ServerMessage;
 
-use crate::constants::*;
-
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
+use crate::constants::*;
 use crate::db::Permission;
 
 /// Returns all groups with permissions and member counts. Requires any of

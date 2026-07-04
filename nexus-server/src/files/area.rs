@@ -237,13 +237,13 @@ mod tests {
         let temp = setup_test_root();
         let root = temp.path();
 
-        let guest_dir = root.join(FILES_USERS_DIR).join("guest");
-        fs::create_dir(&guest_dir).expect("Failed to create guest dir");
+        let shared_dir = root.join(FILES_USERS_DIR).join("shared_acct");
+        fs::create_dir(&shared_dir).expect("Failed to create shared_acct dir");
 
         // Shared account users resolve by account username, not nickname.
-        let area = resolve_test_user_area(root, "guest").await;
+        let area = resolve_test_user_area(root, "shared_acct").await;
 
-        assert_eq!(area, guest_dir);
+        assert_eq!(area, shared_dir);
     }
 
     #[tokio::test]

@@ -5,12 +5,6 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
-use crate::constants::{
-    HANDLER_NEWS_UPDATE, LOG_NEWS_UPDATE_ADMIN, LOG_NEWS_UPDATE_DB_ERROR,
-    LOG_NEWS_UPDATE_DB_ERROR_GET, LOG_NEWS_UPDATE_IMAGE_VALIDATE_ERROR,
-    LOG_NEWS_UPDATE_NOT_LOGGED_IN, LOG_NEWS_UPDATE_PERMISSION_DENIED, LOG_NEWS_UPDATE_SUCCESS,
-};
-
 use nexus_common::protocol::{NewsAction, NewsItem, ServerMessage};
 use nexus_common::validators::{self, NewsBodyError};
 
@@ -23,7 +17,11 @@ use super::{
     err_news_body_too_long, err_news_empty_content, err_news_not_found, err_no_fields_to_update,
     err_not_logged_in, err_permission_denied,
 };
-use crate::constants::FEATURE_NEWS;
+use crate::constants::{
+    FEATURE_NEWS, HANDLER_NEWS_UPDATE, LOG_NEWS_UPDATE_ADMIN, LOG_NEWS_UPDATE_DB_ERROR,
+    LOG_NEWS_UPDATE_DB_ERROR_GET, LOG_NEWS_UPDATE_IMAGE_VALIDATE_ERROR,
+    LOG_NEWS_UPDATE_NOT_LOGGED_IN, LOG_NEWS_UPDATE_PERMISSION_DENIED, LOG_NEWS_UPDATE_SUCCESS,
+};
 use crate::db::Permission;
 
 pub async fn handle_news_update<W>(

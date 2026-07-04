@@ -8,6 +8,10 @@
 //! - `decode_data_uri_max_width()` - Decode with max width constraint
 //! - `validate_image_bytes()` - Validate image bytes match expected format
 
+use std::io::Cursor;
+
+use ::image::ImageReader;
+use ::image::imageops::FilterType;
 use base64::Engine;
 use iced::Element;
 use iced::widget::{image, svg};
@@ -167,8 +171,6 @@ fn decode_data_uri_impl(
     constraint: ResizeConstraint,
     profile: ImageDecodeProfile,
 ) -> Option<CachedImage> {
-    use base64::Engine;
-
     let base64_start = data_uri.find("base64,")?;
     let base64_data = &data_uri[base64_start + 7..];
     let bytes = base64::engine::general_purpose::STANDARD
@@ -202,10 +204,6 @@ fn resize_and_cache_raster(
     constraint: ResizeConstraint,
     profile: ImageDecodeProfile,
 ) -> Option<CachedImage> {
-    use ::image::ImageReader;
-    use ::image::imageops::FilterType;
-    use std::io::Cursor;
-
     // Try to load and decode the image (validates format via image crate)
     let mut reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()

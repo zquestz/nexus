@@ -8,7 +8,7 @@ use super::sort_search_results;
 use super::strip_leading_slash;
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{FileSortColumn, Message, PendingRequests, ResponseRouting};
+use crate::types::{FileSortColumn, FileTab, Message, PendingRequests, ResponseRouting};
 
 impl NexusApp {
     /// Handle search input text change
@@ -188,8 +188,6 @@ impl NexusApp {
         &mut self,
         result: nexus_common::protocol::FileSearchResult,
     ) -> Task<Message> {
-        use crate::types::FileTab;
-
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };

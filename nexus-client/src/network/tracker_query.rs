@@ -31,6 +31,7 @@ use tokio::time::timeout;
 
 use super::tls::establish_connection;
 use super::types::{TrackerQueryError, TrackerQueryOk, TrackerQueryParams};
+use crate::constants::ERR_TRACKER_PROTOCOL_VERSION_UNPARSEABLE;
 use crate::i18n::{t, t_args, translate_frame_error, translate_protocol_io_error};
 
 /// Read timeout for tracker handshake and list responses. Matches the
@@ -179,7 +180,7 @@ pub async fn query_tracker(
             ))
         })?;
         let client_v = nexus_common::version::Version::parse(TRACKER_PROTOCOL_VERSION)
-            .expect("TRACKER_PROTOCOL_VERSION is a canonical semver constant");
+            .expect(ERR_TRACKER_PROTOCOL_VERSION_UNPARSEABLE);
         let compat = nexus_common::version::check_compatibility(&server_v, &client_v);
         if !compat.is_compatible() {
             return Err(TrackerQueryError::Handshake(t_args(

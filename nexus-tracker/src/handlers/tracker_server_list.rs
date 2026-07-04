@@ -47,7 +47,10 @@ pub struct ListParams {
 impl std::fmt::Debug for ListParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ListParams")
-            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| nexus_common::REDACTED),
+            )
             .field("locale", &self.locale)
             .field("version", &self.version)
             .finish()

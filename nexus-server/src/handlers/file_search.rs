@@ -6,11 +6,6 @@ use std::sync::Arc;
 use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
-use crate::constants::{
-    HANDLER_FILE_SEARCH, LOG_FILE_SEARCH_ERROR, LOG_FILE_SEARCH_NOT_LOGGED_IN,
-    LOG_FILE_SEARCH_PANIC, LOG_FILE_SEARCH_PERMISSION_DENIED, LOG_FILE_SEARCH_ROOT_DENIED,
-};
-
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, SearchQueryError, validate_search_query};
 
@@ -18,6 +13,10 @@ use super::{
     HandlerContext, err_not_logged_in, err_permission_denied, err_search_failed,
     err_search_query_empty, err_search_query_invalid, err_search_query_too_long,
     err_search_query_too_short,
+};
+use crate::constants::{
+    HANDLER_FILE_SEARCH, LOG_FILE_SEARCH_ERROR, LOG_FILE_SEARCH_NOT_LOGGED_IN,
+    LOG_FILE_SEARCH_PANIC, LOG_FILE_SEARCH_PERMISSION_DENIED, LOG_FILE_SEARCH_ROOT_DENIED,
 };
 use crate::db::Permission;
 use crate::files::{dropbox_entry_visible, resolve_user_area};

@@ -5,8 +5,6 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
-use crate::constants::{HANDLER_CHAT_LEAVE, LOG_CHAT_LEAVE_NOT_LOGGED_IN};
-
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators;
 
@@ -14,9 +12,8 @@ use super::{
     HandlerContext, channel_error_to_message, err_channel_not_found, err_chat_feature_not_enabled,
     err_not_logged_in,
 };
+use crate::constants::{FEATURE_CHAT, HANDLER_CHAT_LEAVE, LOG_CHAT_LEAVE_NOT_LOGGED_IN};
 use crate::voice::send_voice_leave_notifications;
-
-use crate::constants::FEATURE_CHAT;
 
 enum LeaveOutcome {
     Disconnect,
@@ -649,19 +646,19 @@ mod tests {
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Two shared-account sessions with distinct nicknames.
-        let guest1_session = add_shared_session(
+        let shared1_session = add_shared_session(
             &mut test_ctx,
-            "guest",
-            "Guest1",
+            "shared_acct",
+            "Shared1",
             &[Permission::ChatJoin],
             vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
-        let guest2_session = add_shared_session(
+        let shared2_session = add_shared_session(
             &mut test_ctx,
-            "guest",
-            "Guest2",
+            "shared_acct",
+            "Shared2",
             &[Permission::ChatJoin],
             vec![FEATURE_CHAT.to_string()],
         )
@@ -669,19 +666,19 @@ mod tests {
 
         let _ = test_ctx
             .channel_manager
-            .join("#general", guest1_session, JoinPolicy::CreateIfMissing)
+            .join("#general", shared1_session, JoinPolicy::CreateIfMissing)
             .await;
         let _ = test_ctx
             .channel_manager
-            .join("#general", guest2_session, JoinPolicy::CreateIfMissing)
+            .join("#general", shared2_session, JoinPolicy::CreateIfMissing)
             .await;
 
         while test_ctx.rx.try_recv().is_ok() {} // drain pending
 
-        // Guest1 leaves: distinct nickname from Guest2, so ChatUserLeft fires.
+        // Shared1 leaves: distinct nickname from Shared2, so ChatUserLeft fires.
         let _ = handle_chat_leave(
             "#general".to_string(),
-            Some(guest1_session),
+            Some(shared1_session),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -697,16 +694,16 @@ mod tests {
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
                 assert_eq!(channel, "#general");
-                assert_eq!(nickname, "Guest1");
+                assert_eq!(nickname, "Shared1");
             }
-            _ => panic!("Expected ChatUserLeft for Guest1, got {:?}", msg),
+            _ => panic!("Expected ChatUserLeft for Shared1, got {:?}", msg),
         }
 
         while test_ctx.rx.try_recv().is_ok() {} // drain duplicates
 
         let _ = handle_chat_leave(
             "#general".to_string(),
-            Some(guest2_session),
+            Some(shared2_session),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -721,9 +718,9 @@ mod tests {
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
                 assert_eq!(channel, "#general");
-                assert_eq!(nickname, "Guest2");
+                assert_eq!(nickname, "Shared2");
             }
-            _ => panic!("Expected ChatUserLeft for Guest2, got {:?}", msg),
+            _ => panic!("Expected ChatUserLeft for Shared2, got {:?}", msg),
         }
     }
 
