@@ -11,14 +11,3 @@ use crate::types::UserInfo;
 pub fn sort_user_list(users: &mut [UserInfo]) {
     users.sort_by_cached_key(|u| fold_name(&u.nickname));
 }
-
-/// Format session duration in human-readable form
-pub fn format_duration(seconds: u64) -> String {
-    if seconds < 60 {
-        format!("{}s", seconds)
-    } else if seconds < 3600 {
-        format!("{}m", seconds / 60)
-    } else {
-        format!("{}h {}m", seconds / 3600, (seconds % 3600) / 60)
-    }
-}

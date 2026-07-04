@@ -695,22 +695,11 @@ user-info-channels = Canais:
 # Time Duration
 # =============================================================================
 
-time-days = { $count } { $count ->
-    [one] dia
-   *[other] dias
-}
-time-hours = { $count } { $count ->
-    [one] hora
-   *[other] horas
-}
-time-minutes = { $count } { $count ->
-    [one] minuto
-   *[other] minutos
-}
-time-seconds = { $count } { $count ->
-    [one] segundo
-   *[other] segundos
-}
+time-days = { $count } d
+time-hours = { $count } h
+time-minutes = { $count } min
+time-seconds = { $count } s
+time-two-units = { $major } { $minor }
 
 # =============================================================================
 # Command System

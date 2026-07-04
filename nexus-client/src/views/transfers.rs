@@ -13,12 +13,6 @@ const BULLET_SEPARATOR: &str = " • ";
 /// Em dash separator for error messages (e.g., "Status — Error message")
 const EM_DASH_SEPARATOR: &str = " — ";
 
-/// Seconds per minute (for duration formatting)
-const SECONDS_PER_MINUTE: i64 = 60;
-
-/// Seconds per hour (for duration formatting)
-const SECONDS_PER_HOUR: i64 = 3600;
-
 /// Minimum speed threshold for ETA calculation (bytes/second)
 const MIN_SPEED_FOR_ETA: f64 = 1.0;
 
@@ -33,7 +27,7 @@ use iced::widget::{
 use iced::{Center, Element, Fill};
 
 use super::helpers::format_bytes;
-use crate::i18n::{t, t_args};
+use crate::i18n::{format_duration, t, t_args};
 use crate::icon;
 use crate::style::{
     CONTENT_MAX_WIDTH, CONTENT_PADDING, DETAIL_TEXT_SIZE, ELEMENT_SPACING, HEADING_BUTTON_PADDING,
@@ -65,29 +59,6 @@ fn status_text(status: TransferStatus) -> String {
     }
 }
 
-/// Format duration in seconds as human-readable string (e.g., "5m 30s")
-fn format_duration(seconds: i64) -> String {
-    if seconds < SECONDS_PER_MINUTE {
-        format!("{}s", seconds)
-    } else if seconds < SECONDS_PER_HOUR {
-        let mins = seconds / SECONDS_PER_MINUTE;
-        let secs = seconds % SECONDS_PER_MINUTE;
-        if secs > 0 {
-            format!("{}m {}s", mins, secs)
-        } else {
-            format!("{}m", mins)
-        }
-    } else {
-        let hours = seconds / SECONDS_PER_HOUR;
-        let mins = (seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
-        if mins > 0 {
-            format!("{}h {}m", hours, mins)
-        } else {
-            format!("{}h", hours)
-        }
-    }
-}
-
 /// Calculate estimated time remaining based on speed and remaining bytes
 fn estimate_remaining(transfer: &Transfer) -> Option<String> {
     let speed = transfer.bytes_per_second()?;
@@ -97,7 +68,7 @@ fn estimate_remaining(transfer: &Transfer) -> Option<String> {
     let remaining_bytes = transfer
         .total_bytes
         .saturating_sub(transfer.transferred_bytes);
-    let remaining_seconds = (remaining_bytes as f64 / speed) as i64;
+    let remaining_seconds = (remaining_bytes as f64 / speed) as u64;
     Some(format_duration(remaining_seconds))
 }
 
@@ -326,7 +297,7 @@ fn build_transfer_row<'a>(
             let status = if let Some(elapsed) = transfer.elapsed_seconds() {
                 t_args(
                     "transfer-completed-in",
-                    &[("time", &format_duration(elapsed))],
+                    &[("time", &format_duration(elapsed.max(0) as u64))],
                 )
             } else {
                 status_text(transfer.status)
@@ -553,43 +524,3 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
 // ============================================================================
 // Tests
 // ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ==================== format_duration tests ====================
-
-    #[test]
-    fn test_format_duration_seconds() {
-        assert_eq!(format_duration(0), "0s");
-        assert_eq!(format_duration(1), "1s");
-        assert_eq!(format_duration(30), "30s");
-        assert_eq!(format_duration(59), "59s");
-    }
-
-    #[test]
-    fn test_format_duration_minutes() {
-        assert_eq!(format_duration(60), "1m");
-        assert_eq!(format_duration(61), "1m 1s");
-        assert_eq!(format_duration(90), "1m 30s");
-        assert_eq!(format_duration(120), "2m");
-        assert_eq!(format_duration(3599), "59m 59s");
-    }
-
-    #[test]
-    fn test_format_duration_hours() {
-        assert_eq!(format_duration(3600), "1h");
-        assert_eq!(format_duration(3660), "1h 1m");
-        assert_eq!(format_duration(5400), "1h 30m");
-        assert_eq!(format_duration(7200), "2h");
-        assert_eq!(format_duration(36000), "10h");
-    }
-
-    #[test]
-    fn test_format_duration_hours_ignores_seconds() {
-        // When hours are shown, seconds are not displayed
-        assert_eq!(format_duration(3661), "1h 1m"); // 1h 1m 1s -> 1h 1m
-        assert_eq!(format_duration(3659), "1h"); // 59m 59s rounds to 1h (no minutes)
-    }
-}

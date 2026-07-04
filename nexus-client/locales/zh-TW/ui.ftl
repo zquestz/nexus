@@ -671,7 +671,8 @@ user-info-channels = 頻道:
 time-days = { $count }天
 time-hours = { $count }小時
 time-minutes = { $count }分鐘
-time-seconds = { $count } 秒
+time-seconds = { $count }秒
+time-two-units = { $major }{ $minor }
 
 # =============================================================================
 # Command System

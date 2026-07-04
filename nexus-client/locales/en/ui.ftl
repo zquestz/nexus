@@ -760,22 +760,11 @@ user-info-channels = Channels:
 # Time Duration
 # =============================================================================
 
-time-days = { $count } { $count ->
-    [one] day
-   *[other] days
-}
-time-hours = { $count } { $count ->
-    [one] hour
-   *[other] hours
-}
-time-minutes = { $count } { $count ->
-    [one] minute
-   *[other] minutes
-}
-time-seconds = { $count } { $count ->
-    [one] second
-   *[other] seconds
-}
+time-days = { $count }d
+time-hours = { $count }h
+time-minutes = { $count }m
+time-seconds = { $count }s
+time-two-units = { $major } { $minor }
 
 # =============================================================================
 # Command System

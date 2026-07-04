@@ -690,22 +690,11 @@ user-info-channels = Kanäle:
 # Time Duration
 # =============================================================================
 
-time-days = { $count } { $count ->
-    [one] Tag
-   *[other] Tage
-}
-time-hours = { $count } { $count ->
-    [one] Stunde
-   *[other] Stunden
-}
-time-minutes = { $count } { $count ->
-    [one] Minute
-   *[other] Minuten
-}
-time-seconds = { $count } { $count ->
-    [one] Sekunde
-   *[other] Sekunden
-}
+time-days = { $count } Tg.
+time-hours = { $count } Std.
+time-minutes = { $count } Min.
+time-seconds = { $count } Sek.
+time-two-units = { $major } { $minor }
 
 # =============================================================================
 # Command System

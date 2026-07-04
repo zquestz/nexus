@@ -703,26 +703,11 @@ user-info-channels = Каналы:
 # Time Duration
 # =============================================================================
 
-time-days = { $count } { $count ->
-    [one] день
-    [few] дня
-   *[other] дней
-}
-time-hours = { $count } { $count ->
-    [one] час
-    [few] часа
-   *[other] часов
-}
-time-minutes = { $count } { $count ->
-    [one] минута
-    [few] минуты
-   *[other] минут
-}
-time-seconds = { $count } { $count ->
-    [one] секунда
-    [few] секунды
-   *[other] секунд
-}
+time-days = { $count } дн.
+time-hours = { $count } ч
+time-minutes = { $count } мин
+time-seconds = { $count } с
+time-two-units = { $major } { $minor }
 
 # =============================================================================
 # Command System

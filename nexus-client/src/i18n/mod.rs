@@ -22,12 +22,14 @@
 
 mod bundle;
 mod constants;
+mod duration;
 mod frame_errors;
 mod locale;
 mod mappings;
 mod permissions;
 mod translate;
 
+pub use duration::format_duration;
 pub use frame_errors::{translate_frame_error, translate_protocol_io_error};
 pub use locale::get_locale;
 pub use mappings::{log_level_translation_key, strength_translation_key};

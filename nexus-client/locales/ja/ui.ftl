@@ -672,6 +672,7 @@ time-days = { $count }日
 time-hours = { $count }時間
 time-minutes = { $count }分
 time-seconds = { $count }秒
+time-two-units = { $major }{ $minor }
 
 # =============================================================================
 # Command System

@@ -694,22 +694,11 @@ user-info-channels = Canali:
 # Time Duration
 # =============================================================================
 
-time-days = { $count } { $count ->
-    [one] giorno
-   *[other] giorni
-}
-time-hours = { $count } { $count ->
-    [one] ora
-   *[other] ore
-}
-time-minutes = { $count } { $count ->
-    [one] minuto
-   *[other] minuti
-}
-time-seconds = { $count } { $count ->
-    [one] secondo
-   *[other] secondi
-}
+time-days = { $count } gg
+time-hours = { $count } h
+time-minutes = { $count } min
+time-seconds = { $count } s
+time-two-units = { $major } { $minor }
 
 # =============================================================================
 # Command System

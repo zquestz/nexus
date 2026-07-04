@@ -14,8 +14,7 @@ use super::layout::scrollable_panel;
 use super::password_strength::password_strength_bar;
 use crate::avatar::{avatar_cache_key, generate_identicon};
 use crate::handlers::network::constants::DATETIME_FORMAT;
-use crate::handlers::network::helpers::format_duration;
-use crate::i18n::{t, t_args};
+use crate::i18n::{format_duration, t, t_args};
 use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, SPACER_SIZE_MEDIUM,

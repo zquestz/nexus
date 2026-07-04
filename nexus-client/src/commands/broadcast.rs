@@ -34,7 +34,7 @@ pub fn execute(
         let error_msg = match e {
             MessageError::Empty => t("err-message-empty"),
             MessageError::TooLong => t_args(
-                "err-message-too-long",
+                "err-broadcast-too-long",
                 &[
                     ("length", &message.chars().count().to_string()),
                     ("max", &validators::MAX_MESSAGE_LENGTH.to_string()),
