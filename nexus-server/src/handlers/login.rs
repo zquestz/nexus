@@ -756,7 +756,7 @@ where
         // Build UserConnected inside the lock while session data is consistent.
         let mut user_info = UserManager::build_user_info_from_session(&session);
         user_info.avatar = if session.is_shared {
-            session.avatar.clone()
+            session.avatar.as_deref().map(String::from)
         } else {
             let sessions = ctx
                 .user_manager
@@ -980,7 +980,8 @@ mod tests {
             .await
             .expect("Session should exist");
         assert_eq!(
-            session.features, activated_features,
+            &*session.features,
+            activated_features.as_slice(),
             "Session should store only server-supported features"
         );
 
@@ -992,7 +993,7 @@ mod tests {
                 assert!(success, "Login should indicate success");
                 assert_eq!(
                     features,
-                    Some(session.features),
+                    Some(session.features.to_vec()),
                     "LoginResponse should return the activated feature list"
                 );
             }

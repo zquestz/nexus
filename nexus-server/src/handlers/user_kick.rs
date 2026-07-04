@@ -134,7 +134,7 @@ where
                     .get_user_by_session_id(session_id)
                     .await
                     .is_some_and(|current| {
-                        fold_name(&current.nickname) == fold_name(&target_session.nickname)
+                        current.nickname_folded == target_session.nickname_folded
                     });
                 if is_self_now {
                     Err(ServerMessage::UserKickResponse {

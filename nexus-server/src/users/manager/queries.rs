@@ -27,7 +27,7 @@ impl UserManager {
         let users = self.users.read().await;
         let mut nicknames = std::collections::HashSet::new();
         for u in users.values() {
-            nicknames.insert(fold_name(&u.nickname));
+            nicknames.insert(u.nickname_folded.as_str());
         }
         u32::try_from(nicknames.len()).unwrap_or(u32::MAX)
     }
@@ -85,9 +85,7 @@ impl UserManager {
     pub async fn is_nickname_in_use(&self, nickname: &str) -> bool {
         let users = self.users.read().await;
         let nickname_lower = fold_name(nickname);
-        users
-            .values()
-            .any(|u| fold_name(&u.nickname) == nickname_lower)
+        users.values().any(|u| u.nickname_folded == nickname_lower)
     }
 
     /// Find a session by display nickname (case-insensitive). Nickname is always
@@ -97,7 +95,7 @@ impl UserManager {
         let nickname_lower = fold_name(nickname);
         users
             .values()
-            .find(|u| fold_name(&u.nickname) == nickname_lower)
+            .find(|u| u.nickname_folded == nickname_lower)
             .cloned()
     }
 
@@ -112,7 +110,7 @@ impl UserManager {
 
         for user in users
             .values()
-            .filter(|u| fold_name(&u.nickname) == nickname_lower)
+            .filter(|u| u.nickname_folded == nickname_lower)
         {
             if representative.is_none() {
                 representative = Some(user.clone());
@@ -139,7 +137,7 @@ impl UserManager {
         let nickname_lower = fold_name(nickname);
         users
             .values()
-            .filter(|u| fold_name(&u.nickname) == nickname_lower)
+            .filter(|u| u.nickname_folded == nickname_lower)
             .cloned()
             .collect()
     }
@@ -206,7 +204,7 @@ impl UserManager {
                 continue;
             };
 
-            if fold_name(&user.nickname) == nickname_lower {
+            if user.nickname_folded == nickname_lower {
                 return true;
             }
         }

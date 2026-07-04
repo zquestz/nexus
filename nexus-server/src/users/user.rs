@@ -10,6 +10,7 @@ use nexus_common::framing::MessageId;
 use nexus_common::framing::{DELIMITER, MAGIC, MSG_ID_LENGTH, TERMINATOR};
 #[cfg(test)]
 use nexus_common::io::server_message_type;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use tokio::sync::mpsc;
 
@@ -346,18 +347,30 @@ pub struct UserSession {
     pub is_admin: bool,
     pub is_shared: bool,
     /// Cached effective permissions; admins bypass this set entirely.
-    pub permissions: HashSet<Permission>,
+    /// `Arc`: only ever replaced wholesale (login, permission cascades),
+    /// so session clones share one set instead of deep-copying it on
+    /// every handler entry.
+    pub permissions: Arc<HashSet<Permission>>,
     pub address: SocketAddr,
     /// Account creation timestamp; reserved for future account-age/audit use.
     pub created_at: i64,
     pub login_time: i64,
     pub tx: ConnectionWriter,
-    pub features: Vec<String>,
+    /// Negotiated client features; immutable after login (`Arc`: shared
+    /// by session clones).
+    pub features: Arc<[String]>,
     pub locale: String,
-    /// User's avatar as a data URI (ephemeral, not stored in DB)
-    pub avatar: Option<String>,
+    /// User's avatar as a data URI (ephemeral, not stored in DB).
+    /// `Arc<str>`: up to ~176 KB and set only at session construction —
+    /// cloning a session must not copy it.
+    pub avatar: Option<Arc<str>>,
     /// Display name (always populated; equals username for regular accounts)
     pub nickname: String,
+    /// `fold_name(&nickname)`, cached so per-message identity comparisons
+    /// (broadcast targeting, nickname lookups, flood keys) don't re-fold.
+    /// Maintained wherever `nickname` is written: session construction and
+    /// `UserManager::update_username`.
+    pub nickname_folded: String,
     pub is_away: bool,
     /// Status message (used for both away messages and general status)
     pub status: Option<String>,
@@ -398,6 +411,7 @@ impl Clone for UserSession {
             locale: self.locale.clone(),
             avatar: self.avatar.clone(),
             nickname: self.nickname.clone(),
+            nickname_folded: self.nickname_folded.clone(),
             is_away: self.is_away,
             status: self.status.clone(),
             group_id: self.group_id,
@@ -414,21 +428,23 @@ impl Clone for UserSession {
 
 impl UserSession {
     pub fn new(params: NewSessionParams) -> Self {
+        let nickname_folded = fold_name(&params.nickname);
         Self {
             session_id: params.session_id,
             user_id: params.user_id,
             username: params.username,
             is_admin: params.is_admin,
             is_shared: params.is_shared,
-            permissions: params.permissions,
+            permissions: Arc::new(params.permissions),
             address: params.address,
             created_at: params.created_at,
             login_time: current_timestamp(),
             tx: params.tx,
-            features: params.features,
+            features: Arc::from(params.features),
             locale: params.locale,
-            avatar: params.avatar,
+            avatar: params.avatar.map(Arc::from),
             nickname: params.nickname,
+            nickname_folded,
             is_away: params.is_away,
             status: params.status,
             group_id: params.group_id,

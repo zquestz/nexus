@@ -412,7 +412,7 @@ where
                         ctx.user_manager
                             .update_permissions(session.user_id, new_effective.permissions.clone())
                             .await;
-                        if old_session_perms == new_effective.permissions {
+                        if *old_session_perms == new_effective.permissions {
                             continue;
                         }
 

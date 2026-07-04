@@ -224,7 +224,7 @@ where
         // Re-check self-message under the lock: the pre-lock check used the entry
         // snapshot, which a concurrent rename could have changed so the target now
         // resolves to the sender's own (renamed) session — which would deliver a self-DM.
-        if fold_name(&sender.nickname) == fold_name(&target_session.nickname) {
+        if sender.nickname_folded == target_session.nickname_folded {
             break 'deliver DeliveryOutcome::SelfMessage;
         }
 

@@ -9,8 +9,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use nexus_common::names::fold_name;
-
 use crate::users::user::UserSession;
 
 /// Maximum consecutive flood violations before disconnect.
@@ -74,7 +72,7 @@ pub(crate) enum FloodKey {
 impl FloodKey {
     pub(crate) fn for_session(session: &UserSession) -> Self {
         if session.is_shared {
-            Self::Nickname(fold_name(&session.nickname))
+            Self::Nickname(session.nickname_folded.clone())
         } else {
             Self::UserId(session.user_id)
         }

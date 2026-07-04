@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use ipnet::IpNet;
@@ -32,7 +33,7 @@ impl UserManager {
             let nickname_lower = fold_name(&params.nickname);
 
             for user in users.values() {
-                if fold_name(&user.nickname) == nickname_lower {
+                if user.nickname_folded == nickname_lower {
                     return Err(AddUserError::NicknameInUse);
                 }
             }
@@ -120,10 +121,12 @@ impl UserManager {
         let mut users = self.users.write().await;
         let mut count = 0;
 
+        let new_folded = fold_name(&new_username);
         for user in users.values_mut() {
             if user.user_id == user_id {
                 if !user.is_shared {
                     user.nickname = new_username.clone();
+                    user.nickname_folded = new_folded.clone();
                 }
                 user.username = new_username.clone();
                 count += 1;
@@ -139,12 +142,13 @@ impl UserManager {
         user_id: i64,
         permissions: HashSet<Permission>,
     ) -> usize {
+        let permissions = Arc::new(permissions);
         let mut users = self.users.write().await;
         let mut count = 0;
 
         for user in users.values_mut() {
             if user.user_id == user_id {
-                user.permissions = permissions.clone();
+                user.permissions = Arc::clone(&permissions);
                 count += 1;
             }
         }
@@ -162,13 +166,14 @@ impl UserManager {
         is_admin: bool,
         permissions: HashSet<Permission>,
     ) -> usize {
+        let permissions = Arc::new(permissions);
         let mut users = self.users.write().await;
         let mut count = 0;
 
         for user in users.values_mut() {
             if user.user_id == user_id {
                 user.is_admin = is_admin;
-                user.permissions = permissions.clone();
+                user.permissions = Arc::clone(&permissions);
                 count += 1;
             }
         }
@@ -344,6 +349,54 @@ mod tests {
     use super::*;
     use crate::flood::{FloodCheck, FloodConfig, FloodKey};
     use crate::users::user::ConnectionWriter;
+
+    /// The folded-nickname cache must track every nickname write: session
+    /// construction and regular-account renames (including Unicode case).
+    #[tokio::test]
+    async fn update_username_maintains_folded_nickname() {
+        let manager = UserManager::new();
+        let (tx, _rx) = ConnectionWriter::channel();
+        let session_id = manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: 7,
+                username: "Alice".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: "127.0.0.1:12345".parse().unwrap(),
+                created_at: 0,
+                tx,
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "Alice".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: 1,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .expect("add user");
+
+        let session = manager
+            .get_user_by_session_id(session_id)
+            .await
+            .expect("session");
+        assert_eq!(session.nickname_folded, fold_name(&session.nickname));
+
+        manager.update_username(7, "БОРИС".to_string()).await;
+        let session = manager
+            .get_user_by_session_id(session_id)
+            .await
+            .expect("session after rename");
+        assert_eq!(session.nickname, "БОРИС");
+        assert_eq!(session.nickname_folded, fold_name("БОРИС"));
+        assert_eq!(session.nickname_folded, "борис");
+    }
 
     fn shared_session_params(
         user_id: i64,

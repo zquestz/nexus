@@ -63,7 +63,7 @@ impl UserManager {
         sessions
             .filter(|s| s.avatar.is_some())
             .max_by_key(|s| (s.login_time, s.session_id))
-            .and_then(|s| s.avatar.clone())
+            .and_then(|s| s.avatar.as_deref().map(String::from))
     }
 
     /// Aggregate the multiple sessions of one regular account into a single

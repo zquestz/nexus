@@ -165,7 +165,7 @@ where
     // Shared: one entry per session, each keeping its own avatar.
     for session in shared_sessions {
         let mut info = UserManager::build_user_info_from_session(&session);
-        info.avatar = session.avatar;
+        info.avatar = session.avatar.as_deref().map(String::from);
         user_infos.push(info);
     }
 

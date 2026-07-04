@@ -226,7 +226,7 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if fold_name(&user.nickname) == nickname_lower && user.has_feature(feature) {
+                if user.nickname_folded == nickname_lower && user.has_feature(feature) {
                     send_shared_frame(user, &frame, &mut disconnected);
                 }
             }
@@ -282,7 +282,7 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if fold_name(&user.nickname) == nickname_lower
+                if user.nickname_folded == nickname_lower
                     && user.has_feature(feature)
                     && user.has_permission(required_permission)
                 {

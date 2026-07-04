@@ -144,7 +144,7 @@ where
 
     let mut all_features = std::collections::HashSet::new();
     for session in &target_sessions {
-        for feature in &session.features {
+        for feature in session.features.iter() {
             all_features.insert(feature.clone());
         }
     }
