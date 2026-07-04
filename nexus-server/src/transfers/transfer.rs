@@ -522,7 +522,7 @@ where
                 ))));
             }
             remaining -= bytes_read as u64;
-            let block: Arc<[u8]> = Arc::from(buffer[..bytes_read].to_vec());
+            let block: Arc<[u8]> = Arc::from(&buffer[..bytes_read]);
             Some((block, bytes_read))
         } else {
             None
@@ -585,7 +585,7 @@ where
             }
             remaining -= bytes_read as u64;
 
-            let block: Arc<[u8]> = Arc::from(buffer[..bytes_read].to_vec());
+            let block: Arc<[u8]> = Arc::from(&buffer[..bytes_read]);
             let chunks = self.stage_egress_stream_chunk(block).await?;
             self.drain_egress_chunks(chunks).await?;
             *total_written += bytes_read as u64;

@@ -2,8 +2,9 @@
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::sync::atomic::AtomicU16;
+use std::sync::atomic::{AtomicU16, AtomicU64};
+use std::sync::{Arc, LazyLock};
+use std::time::Instant;
 
 use nexus_common::framing::MessageId;
 #[cfg(test)]
@@ -338,6 +339,25 @@ pub struct NewSessionParams {
     pub last_activity: std::time::Instant,
 }
 
+/// Reference instant for [`UserSession::last_activity`] stamps.
+static PROCESS_START: LazyLock<Instant> = LazyLock::new(Instant::now);
+
+/// Nanoseconds since process start, for the advisory activity clock.
+/// Nanosecond scale preserves the ordering resolution the field had as an
+/// `Instant` — "most recently active" picks between events in the same
+/// millisecond must not tie. `u64` nanos covers ~584 years of uptime.
+pub(crate) fn activity_now_nanos() -> u64 {
+    PROCESS_START.elapsed().as_nanos() as u64
+}
+
+/// Convert an `Instant` (captured just before session construction) to the
+/// nanos-since-process-start scale. Saturates to 0 for instants at or
+/// before the reference — "active since startup", harmless for advisory
+/// idle tracking.
+fn instant_to_activity_nanos(instant: Instant) -> u64 {
+    instant.saturating_duration_since(*PROCESS_START).as_nanos() as u64
+}
+
 /// Represents a logged-in user session
 #[derive(Debug)]
 pub struct UserSession {
@@ -386,8 +406,12 @@ pub struct UserSession {
     /// Per-user override column value (`None` if NULL). Group cascades skip
     /// sessions where this is `Some(_)` even if the value matches the group's.
     pub bandwidth_weight_override: Option<u16>,
-    /// Last meaningful activity (idle tracking; excludes passive messages like Ping/UserAway).
-    pub last_activity: std::time::Instant,
+    /// Last meaningful activity in nanoseconds since process start (idle
+    /// tracking; excludes passive messages like Ping/UserAway). Atomic so
+    /// the per-message stamp runs under the users *read* lock — advisory
+    /// accuracy, not correctness, so `Relaxed` is fine (same pattern as
+    /// `bandwidth_weight`).
+    pub last_activity: AtomicU64,
 }
 
 // Manual `Clone`: `AtomicU16` isn't `Clone`. The clone snapshots the current
@@ -421,7 +445,10 @@ impl Clone for UserSession {
                     .load(std::sync::atomic::Ordering::Relaxed),
             ),
             bandwidth_weight_override: self.bandwidth_weight_override,
-            last_activity: self.last_activity,
+            last_activity: AtomicU64::new(
+                self.last_activity
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
         }
     }
 }
@@ -451,7 +478,7 @@ impl UserSession {
             group_name: params.group_name,
             bandwidth_weight: AtomicU16::new(params.bandwidth_weight),
             bandwidth_weight_override: params.bandwidth_weight_override,
-            last_activity: params.last_activity,
+            last_activity: AtomicU64::new(instant_to_activity_nanos(params.last_activity)),
         }
     }
 

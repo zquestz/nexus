@@ -159,7 +159,7 @@ where
     // Most recently active session wins (shared accounts have only one).
     let (is_away, status) = target_sessions
         .iter()
-        .max_by_key(|s| s.last_activity)
+        .max_by_key(|s| s.last_activity.load(Ordering::Relaxed))
         .map(|s| (s.is_away, s.status.clone()))
         .unwrap_or((false, None));
 

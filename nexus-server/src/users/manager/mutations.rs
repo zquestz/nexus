@@ -11,7 +11,7 @@ use nexus_common::protocol::ServerMessage;
 
 use super::UserManager;
 use crate::db::Permission;
-use crate::users::user::{NewSessionParams, UserSession};
+use crate::users::user::{NewSessionParams, UserSession, activity_now_nanos};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AddUserError {
@@ -281,23 +281,21 @@ impl UserManager {
     }
 
     /// Stamp a session's `last_activity` for idle tracking; called on every
-    /// non-passive ClientMessage.
+    /// non-passive ClientMessage. Takes the *read* lock — the stamp is an
+    /// atomic store, so the per-message path never contends with readers.
     pub async fn update_last_activity(&self, session_id: u32) {
-        let mut users = self.users.write().await;
-        if let Some(user) = users.get_mut(&session_id) {
-            user.last_activity = std::time::Instant::now();
+        let users = self.users.read().await;
+        if let Some(user) = users.get(&session_id) {
+            user.last_activity
+                .store(activity_now_nanos(), Ordering::Relaxed);
         }
     }
 
     #[cfg(test)]
-    pub async fn set_last_activity_for_test(
-        &self,
-        session_id: u32,
-        last_activity: std::time::Instant,
-    ) {
-        let mut users = self.users.write().await;
-        if let Some(user) = users.get_mut(&session_id) {
-            user.last_activity = last_activity;
+    pub async fn set_last_activity_for_test(&self, session_id: u32, nanos: u64) {
+        let users = self.users.read().await;
+        if let Some(user) = users.get(&session_id) {
+            user.last_activity.store(nanos, Ordering::Relaxed);
         }
     }
 

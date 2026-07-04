@@ -86,7 +86,7 @@ impl UserManager {
 
         let most_active = sessions
             .iter()
-            .max_by_key(|s| s.last_activity)
+            .max_by_key(|s| s.last_activity.load(Ordering::Relaxed))
             .expect(ERR_SESSIONS_NOT_EMPTY);
 
         let earliest_login_time = sessions

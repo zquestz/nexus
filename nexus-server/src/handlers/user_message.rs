@@ -1,4 +1,5 @@
 use std::io;
+use std::sync::atomic::Ordering;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::io::AsyncWrite;
@@ -216,7 +217,7 @@ where
         let Some(target_session) = target_sessions
             .into_iter()
             .filter(|session| session.has_feature(FEATURE_CHAT))
-            .max_by_key(|session| session.last_activity)
+            .max_by_key(|session| session.last_activity.load(Ordering::Relaxed))
         else {
             break 'deliver DeliveryOutcome::TargetFeatureUnavailable;
         };
@@ -584,17 +585,14 @@ mod tests {
             .set_status(target_second_id, false, Some("older status".to_string()))
             .await;
 
-        let base_activity = std::time::Instant::now();
+        let base_activity_nanos = 1_000_000u64;
         test_ctx
             .user_manager
-            .set_last_activity_for_test(target_second_id, base_activity)
+            .set_last_activity_for_test(target_second_id, base_activity_nanos)
             .await;
         test_ctx
             .user_manager
-            .set_last_activity_for_test(
-                target_first_id,
-                base_activity + std::time::Duration::from_secs(1),
-            )
+            .set_last_activity_for_test(target_first_id, base_activity_nanos + 1_000)
             .await;
 
         let result = handle_user_message(

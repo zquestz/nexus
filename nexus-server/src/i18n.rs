@@ -1,10 +1,26 @@
 //! Internationalization support using Fluent
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use tracing::warn;
 use unic_langid::LanguageIdentifier;
 
 use crate::constants::*;
+
+thread_local! {
+    /// Per-thread bundle cache. `FluentBundle` holds non-`Send` internals
+    /// (RefCell, TypeMap), so the cache is thread-local rather than global —
+    /// tokio worker threads are long-lived, so each thread pays the FTL
+    /// copy + parse once per locale instead of on every translation call
+    /// (which a flooding client can drive via per-message rate-limit
+    /// errors). Keyed by the resolved locale, so arbitrary client-supplied
+    /// locale strings cannot grow the cache beyond the shipped locale set.
+    static BUNDLE_CACHE: RefCell<HashMap<&'static str, Rc<FluentBundle<FluentResource>>>> =
+        RefCell::new(HashMap::new());
+}
 
 /// Translate `key` for `locale`, falling back to English if the locale is
 /// unsupported or the key is missing there.
@@ -66,28 +82,55 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
     panic!("{} '{}'", ERR_I18N_MISSING_KEY_ENGLISH, key);
 }
 
-/// Build a Fluent bundle for `locale` (English for unsupported locales).
-///
-/// Builds a fresh bundle per call: `FluentBundle` holds non-Send types
-/// (RefCell, TypeMap) that can't be cached across threads, and errors are
-/// infrequent enough on a BBS server that the cost is acceptable.
-fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
-    let canonical_locale = canonical_locale(locale);
-    let lang: LanguageIdentifier = canonical_locale
+/// Bundle for `locale` (English for unsupported locales), cached per
+/// thread. See [`BUNDLE_CACHE`] for the caching rationale.
+fn get_bundle(locale: &str) -> Rc<FluentBundle<FluentResource>> {
+    let resolved = resolve_locale(locale);
+    BUNDLE_CACHE.with(|cache| {
+        if let Some(bundle) = cache.borrow().get(resolved) {
+            return Rc::clone(bundle);
+        }
+        let bundle = Rc::new(build_bundle(resolved));
+        cache.borrow_mut().insert(resolved, Rc::clone(&bundle));
+        bundle
+    })
+}
+
+/// Resolve an arbitrary client-supplied locale to one of the locales the
+/// server ships (English for unsupported ones). The bounded output is what
+/// keeps [`BUNDLE_CACHE`] keyed by at most the shipped locale set.
+fn resolve_locale(locale: &str) -> &'static str {
+    let canonical = canonical_locale(locale);
+    match canonical.as_str() {
+        LOCALE_SPANISH => LOCALE_SPANISH,
+        LOCALE_JAPANESE => LOCALE_JAPANESE,
+        LOCALE_FRENCH => LOCALE_FRENCH,
+        LOCALE_GERMAN => LOCALE_GERMAN,
+        // Generic locales (pt, zh) map to their default regional variants.
+        LOCALE_PORTUGUESE => LOCALE_PORTUGUESE_BR,
+        LOCALE_PORTUGUESE_PT => LOCALE_PORTUGUESE_PT,
+        LOCALE_PORTUGUESE_BR => LOCALE_PORTUGUESE_BR,
+        LOCALE_RUSSIAN => LOCALE_RUSSIAN,
+        LOCALE_CHINESE => LOCALE_CHINESE_CN,
+        LOCALE_CHINESE_CN => LOCALE_CHINESE_CN,
+        LOCALE_CHINESE_TW => LOCALE_CHINESE_TW,
+        LOCALE_KOREAN => LOCALE_KOREAN,
+        LOCALE_ITALIAN => LOCALE_ITALIAN,
+        LOCALE_DUTCH => LOCALE_DUTCH,
+        _ => DEFAULT_LOCALE,
+    }
+}
+
+/// Parse and assemble the bundle for a **resolved** locale (one of the
+/// shipped set; see [`resolve_locale`]).
+fn build_bundle(resolved: &'static str) -> FluentBundle<FluentResource> {
+    let lang: LanguageIdentifier = resolved
         .parse()
         .unwrap_or_else(|_| DEFAULT_LOCALE.parse().expect(ERR_DEFAULT_LOCALE_INVALID));
 
     let mut bundle = FluentBundle::new(vec![lang]);
 
-    // Generic locales (pt, zh) map to their default regional variants.
-    let normalized_locale = match canonical_locale.as_str() {
-        LOCALE_PORTUGUESE => LOCALE_PORTUGUESE_BR, // "pt" -> "pt-BR"
-        LOCALE_CHINESE => LOCALE_CHINESE_CN,       // "zh" -> "zh-CN"
-        other => other,
-    };
-
-    // errors.ftl for this locale; the wildcard arm falls back to English.
-    let ftl_string = match normalized_locale {
+    let ftl_string = match resolved {
         LOCALE_SPANISH => include_str!("../locales/es/errors.ftl"),
         LOCALE_JAPANESE => include_str!("../locales/ja/errors.ftl"),
         LOCALE_FRENCH => include_str!("../locales/fr/errors.ftl"),
