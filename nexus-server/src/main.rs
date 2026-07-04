@@ -1,8 +1,9 @@
 //! Nexus BBS Server
 
 use std::fs;
+use std::future::Future;
 use std::io;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use nexus_server::{
     args, channels, connection, connection_tracker, constants, db, egress, files, flood, handlers,
     ip_rule_cache, paths, scheduler, tracker, transfers, upnp, users, voice, websocket,
 };
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
@@ -377,6 +378,49 @@ async fn main() {
         LOG_FILE_PREFIX.to_string(),
     );
 
+    // Params builders shared by the TCP and WebSocket arms of each port.
+    // By-ref captures make these closures `Copy`, so both arms of a port
+    // take their own copy; each accepted connection clones the shared
+    // handles and allocates its egress connection id here.
+    let make_connection_params = |peer_addr| ConnectionParams {
+        peer_addr,
+        user_manager: user_manager.clone(),
+        db: database.clone(),
+        file_root: Some(file_root),
+        transfer_port,
+        transfer_websocket_port,
+        connection_tracker: connection_tracker.clone(),
+        ip_rule_cache: ip_rule_cache.clone(),
+        file_index: file_index.clone(),
+        file_activity: file_activity.clone(),
+        channel_manager: channel_manager.clone(),
+        transfer_registry: transfer_registry.clone(),
+        voice_registry: voice_registry.clone(),
+        voice_control: voice_control.clone(),
+        tracker_manager: tracker_manager.clone(),
+        fingerprint,
+        flood_config: flood_config.clone(),
+        login_limiter: login_limiter.clone(),
+        egress: egress_handle.clone(),
+        egress_connection_id: allocate_egress_connection_id(&egress_connection_ids),
+        lan_egress_bypass_enabled: true,
+    };
+    let make_transfer_params = |peer_addr| TransferParams {
+        peer_addr,
+        db: database.clone(),
+        file_root: Some(file_root),
+        file_index: file_index.clone(),
+        file_activity: file_activity.clone(),
+        transfer_registry: transfer_registry.clone(),
+        ip_rule_cache: ip_rule_cache.clone(),
+        login_limiter: login_limiter.clone(),
+        user_manager: user_manager.clone(),
+        fingerprint,
+        egress: egress_handle.clone(),
+        egress_connection_id: allocate_egress_connection_id(&egress_connection_ids),
+        lan_egress_bypass_enabled: true,
+    };
+
     // Background tasks needing explicit teardown. The `select!` arms
     // (accept loops, voice server, reindex timer) auto-drop on return,
     // so they aren't bundled here.
@@ -392,282 +436,60 @@ async fn main() {
             handles.shutdown().await;
         }
         // Main BBS port accept loop.
-        _ = async {
-            loop {
-                match listener.accept().await {
-                    Ok((socket, peer_addr)) => {
-                        // Fold IPv4-mapped IPv6 to IPv4 at the boundary so all
-                        // downstream consumers (sessions, tracker, cache) see one form.
-                        let peer_addr = normalize_socket_addr(peer_addr);
-                        let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
-                            Some(guard) => guard,
-                            None => {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
-                                // Drop the socket — client sees a connection reset.
-                                continue;
-                            }
-                        };
-
-                        let params = ConnectionParams {
-                            peer_addr,
-                            user_manager: user_manager.clone(),
-                            db: database.clone(),
-                            file_root: Some(file_root),
-                            transfer_port,
-                            transfer_websocket_port,
-                            connection_tracker: connection_tracker.clone(),
-                            ip_rule_cache: ip_rule_cache.clone(),
-                            file_index: file_index.clone(),
-                            file_activity: file_activity.clone(),
-                            channel_manager: channel_manager.clone(),
-                            transfer_registry: transfer_registry.clone(),
-                            voice_registry: voice_registry.clone(),
-                            voice_control: voice_control.clone(),
-                            tracker_manager: tracker_manager.clone(),
-                            fingerprint,
-                            flood_config: flood_config.clone(),
-                            login_limiter: login_limiter.clone(),
-                            egress: egress_handle.clone(),
-                            egress_connection_id: allocate_egress_connection_id(
-                                &egress_connection_ids,
-                            ),
-                            lan_egress_bypass_enabled: true,
-                        };
-                        let tls_acceptor = tls_acceptor.clone();
-                        let ip_rule_cache_for_check = ip_rule_cache.clone();
-
-                        tokio::spawn(async move {
-                            // Hold guard until connection ends.
-                            let _guard = connection_guard;
-
-                            // Check IP rules before the TLS handshake (trust bypasses ban).
-                            let should_allow =
-                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
-
-                            if !should_allow {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP);
-                                return;
-                            }
-
-                            if let Err(e) =
-                                connection::handle_connection(socket, tls_acceptor, params).await
-                            {
-                                log_connection_error(&e, peer_addr);
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
-                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
-                    }
-                }
-            }
-        } => {}
+        _ = run_accept_loop(
+            &listener,
+            &tls_acceptor,
+            &ip_rule_cache,
+            |ip| connection_tracker.try_acquire(ip),
+            make_connection_params,
+            connection::handle_connection,
+            LOG_REJECTED_BANNED_IP,
+        ) => {}
         // Transfer port accept loop.
-        _ = async {
-            loop {
-                match transfer_listener.accept().await {
-                    Ok((socket, peer_addr)) => {
-                        let peer_addr = normalize_socket_addr(peer_addr);
-                        let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
-                            Some(guard) => guard,
-                            None => {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
-                                // Drop the socket — client sees a connection reset.
-                                continue;
-                            }
-                        };
-
-                        let params = TransferParams {
-                            peer_addr,
-                            db: database.clone(),
-                            file_root: Some(file_root),
-                            file_index: file_index.clone(),
-                            file_activity: file_activity.clone(),
-                            transfer_registry: transfer_registry.clone(),
-                            ip_rule_cache: ip_rule_cache.clone(),
-                            login_limiter: login_limiter.clone(),
-                            user_manager: user_manager.clone(),
-                            fingerprint,
-                            egress: egress_handle.clone(),
-                            egress_connection_id: allocate_egress_connection_id(
-                                &egress_connection_ids,
-                            ),
-                            lan_egress_bypass_enabled: true,
-                        };
-                        let tls_acceptor = tls_acceptor.clone();
-                        let ip_rule_cache_for_check = ip_rule_cache.clone();
-
-                        tokio::spawn(async move {
-                            let _guard = transfer_guard;
-
-                            // Check IP rules before the TLS handshake (trust bypasses ban).
-                            let should_allow =
-                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
-
-                            if !should_allow {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_TRANSFER);
-                                return;
-                            }
-
-                            if let Err(e) =
-                                transfers::handle_transfer_connection(socket, tls_acceptor, params)
-                                    .await
-                            {
-                                log_connection_error(&e, peer_addr);
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
-                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
-                    }
-                }
-            }
-        } => {}
+        _ = run_accept_loop(
+            &transfer_listener,
+            &tls_acceptor,
+            &ip_rule_cache,
+            |ip| connection_tracker.try_acquire_transfer(ip),
+            make_transfer_params,
+            transfers::handle_transfer_connection,
+            LOG_REJECTED_BANNED_IP_TRANSFER,
+        ) => {}
         // WebSocket BBS port accept loop (only if enabled).
         _ = async {
-            let Some(ref ws_listener) = ws_listener else {
+            match &ws_listener {
                 // Disabled: park forever so this select! arm never fires.
-                std::future::pending::<()>().await;
-                return;
-            };
-            loop {
-                match ws_listener.accept().await {
-                    Ok((socket, peer_addr)) => {
-                        let peer_addr = normalize_socket_addr(peer_addr);
-                        // Same per-IP limit as TCP.
-                        let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
-                            Some(guard) => guard,
-                            None => {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
-                                continue;
-                            }
-                        };
-
-                        let params = ConnectionParams {
-                            peer_addr,
-                            user_manager: user_manager.clone(),
-                            db: database.clone(),
-                            file_root: Some(file_root),
-                            transfer_port,
-                            transfer_websocket_port,
-                            connection_tracker: connection_tracker.clone(),
-                            ip_rule_cache: ip_rule_cache.clone(),
-                            file_index: file_index.clone(),
-                            file_activity: file_activity.clone(),
-                                channel_manager: channel_manager.clone(),
-                                transfer_registry: transfer_registry.clone(),
-                                voice_registry: voice_registry.clone(),
-                                voice_control: voice_control.clone(),
-                                tracker_manager: tracker_manager.clone(),
-                            fingerprint,
-                            flood_config: flood_config.clone(),
-                            login_limiter: login_limiter.clone(),
-                            egress: egress_handle.clone(),
-                            egress_connection_id: allocate_egress_connection_id(
-                                &egress_connection_ids,
-                            ),
-                            lan_egress_bypass_enabled: true,
-                        };
-                        let tls_acceptor = tls_acceptor.clone();
-                        let ip_rule_cache_for_check = ip_rule_cache.clone();
-
-                        tokio::spawn(async move {
-                            let _guard = connection_guard;
-
-                            // Check IP rules before the TLS handshake (same as TCP).
-                            let should_allow =
-                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
-
-                            if !should_allow {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_WS);
-                                return;
-                            }
-
-                            if let Err(e) =
-                                websocket::handle_websocket_connection(socket, tls_acceptor, params)
-                                    .await
-                            {
-                                log_connection_error(&e, peer_addr);
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
-                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
-                    }
+                None => std::future::pending::<()>().await,
+                Some(ws_listener) => {
+                    run_accept_loop(
+                        ws_listener,
+                        &tls_acceptor,
+                        &ip_rule_cache,
+                        |ip| connection_tracker.try_acquire(ip),
+                        make_connection_params,
+                        websocket::handle_websocket_connection,
+                        LOG_REJECTED_BANNED_IP_WS,
+                    )
+                    .await
                 }
             }
         } => {}
         // WebSocket transfer port accept loop (only if enabled).
         _ = async {
-            let Some(ref ws_transfer_listener) = ws_transfer_listener else {
+            match &ws_transfer_listener {
                 // Disabled: park forever so this select! arm never fires.
-                std::future::pending::<()>().await;
-                return;
-            };
-            loop {
-                match ws_transfer_listener.accept().await {
-                    Ok((socket, peer_addr)) => {
-                        let peer_addr = normalize_socket_addr(peer_addr);
-                        // Same per-IP limit as TCP.
-                        let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
-                            Some(guard) => guard,
-                            None => {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
-                                continue;
-                            }
-                        };
-
-                        let params = TransferParams {
-                            peer_addr,
-                            db: database.clone(),
-                            file_root: Some(file_root),
-                            file_index: file_index.clone(),
-                            file_activity: file_activity.clone(),
-                            transfer_registry: transfer_registry.clone(),
-                            ip_rule_cache: ip_rule_cache.clone(),
-                            login_limiter: login_limiter.clone(),
-                            user_manager: user_manager.clone(),
-                            fingerprint,
-                            egress: egress_handle.clone(),
-                            egress_connection_id: allocate_egress_connection_id(
-                                &egress_connection_ids,
-                            ),
-                            lan_egress_bypass_enabled: true,
-                        };
-                        let tls_acceptor = tls_acceptor.clone();
-                        let ip_rule_cache_for_check = ip_rule_cache.clone();
-
-                        tokio::spawn(async move {
-                            let _guard = transfer_guard;
-
-                            // Check IP rules before the TLS handshake (same as TCP).
-                            let should_allow =
-                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
-
-                            if !should_allow {
-                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_WS_TRANSFER);
-                                return;
-                            }
-
-                            if let Err(e) =
-                                websocket::handle_websocket_transfer_connection(
-                                    socket,
-                                    tls_acceptor,
-                                    params,
-                                )
-                                .await
-                            {
-                                log_connection_error(&e, peer_addr);
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
-                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
-                    }
+                None => std::future::pending::<()>().await,
+                Some(ws_transfer_listener) => {
+                    run_accept_loop(
+                        ws_transfer_listener,
+                        &tls_acceptor,
+                        &ip_rule_cache,
+                        |ip| connection_tracker.try_acquire_transfer(ip),
+                        make_transfer_params,
+                        websocket::handle_websocket_transfer_connection,
+                        LOG_REJECTED_BANNED_IP_WS_TRANSFER,
+                    )
+                    .await
                 }
             }
         } => {}
@@ -977,6 +799,65 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>, data_dir: &Path) -> st
     info!("{}{}", MSG_FILE_ROOT, canonical_root.display());
 
     canonical_root
+}
+
+/// One admission pipeline for every listener port: accept → fold
+/// IPv4-mapped IPv6 to IPv4 (so all downstream consumers — sessions,
+/// tracker, cache — see one form) → per-IP guard or drop → build params →
+/// spawn { hold the guard for the connection's life, pre-TLS IP-rule check
+/// (trust bypasses ban), run the handler, classify the error } →
+/// accept-error backoff. The four ports differ only in the pieces passed
+/// in, so the security-critical sequence lives exactly once.
+async fn run_accept_loop<G, P, MakeParams, Handler, Fut>(
+    listener: &TcpListener,
+    tls_acceptor: &TlsAcceptor,
+    ip_rule_cache: &Arc<IpRuleState>,
+    acquire_guard: impl Fn(IpAddr) -> Option<G>,
+    make_params: MakeParams,
+    handler: Handler,
+    rejected_log: &'static str,
+) where
+    G: Send + 'static,
+    P: Send + 'static,
+    MakeParams: Fn(SocketAddr) -> P,
+    Handler: Fn(TcpStream, TlsAcceptor, P) -> Fut + Copy + Send + 'static,
+    Fut: Future<Output = io::Result<()>> + Send + 'static,
+{
+    loop {
+        match listener.accept().await {
+            Ok((socket, peer_addr)) => {
+                let peer_addr = normalize_socket_addr(peer_addr);
+                let Some(guard) = acquire_guard(peer_addr.ip()) else {
+                    debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
+                    // Drop the socket — client sees a connection reset.
+                    continue;
+                };
+
+                let params = make_params(peer_addr);
+                let tls_acceptor = tls_acceptor.clone();
+                let ip_rule_cache = ip_rule_cache.clone();
+
+                tokio::spawn(async move {
+                    // Hold guard until connection ends.
+                    let _guard = guard;
+
+                    // Check IP rules before the TLS handshake (trust bypasses ban).
+                    if !ip_rule_cache.should_allow(peer_addr.ip()).await {
+                        debug!(ip = %peer_addr.ip(), "{}", rejected_log);
+                        return;
+                    }
+
+                    if let Err(e) = handler(socket, tls_acceptor, params).await {
+                        log_connection_error(&e, peer_addr);
+                    }
+                });
+            }
+            Err(e) => {
+                warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
+            }
+        }
+    }
 }
 
 /// Log connection errors, dropping benign noise (abrupt close_notify) and
