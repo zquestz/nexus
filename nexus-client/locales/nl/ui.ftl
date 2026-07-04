@@ -1058,15 +1058,27 @@ ban-duration-permanent = Permanent
 # Ban success messages
 msg-banned-ip = { $ip } geband
 msg-banned-ip-nickname = { $ip } ({ $nickname }) geband
-msg-banned-ips = { $count } IPs geband
-msg-banned-ips-nickname = { $count } IPs ({ $nickname }) geband
+msg-banned-ips = { $count } { $count ->
+    [one] IP geband
+   *[other] IPs geband
+}
+msg-banned-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) geband
+   *[other] IPs ({ $nickname }) geband
+}
 msg-ban-created = Ban succesvol aangemaakt
 
 # Unban success messages
 msg-unbanned-ip = Ban van { $ip } verwijderd
 msg-unbanned-ip-nickname = Ban van { $ip } ({ $nickname }) verwijderd
-msg-unbanned-ips = { $count } IP-bans verwijderd
-msg-unbanned-ips-nickname = { $count } IP-bans ({ $nickname }) verwijderd
+msg-unbanned-ips = { $count } { $count ->
+    [one] IP-ban verwijderd
+   *[other] IP-bans verwijderd
+}
+msg-unbanned-ips-nickname = { $count } { $count ->
+    [one] IP-ban ({ $nickname }) verwijderd
+   *[other] IP-bans ({ $nickname }) verwijderd
+}
 msg-unbanned-success = Ban succesvol verwijderd
 
 # Ban list messages
@@ -1086,15 +1098,27 @@ msg-ban-remaining-minutes = { $minutes }m
 # Trust success messages
 msg-trusted-ip = { $ip } vertrouwd
 msg-trusted-ip-nickname = { $ip } ({ $nickname }) vertrouwd
-msg-trusted-ips = { $count } IPs vertrouwd
-msg-trusted-ips-nickname = { $count } IPs ({ $nickname }) vertrouwd
+msg-trusted-ips = { $count } { $count ->
+    [one] IP vertrouwd
+   *[other] IPs vertrouwd
+}
+msg-trusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) vertrouwd
+   *[other] IPs ({ $nickname }) vertrouwd
+}
 msg-trust-created = Vertrouwensinvoer succesvol aangemaakt
 
 # Untrust success messages
 msg-untrusted-ip = { $ip } niet meer vertrouwd
 msg-untrusted-ip-nickname = { $ip } ({ $nickname }) niet meer vertrouwd
-msg-untrusted-ips = { $count } IPs niet meer vertrouwd
-msg-untrusted-ips-nickname = { $count } IPs ({ $nickname }) niet meer vertrouwd
+msg-untrusted-ips = { $count } { $count ->
+    [one] IP niet meer vertrouwd
+   *[other] IPs niet meer vertrouwd
+}
+msg-untrusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) niet meer vertrouwd
+   *[other] IPs ({ $nickname }) niet meer vertrouwd
+}
 msg-untrusted-success = Vertrouwensinvoer succesvol verwijderd
 
 # Trust list messages

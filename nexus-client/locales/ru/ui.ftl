@@ -1076,15 +1076,31 @@ ban-duration-permanent = Постоянно
 # Ban success messages
 msg-banned-ip = { $ip } забанен
 msg-banned-ip-nickname = { $ip } ({ $nickname }) забанен
-msg-banned-ips = { $count } IP забанено
-msg-banned-ips-nickname = { $count } IP ({ $nickname }) забанено
+msg-banned-ips = { $count } { $count ->
+    [one] IP забанен
+    [few] IP забанены
+   *[other] IP забанено
+}
+msg-banned-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) забанен
+    [few] IP ({ $nickname }) забанены
+   *[other] IP ({ $nickname }) забанено
+}
 msg-ban-created = Бан успешно создан
 
 # Unban success messages
 msg-unbanned-ip = Бан { $ip } снят
 msg-unbanned-ip-nickname = Бан { $ip } ({ $nickname }) снят
-msg-unbanned-ips = { $count } IP-банов снято
-msg-unbanned-ips-nickname = { $count } IP-банов ({ $nickname }) снято
+msg-unbanned-ips = { $count } { $count ->
+    [one] IP-бан снят
+    [few] IP-бана сняты
+   *[other] IP-банов снято
+}
+msg-unbanned-ips-nickname = { $count } { $count ->
+    [one] IP-бан ({ $nickname }) снят
+    [few] IP-бана ({ $nickname }) сняты
+   *[other] IP-банов ({ $nickname }) снято
+}
 msg-unbanned-success = Бан успешно снят
 
 # Ban list messages
@@ -1104,15 +1120,31 @@ msg-ban-remaining-minutes = { $minutes }м
 # Trust success messages
 msg-trusted-ip = { $ip } добавлен в доверенные
 msg-trusted-ip-nickname = { $ip } ({ $nickname }) добавлен в доверенные
-msg-trusted-ips = { $count } IP добавлено в доверенные
-msg-trusted-ips-nickname = { $count } IP ({ $nickname }) добавлено в доверенные
+msg-trusted-ips = { $count } { $count ->
+    [one] IP добавлен в доверенные
+    [few] IP добавлены в доверенные
+   *[other] IP добавлено в доверенные
+}
+msg-trusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) добавлен в доверенные
+    [few] IP ({ $nickname }) добавлены в доверенные
+   *[other] IP ({ $nickname }) добавлено в доверенные
+}
 msg-trust-created = Запись доверия успешно создана
 
 # Untrust success messages
 msg-untrusted-ip = { $ip } удалён из доверенных
 msg-untrusted-ip-nickname = { $ip } ({ $nickname }) удалён из доверенных
-msg-untrusted-ips = { $count } IP удалено из доверенных
-msg-untrusted-ips-nickname = { $count } IP ({ $nickname }) удалено из доверенных
+msg-untrusted-ips = { $count } { $count ->
+    [one] IP удалён из доверенных
+    [few] IP удалены из доверенных
+   *[other] IP удалено из доверенных
+}
+msg-untrusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) удалён из доверенных
+    [few] IP ({ $nickname }) удалены из доверенных
+   *[other] IP ({ $nickname }) удалено из доверенных
+}
 msg-untrusted-success = Запись доверия успешно удалена
 
 # Trust list messages

@@ -1062,15 +1062,27 @@ ban-duration-permanent = Permanente
 # Ban success messages
 msg-banned-ip = { $ip } banido
 msg-banned-ip-nickname = { $ip } ({ $nickname }) banido
-msg-banned-ips = { $count } IPs banidos
-msg-banned-ips-nickname = { $count } IPs ({ $nickname }) banidos
+msg-banned-ips = { $count } { $count ->
+    [one] IP banido
+   *[other] IPs banidos
+}
+msg-banned-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) banido
+   *[other] IPs ({ $nickname }) banidos
+}
 msg-ban-created = Banimento criado com sucesso
 
 # Unban success messages
 msg-unbanned-ip = Banimento de { $ip } removido
 msg-unbanned-ip-nickname = Banimento de { $ip } ({ $nickname }) removido
-msg-unbanned-ips = { $count } banimentos de IP removidos
-msg-unbanned-ips-nickname = { $count } banimentos de IP ({ $nickname }) removidos
+msg-unbanned-ips = { $count } { $count ->
+    [one] banimento de IP removido
+   *[other] banimentos de IP removidos
+}
+msg-unbanned-ips-nickname = { $count } { $count ->
+    [one] banimento de IP ({ $nickname }) removido
+   *[other] banimentos de IP ({ $nickname }) removidos
+}
 msg-unbanned-success = Banimento removido com sucesso
 
 # Ban list messages
@@ -1090,15 +1102,27 @@ msg-ban-remaining-minutes = { $minutes }m
 # Trust success messages
 msg-trusted-ip = { $ip } de confiança
 msg-trusted-ip-nickname = { $ip } ({ $nickname }) de confiança
-msg-trusted-ips = { $count } IPs de confiança
-msg-trusted-ips-nickname = { $count } IPs ({ $nickname }) de confiança
+msg-trusted-ips = { $count } { $count ->
+    [one] IP de confiança
+   *[other] IPs de confiança
+}
+msg-trusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) de confiança
+   *[other] IPs ({ $nickname }) de confiança
+}
 msg-trust-created = Entrada de confiança criada com sucesso
 
 # Untrust success messages
 msg-untrusted-ip = { $ip } removido da lista de confiança
 msg-untrusted-ip-nickname = { $ip } ({ $nickname }) removido da lista de confiança
-msg-untrusted-ips = { $count } IPs removidas da lista de confiança
-msg-untrusted-ips-nickname = { $count } IPs ({ $nickname }) removidas da lista de confiança
+msg-untrusted-ips = { $count } { $count ->
+    [one] IP removida da lista de confiança
+   *[other] IPs removidas da lista de confiança
+}
+msg-untrusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) removida da lista de confiança
+   *[other] IPs ({ $nickname }) removidas da lista de confiança
+}
 msg-untrusted-success = Entrada de confiança removida com sucesso
 
 # Trust list messages

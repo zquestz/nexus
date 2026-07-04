@@ -665,6 +665,9 @@ async fn run_voice_session(
     // Reused each tick to avoid per-frame allocation.
     let mut render_mix = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
 
+    // Reused each tick to avoid a per-frame capture allocation.
+    let mut capture_frame: Vec<f32> = Vec::with_capacity(VOICE_SAMPLES_PER_FRAME as usize);
+
     // Audio processing interval. Use the default Burst missed-tick behavior:
     // skipping 10ms voice ticks creates tiny playback holes that sound like
     // crunchy dropouts when the manager thread is delayed.
@@ -781,18 +784,18 @@ async fn run_voice_session(
                 if transmitting
                     && let Some(capture) = capture.as_ref()
                     && capture.is_active()
-                    && let Some(mut samples) = capture.take_frame()
+                    && capture.take_frame_into(&mut capture_frame)
                 {
-                    sanitize_audio_frame(&mut samples);
+                    sanitize_audio_frame(&mut capture_frame);
 
                     // Apply audio processing (noise suppression, AGC, AEC) to capture
                     if let Some(ref mut proc) = processor {
-                        let _ = proc.process_capture_frame(&mut samples);
-                        sanitize_audio_frame(&mut samples);
+                        let _ = proc.process_capture_frame(&mut capture_frame);
+                        sanitize_audio_frame(&mut capture_frame);
 
                         // In toggle mode, use VAD to gate transmission
                         // This prevents sending silence/noise when mic is "open"
-                        if ptt_mode == PttMode::Toggle && !proc.has_voice(&samples) {
+                        if ptt_mode == PttMode::Toggle && !proc.has_voice(&capture_frame) {
                             clear_mic_level(&config.mic_level);
                             continue;
                         }
@@ -800,9 +803,9 @@ async fn run_voice_session(
 
                     // Calculate mic level after processing so the VU meter
                     // reflects what others actually hear (post-AGC/NS)
-                    store_mic_level_for_samples(&config.mic_level, &samples);
+                    store_mic_level_for_samples(&config.mic_level, &capture_frame);
                     if let Some(encoder) = encoder.as_mut()
-                        && let Ok(encoded) = encoder.encode(&samples)
+                        && let Ok(encoded) = encoder.encode(&capture_frame)
                     {
                         let _ = dtls_command_tx.send(VoiceDtlsCommand::SendVoice(encoded));
                     }

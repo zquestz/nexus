@@ -18,6 +18,7 @@ mod chat_channel;
 mod error;
 mod files;
 mod group_admin;
+mod ip_actions;
 mod news;
 mod permissions;
 mod server_info;

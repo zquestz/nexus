@@ -3,13 +3,16 @@
 //! This module provides:
 //! - `CachedImage` - Cached image/SVG handle for stable rendering
 //! - `ImagePickerError` - Errors from file picker image loading
+//! - `pick_image()` - Shared async file picker → validated base64 data URI
 //! - `decode_data_uri_square()` - Decode with square bounding box constraint
 //! - `decode_data_uri_max_width()` - Decode with max width constraint
 //! - `validate_image_bytes()` - Validate image bytes match expected format
 
+use base64::Engine;
 use iced::Element;
 use iced::widget::{image, svg};
 use nexus_common::validators::{ImageDecodeProfile, image_crate_limits, is_valid_svg};
+use rfd::AsyncFileDialog;
 
 // =============================================================================
 // Types
@@ -66,6 +69,50 @@ pub enum ImagePickerError {
 // =============================================================================
 // Public Functions
 // =============================================================================
+
+/// Open the image file picker and load the chosen file as a base64 data URI.
+///
+/// Shared by the news, server-info, and avatar pickers: filters to the
+/// supported formats, maps the extension to a MIME type, enforces `max_size`
+/// (bytes), and validates the content against the claimed format before
+/// encoding.
+pub async fn pick_image(max_size: usize) -> Result<String, ImagePickerError> {
+    let Some(file) = AsyncFileDialog::new()
+        .add_filter("Images", &["png", "jpg", "jpeg", "webp", "svg"])
+        .pick_file()
+        .await
+    else {
+        return Err(ImagePickerError::Cancelled);
+    };
+
+    let extension = file
+        .path()
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let mime_type = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        _ => return Err(ImagePickerError::UnsupportedType),
+    };
+
+    let bytes = file.read().await;
+
+    if bytes.len() > max_size {
+        return Err(ImagePickerError::TooLarge);
+    }
+
+    if !validate_image_bytes(&bytes, mime_type) {
+        return Err(ImagePickerError::UnsupportedType);
+    }
+
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{};base64,{}", mime_type, base64_data))
+}
 
 /// Decode a data URI into a cached image with a square bounding box constraint
 ///

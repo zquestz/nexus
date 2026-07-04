@@ -22,7 +22,7 @@ use crate::config::settings::{
     AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
 };
 use crate::i18n::{t, t_args};
-use crate::image::{ImagePickerError, decode_data_uri_square};
+use crate::image::{ImagePickerError, decode_data_uri_square, pick_image};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
 use crate::types::{
     ActivePanel, ChatMessage, InputId, Message, PendingRequests, ResponseRouting,
@@ -423,53 +423,7 @@ impl NexusApp {
             form.error = None;
         }
 
-        Task::future(async {
-            let file = AsyncFileDialog::new()
-                .add_filter("Images", &["png", "webp", "svg", "jpg", "jpeg"])
-                .pick_file()
-                .await;
-
-            match file {
-                Some(handle) => {
-                    let path = handle.path();
-                    let extension = path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-
-                    // Determine MIME type from extension
-                    let mime_type = match extension.as_str() {
-                        "png" => "image/png",
-                        "webp" => "image/webp",
-                        "svg" => "image/svg+xml",
-                        "jpg" | "jpeg" => "image/jpeg",
-                        _ => {
-                            return Message::AvatarLoaded(Err(ImagePickerError::UnsupportedType));
-                        }
-                    };
-
-                    // Read file contents
-                    let bytes = handle.read().await;
-
-                    // Check size
-                    if bytes.len() > AVATAR_MAX_SIZE {
-                        return Message::AvatarLoaded(Err(ImagePickerError::TooLarge));
-                    }
-
-                    // Build data URI
-                    use base64::Engine;
-                    let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    let data_uri = format!("data:{};base64,{}", mime_type, base64_data);
-
-                    Message::AvatarLoaded(Ok(data_uri))
-                }
-                None => {
-                    // User cancelled - no change
-                    Message::AvatarLoaded(Err(ImagePickerError::Cancelled))
-                }
-            }
-        })
+        Task::perform(pick_image(AVATAR_MAX_SIZE), Message::AvatarLoaded)
     }
 
     /// Handle avatar loaded from file picker

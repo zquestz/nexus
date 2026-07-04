@@ -1059,15 +1059,27 @@ ban-duration-permanent = Permanente
 # Ban success messages
 msg-banned-ip = { $ip } baneado
 msg-banned-ip-nickname = { $ip } ({ $nickname }) baneado
-msg-banned-ips = { $count } IPs baneadas
-msg-banned-ips-nickname = { $count } IPs ({ $nickname }) baneadas
+msg-banned-ips = { $count } { $count ->
+    [one] IP baneada
+   *[other] IPs baneadas
+}
+msg-banned-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) baneada
+   *[other] IPs ({ $nickname }) baneadas
+}
 msg-ban-created = Baneo creado correctamente
 
 # Unban success messages
 msg-unbanned-ip = Baneo de { $ip } eliminado
 msg-unbanned-ip-nickname = Baneo de { $ip } ({ $nickname }) eliminado
-msg-unbanned-ips = { $count } baneos de IP eliminados
-msg-unbanned-ips-nickname = { $count } baneos de IP ({ $nickname }) eliminados
+msg-unbanned-ips = { $count } { $count ->
+    [one] baneo de IP eliminado
+   *[other] baneos de IP eliminados
+}
+msg-unbanned-ips-nickname = { $count } { $count ->
+    [one] baneo de IP ({ $nickname }) eliminado
+   *[other] baneos de IP ({ $nickname }) eliminados
+}
 msg-unbanned-success = Baneo eliminado correctamente
 
 # Ban list messages
@@ -1087,15 +1099,27 @@ msg-ban-remaining-minutes = { $minutes }m
 # Trust success messages
 msg-trusted-ip = { $ip } confiado
 msg-trusted-ip-nickname = { $ip } ({ $nickname }) confiado
-msg-trusted-ips = { $count } IPs confiadas
-msg-trusted-ips-nickname = { $count } IPs ({ $nickname }) confiadas
+msg-trusted-ips = { $count } { $count ->
+    [one] IP confiada
+   *[other] IPs confiadas
+}
+msg-trusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) confiada
+   *[other] IPs ({ $nickname }) confiadas
+}
 msg-trust-created = Entrada de confianza creada exitosamente
 
 # Untrust success messages
 msg-untrusted-ip = { $ip } desconfiado
 msg-untrusted-ip-nickname = { $ip } ({ $nickname }) desconfiado
-msg-untrusted-ips = { $count } IPs desconfiadas
-msg-untrusted-ips-nickname = { $count } IPs ({ $nickname }) desconfiadas
+msg-untrusted-ips = { $count } { $count ->
+    [one] IP desconfiada
+   *[other] IPs desconfiadas
+}
+msg-untrusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) desconfiada
+   *[other] IPs ({ $nickname }) desconfiadas
+}
 msg-untrusted-success = Entrada de confianza eliminada exitosamente
 
 # Trust list messages

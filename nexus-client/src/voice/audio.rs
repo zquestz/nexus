@@ -507,20 +507,26 @@ impl AudioCapture {
         self.active.load(Ordering::SeqCst)
     }
 
-    /// Take a frame of audio samples for encoding
+    /// Take a frame of audio samples into a caller-owned buffer, avoiding a
+    /// per-frame allocation on the ~100 Hz transmit path (mirrors the
+    /// resampler's `process_into` pattern).
     ///
-    /// Returns a frame of VOICE_SAMPLES_PER_FRAME samples if available,
-    /// or None if not enough samples have been captured yet.
-    /// Samples are f32 normalized to [-1.0, 1.0].
-    pub fn take_frame(&self) -> Option<Vec<f32>> {
-        let mut buffer = self.buffer.lock().ok()?;
+    /// Returns `true` when a full `VOICE_SAMPLES_PER_FRAME` frame was written
+    /// into `out` (replacing its contents), `false` when not enough samples
+    /// have been captured yet (`out` untouched). Samples are f32 normalized
+    /// to [-1.0, 1.0].
+    pub fn take_frame_into(&self, out: &mut Vec<f32>) -> bool {
+        let Ok(mut buffer) = self.buffer.lock() else {
+            return false;
+        };
         let frame_size = VOICE_SAMPLES_PER_FRAME as usize;
 
         if buffer.len() >= frame_size {
-            let frame: Vec<f32> = buffer.drain(..frame_size).collect();
-            Some(frame)
+            out.clear();
+            out.extend(buffer.drain(..frame_size));
+            true
         } else {
-            None
+            false
         }
     }
 

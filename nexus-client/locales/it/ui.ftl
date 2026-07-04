@@ -1061,15 +1061,27 @@ ban-duration-permanent = Permanente
 # Ban success messages
 msg-banned-ip = { $ip } bannato
 msg-banned-ip-nickname = { $ip } ({ $nickname }) bannato
-msg-banned-ips = { $count } IP bannati
-msg-banned-ips-nickname = { $count } IP ({ $nickname }) bannati
+msg-banned-ips = { $count } { $count ->
+    [one] IP bannato
+   *[other] IP bannati
+}
+msg-banned-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) bannato
+   *[other] IP ({ $nickname }) bannati
+}
 msg-ban-created = Ban creato con successo
 
 # Unban success messages
 msg-unbanned-ip = Ban di { $ip } rimosso
 msg-unbanned-ip-nickname = Ban di { $ip } ({ $nickname }) rimosso
-msg-unbanned-ips = { $count } ban IP rimossi
-msg-unbanned-ips-nickname = { $count } ban IP ({ $nickname }) rimossi
+msg-unbanned-ips = { $count } { $count ->
+    [one] ban IP rimosso
+   *[other] ban IP rimossi
+}
+msg-unbanned-ips-nickname = { $count } { $count ->
+    [one] ban IP ({ $nickname }) rimosso
+   *[other] ban IP ({ $nickname }) rimossi
+}
 msg-unbanned-success = Ban rimosso con successo
 
 # Ban list messages
@@ -1089,15 +1101,27 @@ msg-ban-remaining-minutes = { $minutes }m
 # Trust success messages
 msg-trusted-ip = { $ip } considerato attendibile
 msg-trusted-ip-nickname = { $ip } ({ $nickname }) considerato attendibile
-msg-trusted-ips = { $count } IP considerati attendibili
-msg-trusted-ips-nickname = { $count } IP ({ $nickname }) considerati attendibili
+msg-trusted-ips = { $count } { $count ->
+    [one] IP considerato attendibile
+   *[other] IP considerati attendibili
+}
+msg-trusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) considerato attendibile
+   *[other] IP ({ $nickname }) considerati attendibili
+}
 msg-trust-created = Voce di attendibilità creata con successo
 
 # Untrust success messages
 msg-untrusted-ip = { $ip } rimosso dagli attendibili
 msg-untrusted-ip-nickname = { $ip } ({ $nickname }) rimosso dagli attendibili
-msg-untrusted-ips = { $count } IP rimossi dagli attendibili
-msg-untrusted-ips-nickname = { $count } IP ({ $nickname }) rimossi dagli attendibili
+msg-untrusted-ips = { $count } { $count ->
+    [one] IP rimosso dagli attendibili
+   *[other] IP rimossi dagli attendibili
+}
+msg-untrusted-ips-nickname = { $count } { $count ->
+    [one] IP ({ $nickname }) rimosso dagli attendibili
+   *[other] IP ({ $nickname }) rimossi dagli attendibili
+}
 msg-untrusted-success = Voce di attendibilità rimossa con successo
 
 # Trust list messages

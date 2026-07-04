@@ -1065,15 +1065,27 @@ ban-duration-permanent = Permanent
 # Ban success messages
 msg-banned-ip = Banned { $ip }
 msg-banned-ip-nickname = Banned { $ip } ({ $nickname })
-msg-banned-ips = Banned { $count } IPs
-msg-banned-ips-nickname = Banned { $count } IPs ({ $nickname })
+msg-banned-ips = Banned { $count } { $count ->
+    [one] IP
+   *[other] IPs
+}
+msg-banned-ips-nickname = Banned { $count } { $count ->
+    [one] IP
+   *[other] IPs
+} ({ $nickname })
 msg-ban-created = Ban created successfully
 
 # Unban success messages
 msg-unbanned-ip = Unbanned { $ip }
 msg-unbanned-ip-nickname = Unbanned { $ip } ({ $nickname })
-msg-unbanned-ips = Unbanned { $count } IPs
-msg-unbanned-ips-nickname = Unbanned { $count } IPs ({ $nickname })
+msg-unbanned-ips = Unbanned { $count } { $count ->
+    [one] IP
+   *[other] IPs
+}
+msg-unbanned-ips-nickname = Unbanned { $count } { $count ->
+    [one] IP
+   *[other] IPs
+} ({ $nickname })
 msg-unbanned-success = Ban removed successfully
 
 # Ban list messages
@@ -1093,15 +1105,27 @@ msg-ban-remaining-minutes = { $minutes }m
 # Trust success messages
 msg-trusted-ip = Trusted { $ip }
 msg-trusted-ip-nickname = Trusted { $ip } ({ $nickname })
-msg-trusted-ips = Trusted { $count } IPs
-msg-trusted-ips-nickname = Trusted { $count } IPs ({ $nickname })
+msg-trusted-ips = Trusted { $count } { $count ->
+    [one] IP
+   *[other] IPs
+}
+msg-trusted-ips-nickname = Trusted { $count } { $count ->
+    [one] IP
+   *[other] IPs
+} ({ $nickname })
 msg-trust-created = Trust entry created successfully
 
 # Untrust success messages
 msg-untrusted-ip = Untrusted { $ip }
 msg-untrusted-ip-nickname = Untrusted { $ip } ({ $nickname })
-msg-untrusted-ips = Untrusted { $count } IPs
-msg-untrusted-ips-nickname = Untrusted { $count } IPs ({ $nickname })
+msg-untrusted-ips = Untrusted { $count } { $count ->
+    [one] IP
+   *[other] IPs
+}
+msg-untrusted-ips-nickname = Untrusted { $count } { $count ->
+    [one] IP
+   *[other] IPs
+} ({ $nickname })
 msg-untrusted-success = Trust entry removed successfully
 
 # Trust list messages

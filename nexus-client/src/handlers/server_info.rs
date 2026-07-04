@@ -8,11 +8,10 @@ use nexus_common::validators::{
     MAX_SERVER_NAME_LENGTH, PublicAddressError, ServerDescriptionError, ServerImageError,
     ServerNameError,
 };
-use rfd::AsyncFileDialog;
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::image::{ImagePickerError, decode_data_uri_max_width};
+use crate::image::{ImagePickerError, decode_data_uri_max_width, pick_image};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::style::SERVER_IMAGE_MAX_SIZE;
 use crate::types::{InputId, Message, ServerInfoEditState, ServerInfoParams, ServerInfoTab};
@@ -437,53 +436,7 @@ impl NexusApp {
         }
 
         Task::perform(
-            async {
-                let handle = AsyncFileDialog::new()
-                    .add_filter("Images", &["png", "jpg", "jpeg", "webp", "svg"])
-                    .pick_file()
-                    .await;
-
-                match handle {
-                    Some(file) => {
-                        let path = file.path();
-                        let extension = path
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .unwrap_or("")
-                            .to_lowercase();
-
-                        // Determine MIME type from extension
-                        let mime_type = match extension.as_str() {
-                            "png" => "image/png",
-                            "jpg" | "jpeg" => "image/jpeg",
-                            "webp" => "image/webp",
-                            "svg" => "image/svg+xml",
-                            _ => return Err(ImagePickerError::UnsupportedType),
-                        };
-
-                        // Read file contents
-                        let bytes = file.read().await;
-
-                        // Check file size
-                        if bytes.len() > SERVER_IMAGE_MAX_SIZE {
-                            return Err(ImagePickerError::TooLarge);
-                        }
-
-                        // Validate file content matches expected format
-                        if !crate::image::validate_image_bytes(&bytes, mime_type) {
-                            return Err(ImagePickerError::UnsupportedType);
-                        }
-
-                        // Encode as data URI
-                        use base64::Engine;
-                        let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                        let data_uri = format!("data:{};base64,{}", mime_type, base64_data);
-
-                        Ok(data_uri)
-                    }
-                    None => Err(ImagePickerError::Cancelled),
-                }
-            },
+            pick_image(SERVER_IMAGE_MAX_SIZE),
             Message::EditServerInfoImageLoaded,
         )
     }
