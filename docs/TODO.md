@@ -28,23 +28,6 @@ Recommended path:
 - Add tests proving the dependency hash changes on message, tab, font,
   timestamp, and theme changes.
 
-### User List Sidebar Render Cache
-
-`nexus-client/src/views/user_list.rs` still reconstructs every row (buttons,
-tooltips, rich-text spans, avatar cache keys) during every `view()` call —
-every keystroke in the chat input, every incoming message.
-
-Recommended path:
-
-- Wrap the sidebar in `lazy()` using a `UserListDeps` value, the same pattern
-  the file table already uses.
-- Hash the user list content, expanded user, voice/away/speaking state, active
-  tab, and theme/palette inputs.
-- Keep the hash complete; a missing dependency means stale UI, which is worse
-  than an extra rebuild.
-- Add tests proving the dependency hash changes on user-list, voice, away,
-  expanded-user, tab, and theme changes.
-
 ### User Update Handler Decomposition
 
 `nexus-server/src/handlers/user_update.rs::handle_user_update` still has a very
