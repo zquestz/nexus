@@ -10,33 +10,6 @@
 | Offline messages investigation       | Medium | See investigation notes below |
 | Connection Monitor egress visibility | Medium | See feature spec below        |
 
-## Audit Follow-Ups
-
-These are the remaining non-urgent items from the 0.9.5 hardening pass.
-
-### User Update Handler Decomposition
-
-`nexus-server/src/handlers/user_update.rs::handle_user_update` still has a very
-large locked orchestration block. Some preflight validation has already been
-extracted for the Argon2 lock-hoist work, but the main handler remains hard to
-audit.
-
-Recommended path:
-
-- Preserve the invariant that the requester's direct socket response is staged
-  as an `Outcome` and sent after the user-state guard drops.
-- Keep broadcast/session side effects that require rename/permission
-  serialization inside the guarded section.
-- Continue extracting one phase at a time, running the `user_update` tests after
-  each step:
-  - field validation
-  - permission/group write planning
-  - old-account snapshot capture
-  - database update dispatch
-  - success side effects and broadcast cascade
-- Helpers should return `Result<_, Outcome>` and must not write directly to the
-  socket.
-
 ## Feature Specs
 
 ### Boards
