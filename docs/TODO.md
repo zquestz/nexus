@@ -9,6 +9,8 @@
 | Admin event history                  | Medium | See feature spec below        |
 | Offline messages investigation       | Medium | See investigation notes below |
 | Connection Monitor egress visibility | Medium | See feature spec below        |
+| Enable linear AEC output             | Low    | See feature spec below        |
+| Windows arm64 client                 | Medium | See feature spec below        |
 
 ## Feature Specs
 
@@ -430,3 +432,15 @@ Preview files before downloading.
 - Decide whether this is encrypted-at-rest mailbox storage or true client-verifiable end-to-end encryption.
 - If claiming end-to-end encryption, include recipient key pinning/verification in the design so the server cannot silently substitute recipient keys.
 - Include queue limits, expiration, delivery acknowledgements, and behavior for shared accounts/multiple sessions.
+
+### Enable Linear AEC Output
+
+- Lift the hardcoded `analyze_linear_aec_output: false` in `nexus-client/src/voice/processor.rs` so noise suppression can analyze the echo-cancelled linear signal.
+- Safe since webrtc-audio-processing 2.1: the flag is honored only when the Processor is constructed with linear-output support and is internally forced off otherwise (the historical AEC3 crash is gone). Implementation details in CLAUDE.md under "Audio Processing Known Issues".
+- Deliberately deferred out of 0.9.6; requires its own live voice-test pass before shipping.
+
+### Windows arm64 Client
+
+- The only remaining ARM gap in the release matrix — Linux and macOS clients plus all server/tracker artifacts already ship arm64.
+- Gated on the webrtc-audio-processing fork building under ARM64 MSVC (meson + cl.exe for aarch64), which upstream does not test.
+- Native `windows-11-arm` GitHub runners would avoid cross-compiling the C++; also needs a release matrix entry and MSI bundling verification on arm64.
