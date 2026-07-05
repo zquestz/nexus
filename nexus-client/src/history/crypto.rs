@@ -13,7 +13,7 @@
 use crate::constants::ERR_HKDF_OUTPUT_LENGTH;
 use chacha20poly1305::{
     ChaCha20Poly1305, KeyInit, Nonce,
-    aead::{Aead, OsRng, rand_core::RngCore},
+    aead::{Aead, Generate},
 };
 use hkdf::Hkdf;
 use sha2::Sha256;
@@ -52,20 +52,20 @@ impl HistoryCrypto {
     ///
     /// Returns the nonce prepended to the ciphertext: `[nonce (12 bytes)][ciphertext]`
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, CryptoError> {
-        // Generate random nonce
-        let mut nonce_bytes = [0u8; NONCE_SIZE];
-        OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        // Generate a random nonce from the system RNG via the aead stack's
+        // `Generate` trait; an OS RNG failure surfaces as a normal
+        // encryption error rather than a panic.
+        let nonce = Nonce::try_generate().map_err(|_| CryptoError::EncryptionFailed)?;
 
         // Encrypt
         let ciphertext = self
             .cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(&nonce, plaintext)
             .map_err(|_| CryptoError::EncryptionFailed)?;
 
         // Prepend nonce to ciphertext
         let mut result = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
-        result.extend_from_slice(&nonce_bytes);
+        result.extend_from_slice(&nonce);
         result.extend_from_slice(&ciphertext);
 
         Ok(result)
@@ -80,10 +80,12 @@ impl HistoryCrypto {
         }
 
         let (nonce_bytes, ciphertext) = data.split_at(NONCE_SIZE);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        // Length is guaranteed by the split above; the TryFrom is the
+        // non-deprecated slice conversion, not a real failure path.
+        let nonce = Nonce::try_from(nonce_bytes).map_err(|_| CryptoError::InvalidData)?;
 
         self.cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|_| CryptoError::DecryptionFailed)
     }
 }

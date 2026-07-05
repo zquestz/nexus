@@ -185,7 +185,7 @@ where
 
     device
         .build_output_stream(
-            config,
+            *config,
             move |output: &mut [T], _: &cpal::OutputCallbackInfo| {
                 let pos = position_clone.load(std::sync::atomic::Ordering::Relaxed);
                 for (i, sample) in output.iter_mut().enumerate() {

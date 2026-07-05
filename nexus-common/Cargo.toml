@@ -47,7 +47,7 @@ image = { version = "0.25", default-features = false, features = [
     "webp",
 ], optional = true }
 base64 = { version = "0.22", optional = true }
-usvg = { version = "0.45", optional = true }
+usvg = { version = "0.47", optional = true }
 
 [features]
 # WebSocket byte-stream adapter (`nexus_common::websocket::WebSocketAdapter`).

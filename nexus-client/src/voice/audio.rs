@@ -13,7 +13,7 @@ use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, FromSample, Host, Sample, SampleFormat, Stream, StreamConfig, StreamError};
+use cpal::{Device, ErrorKind, FromSample, Host, Sample, SampleFormat, Stream, StreamConfig};
 
 use nexus_common::names::fold_name;
 use nexus_common::voice::{
@@ -581,7 +581,7 @@ where
     let mut resampled_samples = Vec::with_capacity(VOICE_SAMPLES_PER_FRAME as usize);
     device
         .build_input_stream(
-            config,
+            *config,
             move |data: &[T], _: &cpal::InputCallbackInfo| {
                 if !active.load(Ordering::SeqCst) {
                     return;
@@ -612,7 +612,7 @@ where
                 let error_tx = error_tx.clone();
                 move |err| {
                     // Filter out transient buffer underrun/overrun errors (common during high CPU load)
-                    if matches!(err, StreamError::BufferUnderrun) {
+                    if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
                     let _ = error_tx.send(format!("Audio capture error: {}", err));
@@ -641,7 +641,7 @@ where
     let mut resampled_samples = Vec::with_capacity(VOICE_SAMPLES_PER_FRAME as usize);
     device
         .build_input_stream(
-            config,
+            *config,
             move |data: &[T], _: &cpal::InputCallbackInfo| {
                 if !active.load(Ordering::SeqCst) {
                     return;
@@ -677,7 +677,7 @@ where
                 let error_tx = error_tx.clone();
                 move |err| {
                     // Filter out transient buffer underrun/overrun errors (common during high CPU load)
-                    if matches!(err, StreamError::BufferUnderrun) {
+                    if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
                     let _ = error_tx.send(format!("Audio capture error: {}", err));
@@ -1119,7 +1119,7 @@ where
     let callback_error_tx = error_tx.clone();
     device
         .build_output_stream(
-            config,
+            *config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
                 if !active.load(Ordering::SeqCst) {
                     // Not active - output silence
@@ -1206,7 +1206,7 @@ where
                 let error_tx = error_tx.clone();
                 move |err| {
                     // Filter out transient buffer underrun/overrun errors (common during high CPU load)
-                    if matches!(err, StreamError::BufferUnderrun) {
+                    if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
                     let _ = error_tx.send(format!("Mixer error: {}", err));
@@ -1232,7 +1232,7 @@ where
     let callback_error_tx = error_tx.clone();
     device
         .build_output_stream(
-            config,
+            *config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
                 if !active.load(Ordering::SeqCst) {
                     // Not active - output silence
@@ -1323,7 +1323,7 @@ where
                 let error_tx = error_tx.clone();
                 move |err| {
                     // Filter out transient buffer underrun/overrun errors (common during high CPU load)
-                    if matches!(err, StreamError::BufferUnderrun) {
+                    if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
                     let _ = error_tx.send(format!("Mixer error: {}", err));
