@@ -23,7 +23,7 @@ use super::constants::{
     PERMISSION_TRACKER_ADD, PERMISSION_TRACKER_EDIT, PERMISSION_TRACKER_REMOVE,
 };
 use super::fingerprint::format_fingerprint_multiline;
-use super::helpers::{sort_icon_or_placeholder, tab_toolbar_icon_button};
+use super::helpers::{hash_color, sort_icon_or_placeholder, tab_toolbar_icon_button};
 use super::layout::{scrollable_modal, scrollable_panel};
 use crate::i18n::t;
 use crate::icon;
@@ -45,13 +45,6 @@ use crate::types::{
     TrackerManagementState,
 };
 use crate::widgets::MenuButton;
-
-fn hash_color<H: Hasher>(color: iced::Color, state: &mut H) {
-    color.r.to_bits().hash(state);
-    color.g.to_bits().hash(state);
-    color.b.to_bits().hash(state);
-    color.a.to_bits().hash(state);
-}
 
 // ============================================================================
 // Status Bullet
@@ -144,29 +137,60 @@ struct TrackerTableDeps {
 
 impl Hash for TrackerTableDeps {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.trackers.len().hash(state);
-        for t in &self.trackers {
-            t.id.hash(state);
-            t.name.hash(state);
-            t.address.hash(state);
-            t.port.hash(state);
-            t.connected.hash(state);
-            t.last_error.hash(state);
-            t.last_error_kind.hash(state);
-            t.pending_fingerprint.hash(state);
-            // Deliberately excluded: `last_attempted_at`, `last_connected_at`.
-            // The table doesn't render timestamps anywhere — including them
-            // would invalidate the lazy cache on every status refresh and
-            // burn the cache hit rate. If a future change shows timestamps
-            // in the row (or in a tooltip), add them here.
+        // Full destructure of the deps and of every tracker: adding a field
+        // to either struct fails to compile until it is hashed or excluded.
+        let Self {
+            trackers,
+            sort_column,
+            sort_ascending,
+            can_edit,
+            can_remove,
+            success_color,
+            warning_color,
+            danger_color,
+        } = self;
+        trackers.len().hash(state);
+        for TrackerInfo {
+            id,
+            name,
+            address,
+            port,
+            connected,
+            last_error,
+            last_error_kind,
+            pending_fingerprint,
+            // Timestamps are deliberately excluded: the table doesn't render
+            // them anywhere, and including them would invalidate the lazy
+            // cache on every status refresh and burn the cache hit rate. If
+            // a future change shows timestamps in the row (or a tooltip),
+            // hash them here. The remaining fields only feed the Add/Edit
+            // forms, which live outside this lazy table.
+            last_attempted_at: _,
+            last_connected_at: _,
+            fingerprint: _,
+            password: _,
+            enabled: _,
+            created_at: _,
+            updated_at: _,
+            refresh_interval: _,
+        } in trackers.iter()
+        {
+            id.hash(state);
+            name.hash(state);
+            address.hash(state);
+            port.hash(state);
+            connected.hash(state);
+            last_error.hash(state);
+            last_error_kind.hash(state);
+            pending_fingerprint.hash(state);
         }
-        self.sort_column.hash(state);
-        self.sort_ascending.hash(state);
-        self.can_edit.hash(state);
-        self.can_remove.hash(state);
-        hash_color(self.success_color, state);
-        hash_color(self.warning_color, state);
-        hash_color(self.danger_color, state);
+        sort_column.hash(state);
+        sort_ascending.hash(state);
+        can_edit.hash(state);
+        can_remove.hash(state);
+        hash_color(*success_color, state);
+        hash_color(*warning_color, state);
+        hash_color(*danger_color, state);
     }
 }
 

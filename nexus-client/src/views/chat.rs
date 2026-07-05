@@ -258,15 +258,15 @@ impl Hash for ChatColors {
             text,
             link,
         } = self;
-        hash_color(timestamp, state);
-        hash_color(system, state);
-        hash_color(error, state);
-        hash_color(info, state);
-        hash_color(broadcast, state);
-        hash_color(admin, state);
-        hash_color(shared, state);
-        hash_color(text, state);
-        hash_color(link, state);
+        hash_color(*timestamp, state);
+        hash_color(*system, state);
+        hash_color(*error, state);
+        hash_color(*info, state);
+        hash_color(*broadcast, state);
+        hash_color(*admin, state);
+        hash_color(*shared, state);
+        hash_color(*text, state);
+        hash_color(*link, state);
     }
 }
 

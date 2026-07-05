@@ -82,18 +82,35 @@ struct GroupTableDeps {
 
 impl Hash for GroupTableDeps {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.groups.len().hash(state);
-        for group in &self.groups {
-            group.id.hash(state);
-            group.name.hash(state);
-            group.is_shared.hash(state);
-            group.member_count.hash(state);
+        // Full destructure of the deps and of every group: adding a field to
+        // either struct fails to compile until it is hashed or excluded.
+        let Self {
+            groups,
+            sort_column,
+            sort_ascending,
+            can_edit,
+            can_delete,
+        } = self;
+        groups.len().hash(state);
+        for GroupInfo {
+            id,
+            name,
+            is_shared,
+            member_count,
+            // Not displayed in the table (only name, shared, member count).
+            permissions: _,
+            bandwidth_weight: _,
+        } in groups.iter()
+        {
+            id.hash(state);
+            name.hash(state);
+            is_shared.hash(state);
+            member_count.hash(state);
         }
-        self.sort_column.hash(state);
-        self.sort_ascending.hash(state);
-        self.can_edit.hash(state);
-        self.can_delete.hash(state);
-        // group.permissions not hashed — not displayed in table (only name, shared, member_count)
+        sort_column.hash(state);
+        sort_ascending.hash(state);
+        can_edit.hash(state);
+        can_delete.hash(state);
     }
 }
 

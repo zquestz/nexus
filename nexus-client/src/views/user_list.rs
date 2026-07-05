@@ -307,13 +307,13 @@ impl Hash for ThemeColors {
             primary,
             danger,
         } = self;
-        hash_color(admin, state);
-        hash_color(shared, state);
-        hash_color(speaking, state);
-        hash_color(muted, state);
-        hash_color(icon, state);
-        hash_color(primary, state);
-        hash_color(danger, state);
+        hash_color(*admin, state);
+        hash_color(*shared, state);
+        hash_color(*speaking, state);
+        hash_color(*muted, state);
+        hash_color(*icon, state);
+        hash_color(*primary, state);
+        hash_color(*danger, state);
     }
 }
 

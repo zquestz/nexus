@@ -38,7 +38,7 @@ pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
 /// tree at build time (rich-text spans and color-parameterized styles):
 /// hashing the precise bits means any palette change — including edits to a
 /// custom theme — invalidates the cache.
-pub(crate) fn hash_color<H: Hasher>(color: &Color, state: &mut H) {
+pub(crate) fn hash_color<H: Hasher>(color: Color, state: &mut H) {
     color.r.to_bits().hash(state);
     color.g.to_bits().hash(state);
     color.b.to_bits().hash(state);

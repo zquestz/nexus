@@ -122,16 +122,33 @@ struct FileRowData {
 
 impl Hash for FileRowData {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.entry.name.hash(state);
-        self.entry.size.hash(state);
-        self.entry.modified.hash(state);
-        self.entry.dir_type.hash(state);
-        self.entry.can_upload.hash(state);
-        self.path.hash(state);
-        self.is_cut.hash(state);
-        self.perms.hash(state);
-        self.has_clipboard.hash(state);
-        self.bypass_via_ownership.hash(state);
+        // Full destructure of the row and its entry: adding a field to
+        // either struct fails to compile until it is hashed or excluded.
+        let Self {
+            entry,
+            path,
+            is_cut,
+            perms,
+            has_clipboard,
+            bypass_via_ownership,
+        } = self;
+        let FileEntry {
+            name,
+            size,
+            modified,
+            dir_type,
+            can_upload,
+        } = entry;
+        name.hash(state);
+        size.hash(state);
+        modified.hash(state);
+        dir_type.hash(state);
+        can_upload.hash(state);
+        path.hash(state);
+        is_cut.hash(state);
+        perms.hash(state);
+        has_clipboard.hash(state);
+        bypass_via_ownership.hash(state);
     }
 }
 

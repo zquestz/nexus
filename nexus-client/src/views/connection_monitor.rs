@@ -16,7 +16,7 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::{ConnectionInfo, TransferInfo, TransferInfoDirection};
 
 use super::constants::{PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK};
-use super::helpers::{format_bytes, sort_icon_or_placeholder};
+use super::helpers::{format_bytes, hash_color, sort_icon_or_placeholder};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
@@ -43,11 +43,24 @@ struct ConnectionMonitorPermissions {
     ban_create: bool,
 }
 
-fn hash_color<H: Hasher>(color: iced::Color, state: &mut H) {
-    color.r.to_bits().hash(state);
-    color.g.to_bits().hash(state);
-    color.b.to_bits().hash(state);
-    color.a.to_bits().hash(state);
+/// Bucket size for the elapsed-time dependency of both monitor tables.
+///
+/// The Connected / Time columns render "now − t" (seconds granularity under
+/// one minute), so the lazy hash includes now divided into 10-second buckets:
+/// displayed ages stay near-live while the cache still absorbs the frames in
+/// between. Worst case is one small-table rebuild every 10 seconds, and only
+/// while the panel is open.
+const ELAPSED_TIME_BUCKET_SECS: i64 = 10;
+
+/// Current elapsed-time bucket (see [`ELAPSED_TIME_BUCKET_SECS`]). Uses the
+/// same clock as `format_elapsed_time` so bucket ticks and rendered ages
+/// agree.
+fn elapsed_time_bucket() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+        / ELAPSED_TIME_BUCKET_SECS
 }
 
 /// Dependencies for lazy connection table rendering
@@ -59,24 +72,49 @@ struct ConnectionTableDeps {
     admin_color: iced::Color,
     shared_color: iced::Color,
     permissions: ConnectionMonitorPermissions,
+    /// Keeps the rendered "connected for" ages live under the lazy cache.
+    elapsed_bucket: i64,
 }
 
 impl Hash for ConnectionTableDeps {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.connections.len().hash(state);
-        for conn in &self.connections {
-            conn.nickname.hash(state);
-            conn.username.hash(state);
-            conn.ip.hash(state);
-            conn.login_time.hash(state);
-            conn.is_admin.hash(state);
-            conn.is_shared.hash(state);
+        // Full destructure of the deps and of every connection: adding a
+        // field to either struct fails to compile until it is hashed or
+        // excluded.
+        let Self {
+            connections,
+            sort_column,
+            sort_ascending,
+            admin_color,
+            shared_color,
+            permissions,
+            elapsed_bucket,
+        } = self;
+        connections.len().hash(state);
+        for ConnectionInfo {
+            nickname,
+            username,
+            ip,
+            login_time,
+            is_admin,
+            is_shared,
+            // Not rendered (the IP column shows the address without port).
+            port: _,
+        } in connections.iter()
+        {
+            nickname.hash(state);
+            username.hash(state);
+            ip.hash(state);
+            login_time.hash(state);
+            is_admin.hash(state);
+            is_shared.hash(state);
         }
-        self.sort_column.hash(state);
-        self.sort_ascending.hash(state);
-        self.permissions.hash(state);
-        hash_color(self.admin_color, state);
-        hash_color(self.shared_color, state);
+        sort_column.hash(state);
+        sort_ascending.hash(state);
+        permissions.hash(state);
+        elapsed_bucket.hash(state);
+        hash_color(*admin_color, state);
+        hash_color(*shared_color, state);
     }
 }
 
@@ -88,27 +126,54 @@ struct TransferTableDeps {
     sort_ascending: bool,
     admin_color: iced::Color,
     shared_color: iced::Color,
+    /// Keeps the rendered "started ago" ages live under the lazy cache.
+    elapsed_bucket: i64,
 }
 
 impl Hash for TransferTableDeps {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.transfers.len().hash(state);
-        for transfer in &self.transfers {
-            transfer.nickname.hash(state);
-            transfer.username.hash(state);
-            transfer.ip.hash(state);
-            transfer.direction.hash(state);
-            transfer.path.hash(state);
-            transfer.total_size.hash(state);
-            transfer.bytes_transferred.hash(state);
-            transfer.started_at.hash(state);
-            transfer.is_admin.hash(state);
-            transfer.is_shared.hash(state);
+        // Full destructure of the deps and of every transfer: adding a field
+        // to either struct fails to compile until it is hashed or excluded.
+        let Self {
+            transfers,
+            sort_column,
+            sort_ascending,
+            admin_color,
+            shared_color,
+            elapsed_bucket,
+        } = self;
+        transfers.len().hash(state);
+        for TransferInfo {
+            nickname,
+            username,
+            ip,
+            is_admin,
+            is_shared,
+            direction,
+            path,
+            total_size,
+            bytes_transferred,
+            started_at,
+            // Not rendered (the IP column shows the address without port).
+            port: _,
+        } in transfers.iter()
+        {
+            nickname.hash(state);
+            username.hash(state);
+            ip.hash(state);
+            direction.hash(state);
+            path.hash(state);
+            total_size.hash(state);
+            bytes_transferred.hash(state);
+            started_at.hash(state);
+            is_admin.hash(state);
+            is_shared.hash(state);
         }
-        self.sort_column.hash(state);
-        self.sort_ascending.hash(state);
-        hash_color(self.admin_color, state);
-        hash_color(self.shared_color, state);
+        sort_column.hash(state);
+        sort_ascending.hash(state);
+        elapsed_bucket.hash(state);
+        hash_color(*admin_color, state);
+        hash_color(*shared_color, state);
     }
 }
 
@@ -897,6 +962,7 @@ fn connections_tab_content<'a>(
                     admin_color: chat::admin(theme),
                     shared_color: chat::shared(theme),
                     permissions,
+                    elapsed_bucket: elapsed_time_bucket(),
                 };
 
                 lazy_connection_table(deps)
@@ -962,6 +1028,7 @@ fn transfers_tab_content<'a>(
                     sort_ascending: state.transfer_sort_ascending,
                     admin_color: chat::admin(theme),
                     shared_color: chat::shared(theme),
+                    elapsed_bucket: elapsed_time_bucket(),
                 };
 
                 lazy_transfer_table(deps)
@@ -1127,6 +1194,7 @@ mod tests {
             admin_color: iced::Color::from_rgb(1.0, 0.0, 0.0),
             shared_color: iced::Color::from_rgb(0.5, 0.5, 0.5),
             permissions: sample_permissions(),
+            elapsed_bucket: 100,
         }
     }
 
@@ -1139,6 +1207,7 @@ mod tests {
 
     #[test]
     fn connection_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_connection_hash_changes(|d| d.elapsed_bucket += 1);
         assert_connection_hash_changes(|d| d.connections[0].nickname = "Bob".to_string());
         assert_connection_hash_changes(|d| d.connections[0].username = "bob".to_string());
         assert_connection_hash_changes(|d| d.connections[0].ip = "192.0.2.2".to_string());
@@ -1175,6 +1244,7 @@ mod tests {
             sort_ascending: true,
             admin_color: iced::Color::from_rgb(1.0, 0.0, 0.0),
             shared_color: iced::Color::from_rgb(0.5, 0.5, 0.5),
+            elapsed_bucket: 100,
         }
     }
 
@@ -1187,6 +1257,7 @@ mod tests {
 
     #[test]
     fn transfer_table_deps_hash_changes_on_rendered_and_action_fields() {
+        assert_transfer_hash_changes(|d| d.elapsed_bucket += 1);
         assert_transfer_hash_changes(|d| d.transfers[0].nickname = "Bob".to_string());
         assert_transfer_hash_changes(|d| d.transfers[0].username = "bob".to_string());
         assert_transfer_hash_changes(|d| d.transfers[0].ip = "192.0.2.2".to_string());

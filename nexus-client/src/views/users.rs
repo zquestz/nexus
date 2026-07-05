@@ -20,7 +20,7 @@ use super::constants::{
     GUEST_USERNAME, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT,
 };
 use super::groups::{group_form_view, group_list_content};
-use super::helpers::{sort_icon_or_placeholder, t_args, tab_toolbar_icon_button};
+use super::helpers::{hash_color, sort_icon_or_placeholder, t_args, tab_toolbar_icon_button};
 use super::layout::scrollable_panel;
 use super::password_strength::password_strength_bar;
 use crate::i18n::{t, translate_permission};
@@ -41,17 +41,6 @@ use crate::types::{
     UserManagementState, UserManagementTab,
 };
 use crate::widgets::MenuButton;
-
-// ============================================================================
-// Edit User Context
-// ============================================================================
-
-fn hash_color<H: Hasher>(color: iced::Color, state: &mut H) {
-    color.r.to_bits().hash(state);
-    color.g.to_bits().hash(state);
-    color.b.to_bits().hash(state);
-    color.a.to_bits().hash(state);
-}
 
 // ============================================================================
 // Group Option (for pick_list dropdown)
@@ -340,22 +329,53 @@ struct UserTableDeps {
 
 impl Hash for UserTableDeps {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.users.len().hash(state);
-        for user in &self.users {
-            user.id.hash(state);
-            user.username.hash(state);
-            user.is_admin.hash(state);
-            user.is_shared.hash(state);
-            user.group_name.hash(state);
+        // Full destructure of the deps and of every user: adding a field to
+        // either struct fails to compile until it is hashed or excluded.
+        let Self {
+            users,
+            sort_column,
+            sort_ascending,
+            can_edit,
+            can_delete,
+            is_admin,
+            current_username,
+            admin_color,
+            shared_color,
+        } = self;
+        users.len().hash(state);
+        for UserInfo {
+            id,
+            username,
+            is_admin: user_is_admin,
+            is_shared,
+            group_name,
+            // Not rendered by this table (Username + Group columns and the
+            // row context menu only).
+            nickname: _,
+            login_time: _,
+            session_ids: _,
+            locale: _,
+            avatar: _,
+            is_away: _,
+            status: _,
+            group_id: _,
+            bandwidth_weight: _,
+        } in users.iter()
+        {
+            id.hash(state);
+            username.hash(state);
+            user_is_admin.hash(state);
+            is_shared.hash(state);
+            group_name.hash(state);
         }
-        self.sort_column.hash(state);
-        self.sort_ascending.hash(state);
-        self.can_edit.hash(state);
-        self.can_delete.hash(state);
-        self.is_admin.hash(state);
-        self.current_username.hash(state);
-        hash_color(self.admin_color, state);
-        hash_color(self.shared_color, state);
+        sort_column.hash(state);
+        sort_ascending.hash(state);
+        can_edit.hash(state);
+        can_delete.hash(state);
+        is_admin.hash(state);
+        current_username.hash(state);
+        hash_color(*admin_color, state);
+        hash_color(*shared_color, state);
     }
 }
 
