@@ -14,20 +14,6 @@
 
 These are the remaining non-urgent items from the 0.9.5 hardening pass.
 
-### Chat Message Render Cache
-
-`nexus-client/src/views/chat.rs` still rebuilds the active message list during
-every `view()` and re-runs `linkify` for each visible message line.
-
-Recommended path:
-
-- Wrap the message list in `lazy()` using a `ChatMessagesDeps` value.
-- Hash the active tab identity, visible message count/content/timestamps, font
-  size, timestamp settings, and theme/palette inputs.
-- Keep the hash complete; stale chat rendering is worse than an extra rebuild.
-- Add tests proving the dependency hash changes on message, tab, font,
-  timestamp, and theme changes.
-
 ### User Update Handler Decomposition
 
 `nexus-server/src/handlers/user_update.rs::handle_user_update` still has a very

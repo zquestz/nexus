@@ -39,7 +39,7 @@ impl Default for ScrollState {
 }
 
 /// Type of chat message (prevents nickname spoofing)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum MessageType {
     /// Regular chat message from a user
     #[default]
@@ -68,7 +68,9 @@ pub struct ChatMessage {
     pub message: String,
     /// Type of message (determines rendering style)
     pub message_type: MessageType,
-    /// When the message was received (defaults to now if not specified)
+    /// When the message was received. Constructors stamp this at creation so
+    /// rendering is a pure function of the message (required by the lazy
+    /// message-list cache; also keeps displayed times fixed at arrival).
     pub timestamp: Option<DateTime<Local>>,
     /// Whether the sender is an admin (for nickname coloring)
     pub is_admin: bool,
@@ -105,7 +107,7 @@ impl ChatMessage {
             nickname: String::new(),
             message: message.into(),
             message_type: MessageType::System,
-            timestamp: None,
+            timestamp: Some(Local::now()),
             is_admin: false,
             is_shared: false,
             action: ChatAction::Normal,
@@ -118,7 +120,7 @@ impl ChatMessage {
             nickname: String::new(),
             message: message.into(),
             message_type: MessageType::Error,
-            timestamp: None,
+            timestamp: Some(Local::now()),
             is_admin: false,
             is_shared: false,
             action: ChatAction::Normal,
@@ -131,7 +133,7 @@ impl ChatMessage {
             nickname: String::new(),
             message: message.into(),
             message_type: MessageType::Info,
-            timestamp: None,
+            timestamp: Some(Local::now()),
             is_admin: false,
             is_shared: false,
             action: ChatAction::Normal,
@@ -161,7 +163,7 @@ impl ChatMessage {
             nickname: username.into(),
             message: message.into(),
             message_type: MessageType::Broadcast,
-            timestamp: None,
+            timestamp: Some(Local::now()),
             is_admin: false,
             is_shared: false,
             action: ChatAction::Normal,

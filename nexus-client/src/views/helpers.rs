@@ -1,8 +1,10 @@
 //! Shared helper functions for view rendering
 
+use std::hash::{Hash, Hasher};
+
 use chrono::{DateTime, Local, TimeZone, Utc};
 use iced::widget::{Space, Text, button, container, tooltip};
-use iced::{Element, alignment};
+use iced::{Color, Element, alignment};
 
 use crate::i18n::t;
 use crate::icon;
@@ -28,6 +30,19 @@ const BYTES_PER_TB: u64 = BYTES_PER_GB * 1024;
 /// Convenience wrapper for `crate::i18n::t_args` to avoid verbose imports in view modules
 pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
     crate::i18n::t_args(key, args)
+}
+
+/// Hash an exact color by component bits.
+///
+/// For `lazy()` dependency structs that bake theme colors into the widget
+/// tree at build time (rich-text spans and color-parameterized styles):
+/// hashing the precise bits means any palette change — including edits to a
+/// custom theme — invalidates the cache.
+pub(crate) fn hash_color<H: Hasher>(color: &Color, state: &mut H) {
+    color.r.to_bits().hash(state);
+    color.g.to_bits().hash(state);
+    color.b.to_bits().hash(state);
+    color.a.to_bits().hash(state);
 }
 
 /// Format bytes as a human-readable string with B/KB/MB/GB/TB units.

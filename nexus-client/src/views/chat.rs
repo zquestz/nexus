@@ -1,9 +1,11 @@
 //! Chat interface for active server connections
 
+use std::hash::{Hash, Hasher};
+
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, button, column, container, rich_text, row, scrollable, span, text::Rich, tooltip,
+    Column, button, column, container, lazy, rich_text, row, scrollable, span, text::Rich, tooltip,
 };
 use iced::{Color, Element, Fill, Font, Theme};
 use linkify::{LinkFinder, LinkKind};
@@ -11,6 +13,7 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::ChatAction;
 use once_cell::sync::Lazy;
 
+use super::helpers::hash_color;
 use crate::i18n::t;
 use crate::network::FEATURE_VOICE;
 use crate::style::{
@@ -20,7 +23,7 @@ use crate::style::{
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat, chat_tab_active_style, close_button_on_primary_style,
     content_background_style, shaped_text, tooltip_container_style,
 };
-use crate::types::{ChatTab, Message, MessageType, ScrollableId, ServerConnection};
+use crate::types::{ChatMessage, ChatTab, Message, MessageType, ScrollableId, ServerConnection};
 use crate::views::constants::PERMISSION_VOICE_LISTEN;
 use crate::views::voice::{build_input_row_with_voice, build_voice_bar};
 
@@ -56,7 +59,7 @@ pub struct ChatViewStyle {
 // ============================================================================
 
 /// Settings for timestamp display in chat messages
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct TimestampSettings {
     /// Whether to show timestamps at all
     pub show_timestamps: bool,
@@ -202,6 +205,130 @@ fn styled_message<'a>(
         .width(Fill);
 
     text_widget.into()
+}
+
+// ============================================================================
+// Lazy Dependencies
+// ============================================================================
+
+/// Theme colors baked into message rich-text spans at build time (spans
+/// require concrete colors — there is no draw-time style closure for them).
+/// Hashed by exact color bits so any palette change rebuilds.
+#[derive(Clone)]
+struct ChatColors {
+    timestamp: Color,
+    system: Color,
+    error: Color,
+    info: Color,
+    broadcast: Color,
+    admin: Color,
+    shared: Color,
+    text: Color,
+    link: Color,
+}
+
+impl ChatColors {
+    fn from_theme(theme: &Theme) -> Self {
+        Self {
+            timestamp: chat::timestamp(theme),
+            system: chat::system(theme),
+            error: chat::error(theme),
+            info: chat::info(theme),
+            broadcast: chat::broadcast(theme),
+            admin: chat::admin(theme),
+            shared: chat::shared(theme),
+            text: chat::text(theme),
+            link: theme.palette().primary,
+        }
+    }
+}
+
+impl Hash for ChatColors {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Full destructure: adding a field fails to compile until it is
+        // explicitly hashed here.
+        let Self {
+            timestamp,
+            system,
+            error,
+            info,
+            broadcast,
+            admin,
+            shared,
+            text,
+            link,
+        } = self;
+        hash_color(timestamp, state);
+        hash_color(system, state);
+        hash_color(error, state);
+        hash_color(info, state);
+        hash_color(broadcast, state);
+        hash_color(admin, state);
+        hash_color(shared, state);
+        hash_color(text, state);
+        hash_color(link, state);
+    }
+}
+
+/// Dependencies for the lazy message list.
+///
+/// Borrows the active tab's messages directly: a cache-hit frame costs one
+/// hash pass over the tab's content with no allocations, and the render
+/// closure only runs (cloning into `'static` rich text, as every frame did
+/// before the cache) when the hash changes. The closure reads only this
+/// struct, so it cannot depend on state that isn't hashed. The i18n locale
+/// is fixed at launch, so the `t()` prefixes inside the closure cannot go
+/// stale.
+///
+/// Known trade-off: the hash is linear in the tab's history size on every
+/// `view()` call (histories are uncapped). That is orders of magnitude
+/// cheaper than the pre-cache full rebuild + linkify over the same history;
+/// if profiling ever shows it mattering, the escalation path is an
+/// append-time rolling hash or list virtualization — not a partial hash,
+/// which would reintroduce stale rendering.
+struct ChatMessagesDeps<'a> {
+    messages: &'a [ChatMessage],
+    font_size: u8,
+    timestamps: TimestampSettings,
+    colors: ChatColors,
+}
+
+impl Hash for ChatMessagesDeps<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Full destructure of the deps and of every message: adding a field
+        // to either struct fails to compile until it is hashed or excluded.
+        let Self {
+            messages,
+            font_size,
+            timestamps,
+            colors,
+        } = self;
+        messages.len().hash(state);
+        for ChatMessage {
+            nickname,
+            message,
+            message_type,
+            timestamp,
+            is_admin,
+            is_shared,
+            action,
+        } in messages.iter()
+        {
+            nickname.hash(state);
+            message.hash(state);
+            message_type.hash(state);
+            timestamp
+                .as_ref()
+                .map(|t| (t.timestamp(), t.timestamp_subsec_nanos()))
+                .hash(state);
+            is_admin.hash(state);
+            is_shared.hash(state);
+            action.hash(state);
+        }
+        font_size.hash(state);
+        timestamps.hash(state);
+        colors.hash(state);
+    }
 }
 
 // ============================================================================
@@ -352,8 +479,8 @@ struct MessageRenderContext<'a> {
     line: &'a str,
     /// Type of message (Chat, System, Error, etc.)
     message_type: MessageType,
-    /// Current theme for colors
-    theme: &'a Theme,
+    /// Baked theme colors from the dependency struct
+    colors: &'a ChatColors,
     /// Whether the sender is an admin
     is_admin: bool,
     /// Whether the sender is a shared account user
@@ -366,12 +493,12 @@ struct MessageRenderContext<'a> {
 
 /// Build a rich text element for a single message line
 fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Message> {
-    let timestamp_color = chat::timestamp(ctx.theme);
-    let link_color = ctx.theme.palette().primary;
+    let timestamp_color = ctx.colors.timestamp;
+    let link_color = ctx.colors.link;
 
     match ctx.message_type {
         MessageType::System => {
-            let color = chat::system(ctx.theme);
+            let color = ctx.colors.system;
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
@@ -388,7 +515,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
             )
         }
         MessageType::Error => {
-            let color = chat::error(ctx.theme);
+            let color = ctx.colors.error;
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
@@ -405,7 +532,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
             )
         }
         MessageType::Info => {
-            let color = chat::info(ctx.theme);
+            let color = ctx.colors.info;
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
@@ -422,7 +549,7 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
             )
         }
         MessageType::Broadcast => {
-            let color = chat::broadcast(ctx.theme);
+            let color = ctx.colors.broadcast;
             let style = MessageStyle {
                 timestamp_color,
                 prefix_color: color,
@@ -440,13 +567,13 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
         }
         MessageType::Chat => {
             let username_color = if ctx.is_admin {
-                chat::admin(ctx.theme)
+                ctx.colors.admin
             } else if ctx.is_shared {
-                chat::shared(ctx.theme)
+                ctx.colors.shared
             } else {
-                chat::text(ctx.theme)
+                ctx.colors.text
             };
-            let text_color = chat::text(ctx.theme);
+            let text_color = ctx.colors.text;
 
             // Handle action messages (/me)
             let (prefix, is_action) = match ctx.action {
@@ -473,14 +600,9 @@ fn render_message_line(ctx: MessageRenderContext<'_>) -> Element<'static, Messag
 // Message List
 // ============================================================================
 
-/// Build the message list column for the active chat tab
-fn build_message_list<'a>(
-    conn: &'a ServerConnection,
-    theme: &Theme,
-    font_size: f32,
-    timestamp_settings: TimestampSettings,
-) -> Column<'a, Message> {
-    let messages = match &conn.active_chat_tab {
+/// Messages of the active chat tab
+fn active_tab_messages(conn: &ServerConnection) -> &[ChatMessage] {
+    match &conn.active_chat_tab {
         ChatTab::Console => conn.console_messages.as_slice(),
         ChatTab::Channel(channel) => {
             let channel_lower = fold_name(channel);
@@ -493,12 +615,17 @@ fn build_message_list<'a>(
             .user_messages_for(nickname)
             .map(|v| v.as_slice())
             .unwrap_or(&[]),
-    };
+    }
+}
 
+/// Render the message list column from resolved deps only (called inside
+/// `lazy()`).
+fn render_message_list(deps: &ChatMessagesDeps<'_>) -> Element<'static, Message> {
+    let font_size = f32::from(deps.font_size);
     let mut chat_column = Column::new().spacing(CHAT_SPACING).padding(INPUT_PADDING);
 
-    for msg in messages {
-        let time_str = timestamp_settings.format(&msg.get_timestamp());
+    for msg in deps.messages {
+        let time_str = deps.timestamps.format(&msg.get_timestamp());
 
         // Split message into lines to prevent spoofing via embedded newlines
         // Each line is displayed with the same timestamp/username prefix
@@ -508,7 +635,7 @@ fn build_message_list<'a>(
                 nickname: &msg.nickname,
                 line,
                 message_type: msg.message_type,
-                theme,
+                colors: &deps.colors,
                 is_admin: msg.is_admin,
                 is_shared: msg.is_shared,
                 font_size,
@@ -518,7 +645,7 @@ fn build_message_list<'a>(
         }
     }
 
-    chat_column
+    chat_column.into()
 }
 
 // ============================================================================
@@ -605,23 +732,29 @@ pub fn chat_view<'a>(
         is_deafened,
         mic_level,
     } = voice;
-    // Most downstream call sites need the font size as f32; shadow with
-    // the converted value so we don't carry a `_f32` suffix everywhere.
-    let font_size = f32::from(font_size);
-
     // Build tab bar
     let (tab_row, has_closeable_tabs) = build_tab_bar(conn);
     let tab_bar = tab_row.wrap();
 
-    // Build message list
-    let chat_column = build_message_list(conn, &theme, font_size, timestamps);
-
-    let chat_scrollable = scrollable(chat_column)
+    // Lazy message list: the column is rebuilt only when the dependency
+    // hash changes. The scrollable stays outside the cache so its id,
+    // on_scroll, and snap-to-bottom behavior are untouched.
+    let deps = ChatMessagesDeps {
+        messages: active_tab_messages(conn),
+        font_size,
+        timestamps,
+        colors: ChatColors::from_theme(&theme),
+    };
+    let chat_scrollable = scrollable(lazy(deps, |deps| render_message_list(deps)))
         .id(ScrollableId::ChatMessages)
         .on_scroll(Message::ChatScrolled)
         .direction(Direction::Vertical(Scrollbar::default()))
         .width(Fill)
         .height(Fill);
+
+    // Downstream call sites need the font size as f32; shadow with the
+    // converted value so we don't carry a `_f32` suffix everywhere.
+    let font_size = f32::from(font_size);
 
     // `voice` gates client support, `voice_listen` gates joining/listening,
     // and `voice_talk` only gates transmit.
@@ -669,7 +802,11 @@ pub fn chat_view<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::make_openable_url;
+    use std::hash::DefaultHasher;
+
+    use chrono::{DateTime, Local};
+
+    use super::*;
 
     #[test]
     fn make_openable_url_preserves_allowed_schemes() {
@@ -702,5 +839,188 @@ mod tests {
     #[test]
     fn make_openable_url_defaults_schemeless_to_https() {
         assert_eq!(make_openable_url("example.com"), "https://example.com");
+    }
+
+    // ------------------------------------------------------------------
+    // Deps hash sensitivity
+    //
+    // The lazy() cache reuses the message-list widget tree whenever the
+    // deps hash is unchanged, so every rendered fact must move the hash.
+    // Each case mutates one dependency and asserts the hash changes.
+    // ------------------------------------------------------------------
+
+    fn ts(secs: i64) -> DateTime<Local> {
+        DateTime::from_timestamp(secs, 0)
+            .expect("valid test timestamp")
+            .with_timezone(&Local)
+    }
+
+    fn test_message(text: &str) -> ChatMessage {
+        ChatMessage {
+            nickname: "alice".to_string(),
+            message: text.to_string(),
+            message_type: MessageType::Chat,
+            timestamp: Some(ts(1_700_000_000)),
+            is_admin: false,
+            is_shared: false,
+            action: ChatAction::Normal,
+        }
+    }
+
+    fn test_timestamp_settings() -> TimestampSettings {
+        TimestampSettings {
+            show_timestamps: true,
+            use_24_hour_time: true,
+            show_seconds: false,
+        }
+    }
+
+    fn hash_deps(
+        messages: &[ChatMessage],
+        font_size: u8,
+        timestamps: TimestampSettings,
+        colors: &ChatColors,
+    ) -> u64 {
+        let deps = ChatMessagesDeps {
+            messages,
+            font_size,
+            timestamps,
+            colors: colors.clone(),
+        };
+        let mut hasher = DefaultHasher::new();
+        deps.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn deps_hash_changes_on_message_content() {
+        let colors = ChatColors::from_theme(&Theme::Dark);
+        let settings = test_timestamp_settings();
+        let base = vec![test_message("hello"), test_message("world")];
+        let base_hash = hash_deps(&base, 14, settings, &colors);
+
+        // Message text
+        let mut messages = base.clone();
+        messages[0].message = "hello!".to_string();
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "message text"
+        );
+
+        // Sender nickname
+        let mut messages = base.clone();
+        messages[0].nickname = "bob".to_string();
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "nickname"
+        );
+
+        // Message type (rendering style)
+        let mut messages = base.clone();
+        messages[0].message_type = MessageType::System;
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "message type"
+        );
+
+        // Sender admin/shared flags (nickname color)
+        let mut messages = base.clone();
+        messages[0].is_admin = true;
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "admin flag"
+        );
+        let mut messages = base.clone();
+        messages[1].is_shared = true;
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "shared flag"
+        );
+
+        // Action (/me formatting)
+        let mut messages = base.clone();
+        messages[0].action = ChatAction::Me;
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "action"
+        );
+
+        // Timestamp (rendered prefix)
+        let mut messages = base.clone();
+        messages[0].timestamp = Some(ts(1_700_000_060));
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "timestamp"
+        );
+
+        // Message added / removed
+        let mut messages = base.clone();
+        messages.push(test_message("third"));
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "message added"
+        );
+        let mut messages = base.clone();
+        messages.pop();
+        assert_ne!(
+            hash_deps(&messages, 14, settings, &colors),
+            base_hash,
+            "message removed"
+        );
+    }
+
+    #[test]
+    fn deps_hash_changes_on_presentation_settings() {
+        let colors = ChatColors::from_theme(&Theme::Dark);
+        let settings = test_timestamp_settings();
+        let base = vec![test_message("hello")];
+        let base_hash = hash_deps(&base, 14, settings, &colors);
+
+        // Font size
+        assert_ne!(
+            hash_deps(&base, 16, settings, &colors),
+            base_hash,
+            "font size"
+        );
+
+        // Each timestamp setting
+        let mut changed = settings;
+        changed.show_timestamps = false;
+        assert_ne!(
+            hash_deps(&base, 14, changed, &colors),
+            base_hash,
+            "show_timestamps"
+        );
+        let mut changed = settings;
+        changed.use_24_hour_time = false;
+        assert_ne!(
+            hash_deps(&base, 14, changed, &colors),
+            base_hash,
+            "use_24_hour_time"
+        );
+        let mut changed = settings;
+        changed.show_seconds = true;
+        assert_ne!(
+            hash_deps(&base, 14, changed, &colors),
+            base_hash,
+            "show_seconds"
+        );
+
+        // Theme color change
+        let mut changed_colors = colors.clone();
+        changed_colors.link = Color::from_rgb(0.1, 0.2, 0.3);
+        assert_ne!(
+            hash_deps(&base, 14, settings, &changed_colors),
+            base_hash,
+            "link color"
+        );
     }
 }

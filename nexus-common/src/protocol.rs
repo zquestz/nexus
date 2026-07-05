@@ -16,7 +16,7 @@ use uuid::Uuid;
 /// Determines how a message is rendered:
 /// - `Normal`: Standard message with brackets (e.g., `<alice> hello`)
 /// - `Me`: Action format (e.g., `*** alice waves`)
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChatAction {
     #[default]
     Normal,

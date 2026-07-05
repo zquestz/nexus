@@ -30,6 +30,7 @@ use super::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE,
     PERMISSION_VOICE_LISTEN,
 };
+use super::helpers::hash_color;
 use crate::avatar::{avatar_cache_key, generate_identicon};
 use crate::i18n::t;
 use crate::icon;
@@ -291,13 +292,6 @@ impl ThemeColors {
             danger: theme.palette().danger,
         }
     }
-}
-
-fn hash_color<H: Hasher>(color: &Color, state: &mut H) {
-    color.r.to_bits().hash(state);
-    color.g.to_bits().hash(state);
-    color.b.to_bits().hash(state);
-    color.a.to_bits().hash(state);
 }
 
 impl Hash for ThemeColors {
