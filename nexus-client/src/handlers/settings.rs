@@ -962,10 +962,15 @@ mod tests {
     #[test]
     fn settings_save_failure_stores_error_in_visible_form_slot() {
         let config = Config::default();
-        let mut settings_form = Some(SettingsFormState::new(
+        // with_devices: tests must not enumerate audio hardware (see the
+        // constructor doc — concurrent WASAPI/COM first-init crashed
+        // Windows CI).
+        let mut settings_form = Some(SettingsFormState::with_devices(
             &config,
             SettingsTab::General,
             EventType::default(),
+            Vec::new(),
+            Vec::new(),
         ));
 
         let saved =
@@ -985,10 +990,12 @@ mod tests {
     #[test]
     fn settings_save_success_reports_saved_without_setting_form_error() {
         let config = Config::default();
-        let mut settings_form = Some(SettingsFormState::new(
+        let mut settings_form = Some(SettingsFormState::with_devices(
             &config,
             SettingsTab::General,
             EventType::default(),
+            Vec::new(),
+            Vec::new(),
         ));
 
         let saved = persist_settings_config(&config, &mut settings_form, |_| Ok(()));

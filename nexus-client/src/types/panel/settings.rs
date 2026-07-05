@@ -94,16 +94,39 @@ impl SettingsFormState {
     /// The `last_tab` parameter restores the previously selected tab when reopening the panel.
     /// The `last_event_type` parameter restores the previously selected event type in the Events tab.
     pub fn new(config: &Config, last_tab: SettingsTab, last_event_type: EventType) -> Self {
+        // Cache audio device lists once when settings opens (avoids ALSA spam on every frame)
+        let output_devices = crate::voice::audio::list_output_devices();
+        let input_devices = crate::voice::audio::list_input_devices();
+
+        Self::with_devices(
+            config,
+            last_tab,
+            last_event_type,
+            output_devices,
+            input_devices,
+        )
+    }
+
+    /// [`Self::new`] with the audio device lists injected instead of scanned.
+    ///
+    /// Unit tests MUST use this (with empty lists): device enumeration goes
+    /// through cpal — WASAPI/COM on Windows — and two tests hitting that
+    /// native first-init concurrently on libtest worker threads intermittently
+    /// crashed the whole test process with STATUS_ACCESS_VIOLATION on Windows
+    /// CI. Tests have no business enumerating hardware anyway.
+    pub fn with_devices(
+        config: &Config,
+        last_tab: SettingsTab,
+        last_event_type: EventType,
+        output_devices: Vec<crate::voice::audio::AudioDevice>,
+        input_devices: Vec<crate::voice::audio::AudioDevice>,
+    ) -> Self {
         // Decode avatar from config if present
         let cached_avatar = config.settings.avatar.as_ref().and_then(|data_uri| {
             decode_data_uri_square(data_uri, AVATAR_MAX_CACHE_SIZE, ImageDecodeProfile::Avatar)
         });
         // Generate default avatar for settings preview
         let default_avatar = generate_identicon("default");
-
-        // Cache audio device lists once when settings opens (avoids ALSA spam on every frame)
-        let output_devices = crate::voice::audio::list_output_devices();
-        let input_devices = crate::voice::audio::list_input_devices();
 
         Self {
             active_tab: last_tab,
