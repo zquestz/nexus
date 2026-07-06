@@ -1392,7 +1392,7 @@ mod tests {
             |e| e.address = "other.example".to_string(),
             |e| e.port = 7600,
             |e| e.websocket_port = Some(8502),
-            |e| e.version = "0.9.6".to_string(),
+            |e| e.version = "0.9.7".to_string(),
             |e| e.user_count = 7,
             |e| e.allows_guest = false,
         ] {

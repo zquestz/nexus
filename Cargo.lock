@@ -947,9 +947,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.65"
+version = "1.2.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e228eec9be7c17ccb640b59b36a5cd805ea2a564a4c5e162c2f659fea30d3b96"
+checksum = "f5d6cac793997bd970000024b2934968efe83b382de4fdcf4fcb46b6ee4ad996"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -4149,9 +4149,9 @@ dependencies = [
 
 [[package]]
 name = "lzma-rust2"
-version = "0.16.4"
+version = "0.16.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce716bf1a316f47a280fc76295f6495b5bea4752bca01c3b3885e101b1c23c02"
+checksum = "ca93e534d1142d1d0dcca6d25fe302508a5dfb40b302802904577725ea0b695b"
 dependencies = [
  "sha2 0.11.0",
 ]
@@ -4426,7 +4426,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-client"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "async-trait",
  "audioadapter-buffers",
@@ -4487,7 +4487,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-common"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "base64",
  "blake3",
@@ -4522,7 +4522,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-server"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "argon2",
  "async-trait",
