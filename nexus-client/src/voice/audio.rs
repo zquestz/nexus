@@ -21,7 +21,15 @@ use nexus_common::voice::{
 };
 
 use super::resample::{InputResampler, OutputResampler, needs_resampling};
-use crate::constants::ERR_MIXER_BUFFER_MISSING_AFTER_INSERT;
+use crate::constants::{
+    ERR_AUDIO_CAPTURE, ERR_AUDIO_CAPTURE_START, ERR_AUDIO_INPUT_CONFIGS,
+    ERR_AUDIO_INPUT_DEVICE_NOT_FOUND, ERR_AUDIO_INPUT_NO_CONFIGS, ERR_AUDIO_INPUT_NO_MATCH,
+    ERR_AUDIO_INPUT_RESAMPLER, ERR_AUDIO_INPUT_STREAM_BUILD, ERR_AUDIO_MIXER,
+    ERR_AUDIO_MIXER_START, ERR_AUDIO_MIXER_STREAM_BUILD, ERR_AUDIO_OUTPUT_CONFIGS,
+    ERR_AUDIO_OUTPUT_DEVICE_NOT_FOUND, ERR_AUDIO_OUTPUT_NO_CONFIGS, ERR_AUDIO_OUTPUT_NO_MATCH,
+    ERR_AUDIO_OUTPUT_RESAMPLER, ERR_AUDIO_STEREO_INPUT_STREAM_BUILD,
+    ERR_AUDIO_STEREO_MIXER_STREAM_BUILD, ERR_MIXER_BUFFER_MISSING_AFTER_INSERT,
+};
 
 // =============================================================================
 // Constants
@@ -203,11 +211,11 @@ struct AudioConfig {
 fn find_best_input_config(device: &Device) -> Result<AudioConfig, String> {
     let configs: Vec<_> = device
         .supported_input_configs()
-        .map_err(|e| format!("Failed to get supported input configs: {}", e))?
+        .map_err(|e| format!("{ERR_AUDIO_INPUT_CONFIGS}: {e}"))?
         .collect();
 
     if configs.is_empty() {
-        return Err("Input device has no supported configurations".to_string());
+        return Err(ERR_AUDIO_INPUT_NO_CONFIGS.to_string());
     }
 
     // Try 48kHz first (no resampling needed)
@@ -272,24 +280,47 @@ fn find_best_input_config(device: &Device) -> Result<AudioConfig, String> {
         }
     }
 
-    Err("Input device has no supported audio configuration".to_string())
+    Err(ERR_AUDIO_INPUT_NO_MATCH.to_string())
 }
 
 /// Find the best output configuration for a device
 ///
 /// Priority:
-/// 1. Stereo at 48kHz with best format (no resampling needed)
-/// 2. Mono at 48kHz with best format (no resampling needed)
-/// 3. Stereo at any rate with best format (will resample)
-/// 4. Mono at any rate with best format (will resample)
+/// 1. The device's default config when mono/stereo with a supported
+///    format (native, always buildable; any rate — we resample)
+/// 2. Stereo at 48kHz with best format (no resampling needed)
+/// 3. Mono at 48kHz with best format (no resampling needed)
+/// 4. Stereo at any rate with best format (will resample)
+/// 5. Mono at any rate with best format (will resample)
 fn find_best_output_config(device: &Device) -> Result<AudioConfig, String> {
+    // The default config is the device's native (shared-mode mix) format
+    // — the only one WASAPI guarantees to accept. cpal 0.18's output
+    // path rejects convertible-but-non-native formats before its own
+    // auto-convert flag applies, while its enumeration still advertises
+    // them, so an enumerated 48kHz config can fail to build on a device
+    // that mixes at another rate. Preferring the native format sidesteps
+    // that; the render path resamples and both channel layouts have
+    // mixer builders.
+    if let Ok(default) = device.default_output_config() {
+        let channels = default.channels();
+        if (channels == MONO || channels == STEREO)
+            && SUPPORTED_FORMATS.contains(&default.sample_format())
+        {
+            return Ok(AudioConfig {
+                channels,
+                sample_rate: default.sample_rate(),
+                sample_format: default.sample_format(),
+            });
+        }
+    }
+
     let configs: Vec<_> = device
         .supported_output_configs()
-        .map_err(|e| format!("Failed to get supported output configs: {}", e))?
+        .map_err(|e| format!("{ERR_AUDIO_OUTPUT_CONFIGS}: {e}"))?
         .collect();
 
     if configs.is_empty() {
-        return Err("Output device has no supported configurations".to_string());
+        return Err(ERR_AUDIO_OUTPUT_NO_CONFIGS.to_string());
     }
 
     // Try 48kHz first (no resampling needed)
@@ -353,7 +384,7 @@ fn find_best_output_config(device: &Device) -> Result<AudioConfig, String> {
         }
     }
 
-    Err("Output device has no supported audio configuration".to_string())
+    Err(ERR_AUDIO_OUTPUT_NO_MATCH.to_string())
 }
 
 // =============================================================================
@@ -386,8 +417,8 @@ impl AudioCapture {
     /// * `Ok(AudioCapture)` - Capture ready to start
     /// * `Err(String)` - Error message if device not found or couldn't be opened
     pub fn new(device_name: &str) -> Result<Self, String> {
-        let device =
-            find_input_device(device_name).ok_or_else(|| "Input device not found".to_string())?;
+        let device = find_input_device(device_name)
+            .ok_or_else(|| ERR_AUDIO_INPUT_DEVICE_NOT_FOUND.to_string())?;
 
         let buffer = Arc::new(Mutex::new(Vec::with_capacity(
             VOICE_SAMPLES_PER_FRAME as usize * 4,
@@ -413,7 +444,7 @@ impl AudioCapture {
         let resampler = if needs_resampling(audio_config.sample_rate) {
             Some(Arc::new(Mutex::new(
                 InputResampler::new(audio_config.sample_rate)
-                    .map_err(|e| format!("Failed to create input resampler: {}", e))?,
+                    .map_err(|e| format!("{ERR_AUDIO_INPUT_RESAMPLER}: {e}"))?,
             )))
         } else {
             None
@@ -490,7 +521,7 @@ impl AudioCapture {
         self.active.store(true, Ordering::SeqCst);
         self._stream
             .play()
-            .map_err(|e| format!("Failed to start capture: {}", e))
+            .map_err(|e| format!("{ERR_AUDIO_CAPTURE_START}: {e}"))
     }
 
     /// Stop capturing audio
@@ -615,12 +646,12 @@ where
                     if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
-                    let _ = error_tx.send(format!("Audio capture error: {}", err));
+                    let _ = error_tx.send(format!("{ERR_AUDIO_CAPTURE}: {err}"));
                 }
             },
             None,
         )
-        .map_err(|e| format!("Failed to build input stream: {}", e))
+        .map_err(|e| format!("{ERR_AUDIO_INPUT_STREAM_BUILD}: {e}"))
 }
 
 /// Build a stereo input stream that downmixes to mono
@@ -680,12 +711,12 @@ where
                     if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
-                    let _ = error_tx.send(format!("Audio capture error: {}", err));
+                    let _ = error_tx.send(format!("{ERR_AUDIO_CAPTURE}: {err}"));
                 }
             },
             None,
         )
-        .map_err(|e| format!("Failed to build stereo input stream: {}", e))
+        .map_err(|e| format!("{ERR_AUDIO_STEREO_INPUT_STREAM_BUILD}: {e}"))
 }
 
 fn append_capture_samples(buffer: &Arc<Mutex<Vec<f32>>>, samples: &[f32]) {
@@ -931,8 +962,8 @@ pub struct AudioMixer {
 impl AudioMixer {
     /// Create a new audio mixer with the specified output device
     pub fn new(device_name: &str) -> Result<Self, String> {
-        let device =
-            find_output_device(device_name).ok_or_else(|| "Output device not found".to_string())?;
+        let device = find_output_device(device_name)
+            .ok_or_else(|| ERR_AUDIO_OUTPUT_DEVICE_NOT_FOUND.to_string())?;
 
         // Find best configuration for this device
         let audio_config = find_best_output_config(&device)?;
@@ -962,7 +993,7 @@ impl AudioMixer {
         let resampler = if needs_resampling(audio_config.sample_rate) {
             Some(Arc::new(Mutex::new(
                 OutputResampler::new(audio_config.sample_rate, audio_config.channels as usize)
-                    .map_err(|e| format!("Failed to create output resampler: {}", e))?,
+                    .map_err(|e| format!("{ERR_AUDIO_OUTPUT_RESAMPLER}: {e}"))?,
             )))
         } else {
             None
@@ -1037,7 +1068,7 @@ impl AudioMixer {
         self.active.store(true, Ordering::SeqCst);
         self._stream
             .play()
-            .map_err(|e| format!("Failed to start mixer: {}", e))
+            .map_err(|e| format!("{ERR_AUDIO_MIXER_START}: {e}"))
     }
 
     /// Stop the mixer
@@ -1209,12 +1240,12 @@ where
                     if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
-                    let _ = error_tx.send(format!("Mixer error: {}", err));
+                    let _ = error_tx.send(format!("{ERR_AUDIO_MIXER}: {err}"));
                 }
             },
             None,
         )
-        .map_err(|e| format!("Failed to build mixer stream: {}", e))
+        .map_err(|e| format!("{ERR_AUDIO_MIXER_STREAM_BUILD}: {e}"))
 }
 
 /// Build a stereo mixer output stream (upmixes from mono)
@@ -1326,12 +1357,12 @@ where
                     if matches!(err.kind(), ErrorKind::Xrun) {
                         return;
                     }
-                    let _ = error_tx.send(format!("Mixer error: {}", err));
+                    let _ = error_tx.send(format!("{ERR_AUDIO_MIXER}: {err}"));
                 }
             },
             None,
         )
-        .map_err(|e| format!("Failed to build stereo mixer stream: {}", e))
+        .map_err(|e| format!("{ERR_AUDIO_STEREO_MIXER_STREAM_BUILD}: {e}"))
 }
 
 /// Soft clip function to prevent harsh digital clipping

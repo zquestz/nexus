@@ -11,8 +11,12 @@ use webrtc_audio_processing::config::{
     CaptureAmplifier, CaptureLevelAdjustment, Config, EchoCanceller, GainController,
     GainController2, HighPassFilter, NoiseSuppression, NoiseSuppressionLevel as WebrtcNsLevel,
 };
+use webrtc_audio_processing::experimental::EchoCanceller3Config;
 
 use crate::config::audio::{MicBoost, NoiseSuppressionLevel};
+use crate::constants::{
+    ERR_VOICE_CAPTURE_PROCESSING, ERR_VOICE_PROCESSOR_CREATE, ERR_VOICE_RENDER_ANALYSIS,
+};
 
 // =============================================================================
 // Silence Gate Constants
@@ -101,8 +105,17 @@ impl AudioProcessor {
     /// * `Ok(AudioProcessor)` - Processor ready for use
     /// * `Err(String)` - Error message if initialization failed
     pub fn new(settings: AudioProcessorSettings) -> Result<Self, String> {
-        let processor = Processor::new(VOICE_SAMPLE_RATE)
-            .map_err(|e| format!("Failed to create processor: {e}"))?;
+        // Construct with an explicit AEC3 config exporting the linear AEC
+        // output. `analyze_linear_aec_output` in set_config is only honored
+        // when the Processor was built with this flag (the library forces it
+        // off otherwise) because the linear-output framer must exist from
+        // construction. The default config matches what a plain
+        // `Processor::new` uses, so the export flag is the only delta.
+        let mut aec3_config = EchoCanceller3Config::default();
+        aec3_config.filter.export_linear_aec_output = true;
+
+        let processor = Processor::with_aec3_config(VOICE_SAMPLE_RATE, aec3_config)
+            .map_err(|e| format!("{ERR_VOICE_PROCESSOR_CREATE}: {e}"))?;
 
         // Apply initial settings
         let config = Self::build_config(&settings);
@@ -165,12 +178,13 @@ impl AudioProcessor {
                         // processor init.
                         NoiseSuppressionLevel::Off => WebrtcNsLevel::Moderate,
                     },
-                    // NOTE: analyze_linear_aec_output crashes AEC3 when enabled
-                    // via set_config (null BlockFramer in ProcessCapture). The
-                    // linear output framer isn't created when AEC is enabled
-                    // after Processor construction. Keep false until we can
-                    // create the Processor with AEC3 config upfront.
-                    analyze_linear_aec_output: false,
+                    // NS analyzes the echo-cancelled linear AEC signal instead
+                    // of the post-suppression capture, keeping its noise
+                    // estimate stable during far-end speech. Safe to request
+                    // unconditionally: the library activates it only when the
+                    // echo canceller is enabled and the Processor was
+                    // constructed with `export_linear_aec_output`.
+                    analyze_linear_aec_output: true,
                 }),
             },
             high_pass_filter: Some(HighPassFilter::default()),
@@ -243,7 +257,7 @@ impl AudioProcessor {
 
         self.processor
             .process_capture_frame([frame])
-            .map_err(|e| format!("Capture processing error: {e}"))
+            .map_err(|e| format!("{ERR_VOICE_CAPTURE_PROCESSING}: {e}"))
     }
 
     /// Analyze a render (speaker) frame for echo cancellation reference
@@ -267,7 +281,7 @@ impl AudioProcessor {
 
         self.processor
             .analyze_render_frame([frame])
-            .map_err(|e| format!("Render analysis error: {e}"))
+            .map_err(|e| format!("{ERR_VOICE_RENDER_ANALYSIS}: {e}"))
     }
 }
 

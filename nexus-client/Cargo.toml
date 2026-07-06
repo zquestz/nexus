@@ -69,7 +69,7 @@ identicon-rs = "7.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 usvg = "0.47"
 uuid = { version = "1.20", features = ["v4", "serde"] }
-webrtc-audio-processing = { git = "https://github.com/zquestz/webrtc-audio-processing", features = ["bundled"] }
+webrtc-audio-processing = { git = "https://github.com/zquestz/webrtc-audio-processing", features = ["bundled", "experimental-aec3-config"] }
 hex = "0.4"
 percent-encoding = "2.3"
 notify-rust = "4.11"

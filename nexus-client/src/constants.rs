@@ -105,6 +105,72 @@ pub const ERR_NEXT_SEQUENCE_NONE: &str = "next_sequence should be Some after ini
 /// fatal for the voice path.
 pub const ERR_VOICE_THREAD_TOKIO_RUNTIME: &str = "Failed to create tokio runtime for voice thread";
 
+/// Error prefix: WebRTC audio processor construction failed. Surfaced
+/// through the voice-processor-disabled warning path.
+pub const ERR_VOICE_PROCESSOR_CREATE: &str = "Failed to create processor";
+
+/// Error prefix: WebRTC capture-frame processing failed.
+pub const ERR_VOICE_CAPTURE_PROCESSING: &str = "Capture processing error";
+
+/// Error prefix: WebRTC render-frame analysis failed.
+pub const ERR_VOICE_RENDER_ANALYSIS: &str = "Render analysis error";
+
+/// Error prefix: enumerating input device configurations failed.
+pub const ERR_AUDIO_INPUT_CONFIGS: &str = "Failed to get supported input configs";
+
+/// Error: the input device reported zero supported configurations.
+pub const ERR_AUDIO_INPUT_NO_CONFIGS: &str = "Input device has no supported configurations";
+
+/// Error: the input device has configurations, but none match our
+/// supported sample formats / channel layouts.
+pub const ERR_AUDIO_INPUT_NO_MATCH: &str = "Input device has no supported audio configuration";
+
+/// Error: the configured input device was not found on the host.
+pub const ERR_AUDIO_INPUT_DEVICE_NOT_FOUND: &str = "Input device not found";
+
+/// Error prefix: constructing the capture-side rubato resampler failed.
+pub const ERR_AUDIO_INPUT_RESAMPLER: &str = "Failed to create input resampler";
+
+/// Error prefix: starting the capture stream failed.
+pub const ERR_AUDIO_CAPTURE_START: &str = "Failed to start capture";
+
+/// Error prefix: the capture stream's runtime error callback fired.
+pub const ERR_AUDIO_CAPTURE: &str = "Audio capture error";
+
+/// Error prefix: building the mono input stream failed.
+pub const ERR_AUDIO_INPUT_STREAM_BUILD: &str = "Failed to build input stream";
+
+/// Error prefix: building the stereo (downmixed) input stream failed.
+pub const ERR_AUDIO_STEREO_INPUT_STREAM_BUILD: &str = "Failed to build stereo input stream";
+
+/// Error prefix: enumerating output device configurations failed.
+pub const ERR_AUDIO_OUTPUT_CONFIGS: &str = "Failed to get supported output configs";
+
+/// Error: the output device reported zero supported configurations.
+pub const ERR_AUDIO_OUTPUT_NO_CONFIGS: &str = "Output device has no supported configurations";
+
+/// Error: the output device has configurations, but none match our
+/// supported sample formats / channel layouts.
+pub const ERR_AUDIO_OUTPUT_NO_MATCH: &str = "Output device has no supported audio configuration";
+
+/// Error: the configured output device was not found on the host.
+pub const ERR_AUDIO_OUTPUT_DEVICE_NOT_FOUND: &str = "Output device not found";
+
+/// Error prefix: constructing the render-side rubato resampler failed.
+pub const ERR_AUDIO_OUTPUT_RESAMPLER: &str = "Failed to create output resampler";
+
+/// Error prefix: starting the mixer output stream failed.
+pub const ERR_AUDIO_MIXER_START: &str = "Failed to start mixer";
+
+/// Error prefix: the mixer stream's runtime error callback fired.
+pub const ERR_AUDIO_MIXER: &str = "Mixer error";
+
+/// Error prefix: building the mono mixer output stream failed.
+pub const ERR_AUDIO_MIXER_STREAM_BUILD: &str = "Failed to build mixer stream";
+
+/// Error prefix: building the stereo (upmixed) mixer output stream failed.
+pub const ERR_AUDIO_STEREO_MIXER_STREAM_BUILD: &str = "Failed to build stereo mixer stream";
+
 /// Panic message: a file-transfer code path expected a non-empty path
 /// after construction. Programmer-error.
 pub const ERR_PATH_EMPTY: &str = "non-empty path";
