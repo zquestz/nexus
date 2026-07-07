@@ -103,6 +103,10 @@ jobs:
           restore-keys: |
             ${{ steps.cache-prefix.outputs.prefix }}-${{ runner.os }}-${{ steps.arch.outputs.arch }}-cargo-build-v3-
 
+      - name: Diagnose voice processor tests (arm64)
+        if: matrix.os == 'windows-11-arm'
+        run: cargo test -p nexus-client --bin nexus -- voice::processor --test-threads=1 --nocapture
+
       - name: Run tests
         run: cargo test --workspace --verbose
 

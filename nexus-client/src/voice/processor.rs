@@ -300,6 +300,48 @@ mod tests {
         }
     }
 
+    /// Temporary Windows arm64 FFI diagnostic: checkpoints each stage so the
+    /// serialized CI diagnostic step shows which one crashes — null-config
+    /// construction, full-config DSP (NEON/pffft paths), the
+    /// `EchoCanceller3Config` FFI crossing, or AEC3-specific processing.
+    /// Named to sort before the `test_*` tests. Remove once the arm64
+    /// access violation is resolved.
+    #[test]
+    fn a_probe_ffi_call_sequence() {
+        let settings = AudioProcessorSettings::default();
+        let full_config = AudioProcessor::build_config(&settings);
+        let render = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
+        let mut capture = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
+
+        eprintln!("probe 1: Processor::new (null aec3 config)");
+        let processor = Processor::new(VOICE_SAMPLE_RATE).expect("construct processor");
+
+        eprintln!("probe 2: set_config (NS + AGC2 + AEC)");
+        processor.set_config(full_config);
+
+        eprintln!("probe 3: frames through the full-config DSP (NEON/pffft paths)");
+        for _ in 0..5 {
+            let _ = processor.analyze_render_frame([render.as_slice()]);
+            let _ = processor.process_capture_frame([capture.as_mut_slice()]);
+        }
+        drop(processor);
+
+        eprintln!("probe 4: Processor::with_aec3_config");
+        let mut aec3_config = EchoCanceller3Config::default();
+        aec3_config.filter.export_linear_aec_output = true;
+        let processor = Processor::with_aec3_config(VOICE_SAMPLE_RATE, aec3_config)
+            .expect("construct processor with aec3 config");
+
+        eprintln!("probe 5: set_config + frames on the aec3-config processor");
+        processor.set_config(full_config);
+        for _ in 0..5 {
+            let _ = processor.analyze_render_frame([render.as_slice()]);
+            let _ = processor.process_capture_frame([capture.as_mut_slice()]);
+        }
+
+        eprintln!("probe: done");
+    }
+
     #[test]
     fn test_default_settings() {
         let settings = AudioProcessorSettings::default();
