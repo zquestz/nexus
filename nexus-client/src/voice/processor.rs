@@ -11,6 +11,7 @@ use webrtc_audio_processing::config::{
     CaptureAmplifier, CaptureLevelAdjustment, Config, EchoCanceller, GainController,
     GainController2, HighPassFilter, NoiseSuppression, NoiseSuppressionLevel as WebrtcNsLevel,
 };
+#[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
 use webrtc_audio_processing::experimental::EchoCanceller3Config;
 
 use crate::config::audio::{MicBoost, NoiseSuppressionLevel};
@@ -111,10 +112,24 @@ impl AudioProcessor {
         // off otherwise) because the linear-output framer must exist from
         // construction. The default config matches what a plain
         // `Processor::new` uses, so the export flag is the only delta.
-        let mut aec3_config = EchoCanceller3Config::default();
-        aec3_config.filter.export_linear_aec_output = true;
+        #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
+        let processor = {
+            let mut aec3_config = EchoCanceller3Config::default();
+            aec3_config.filter.export_linear_aec_output = true;
+            Processor::with_aec3_config(VOICE_SAMPLE_RATE, aec3_config)
+                .map_err(|e| format!("{ERR_VOICE_PROCESSOR_CREATE}: {e}"))?
+        };
 
-        let processor = Processor::with_aec3_config(VOICE_SAMPLE_RATE, aec3_config)
+        // Windows arm64: passing `EchoCanceller3Config` across the FFI
+        // boundary crashes at construction (proven by CI probe; same
+        // clang-vs-MSVC ABI-divergence family as the `create_stream_config`
+        // return convention fixed in the fork, exact mechanism not yet
+        // isolated). Construct with the null default config instead — no
+        // struct crossing — at the cost of linear AEC output on this
+        // platform; `analyze_linear_aec_output` then degrades to a
+        // library-side no-op.
+        #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+        let processor = Processor::new(VOICE_SAMPLE_RATE)
             .map_err(|e| format!("{ERR_VOICE_PROCESSOR_CREATE}: {e}"))?;
 
         // Apply initial settings
@@ -298,48 +313,6 @@ mod tests {
         fn settings(&self) -> AudioProcessorSettings {
             self.settings
         }
-    }
-
-    /// Temporary Windows arm64 FFI diagnostic: checkpoints each stage so the
-    /// serialized CI diagnostic step shows which one crashes — null-config
-    /// construction, full-config DSP (NEON/pffft paths), the
-    /// `EchoCanceller3Config` FFI crossing, or AEC3-specific processing.
-    /// Named to sort before the `test_*` tests. Remove once the arm64
-    /// access violation is resolved.
-    #[test]
-    fn a_probe_ffi_call_sequence() {
-        let settings = AudioProcessorSettings::default();
-        let full_config = AudioProcessor::build_config(&settings);
-        let render = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
-        let mut capture = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
-
-        eprintln!("probe 1: Processor::new (null aec3 config)");
-        let processor = Processor::new(VOICE_SAMPLE_RATE).expect("construct processor");
-
-        eprintln!("probe 2: set_config (NS + AGC2 + AEC)");
-        processor.set_config(full_config);
-
-        eprintln!("probe 3: frames through the full-config DSP (NEON/pffft paths)");
-        for _ in 0..5 {
-            let _ = processor.analyze_render_frame([render.as_slice()]);
-            let _ = processor.process_capture_frame([capture.as_mut_slice()]);
-        }
-        drop(processor);
-
-        eprintln!("probe 4: Processor::with_aec3_config");
-        let mut aec3_config = EchoCanceller3Config::default();
-        aec3_config.filter.export_linear_aec_output = true;
-        let processor = Processor::with_aec3_config(VOICE_SAMPLE_RATE, aec3_config)
-            .expect("construct processor with aec3 config");
-
-        eprintln!("probe 5: set_config + frames on the aec3-config processor");
-        processor.set_config(full_config);
-        for _ in 0..5 {
-            let _ = processor.analyze_render_frame([render.as_slice()]);
-            let _ = processor.process_capture_frame([capture.as_mut_slice()]);
-        }
-
-        eprintln!("probe: done");
     }
 
     #[test]

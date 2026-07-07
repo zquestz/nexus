@@ -9,7 +9,7 @@
 | Admin event history                  | Medium | See feature spec below        |
 | Offline messages investigation       | Medium | See investigation notes below |
 | Connection Monitor egress visibility | Medium | See feature spec below        |
-| Windows arm64 client                 | Medium | See feature spec below        |
+| Windows arm64 linear AEC output      | Low    | See feature spec below        |
 
 ## Feature Specs
 
@@ -432,8 +432,8 @@ Preview files before downloading.
 - If claiming end-to-end encryption, include recipient key pinning/verification in the design so the server cannot silently substitute recipient keys.
 - Include queue limits, expiration, delivery acknowledgements, and behavior for shared accounts/multiple sessions.
 
-### Windows arm64 Client
+### Windows arm64 Linear AEC Output
 
-- The only remaining ARM gap in the release matrix — Linux and macOS clients plus all server/tracker artifacts already ship arm64.
-- Gated on the webrtc-audio-processing fork building under ARM64 MSVC (meson + cl.exe for aarch64), which upstream does not test.
-- Native `windows-11-arm` GitHub runners would avoid cross-compiling the C++; also needs a release matrix entry and MSI bundling verification on arm64.
+- The Windows arm64 client ships, but `voice/processor.rs` cfg-gates construction to `Processor::new` there: passing `EchoCanceller3Config` across the FFI crashes at construction on arm64 MSVC (CI-probe-proven; same clang-vs-MSVC ABI-divergence family as the fork's `create_stream_config` out-parameter fix). Linear AEC output is therefore off on that platform only; NEON/pffft SIMD are on and probe-exonerated.
+- Root-cause path: add C++ `sizeof`/`offsetof` probe functions for `EchoCanceller3Config` to the fork wrapper and compare against bindgen's view in a test to find the divergent field or convention; fix it (or pass the config as plain scalar fields), then drop the cfg in `processor.rs`.
+- Low urgency: only affects noise-suppression quality during far-end speech for native arm64 builds; the x64 client also runs fine under Windows-on-ARM emulation.
