@@ -695,7 +695,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle.exe
-          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-${{ matrix.arch }}-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-${{ matrix.arch }}-v4
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
