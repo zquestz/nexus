@@ -411,9 +411,17 @@ jobs:
 
   # Test Windows MSI installer
   bundle-windows:
-    name: Bundle Windows (MSI)
-    runs-on: windows-latest
+    name: Bundle Windows (MSI, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x64
+          - runner: windows-11-arm
+            arch: arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -435,24 +443,24 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-index-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle.exe
-          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-x64-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-${{ matrix.arch }}-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
