@@ -30,7 +30,15 @@ You only need to do this once. Future launches will work normally.
 
 #### Windows
 
-1. Download `nexus-client-{version}-windows-x64.msi`
+1. Download the installer for your architecture:
+
+   | Architecture           | Download                                   |
+   | ---------------------- | ------------------------------------------ |
+   | x64 (most PCs)         | `nexus-client-{version}-windows-x64.msi`   |
+   | ARM64 (Windows on ARM) | `nexus-client-{version}-windows-arm64.msi` |
+
+   Not sure? Choose x64 — it runs on every Windows PC.
+
 2. Run the installer
 3. Launch **Nexus BBS** from the Start Menu
 

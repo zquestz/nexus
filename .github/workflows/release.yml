@@ -641,9 +641,17 @@ jobs:
 
   # Build Windows client
   build-windows-client:
-    name: Build Windows Client
-    runs-on: windows-latest
+    name: Build Windows Client (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x64
+          - runner: windows-11-arm
+            arch: arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -665,17 +673,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-registry-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-registry-
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ steps.cache-prefix.outputs.prefix }}-windows-x64-cargo-index-
+            ${{ steps.cache-prefix.outputs.prefix }}-windows-${{ matrix.arch }}-cargo-index-
 
       - name: Get version from tag
         id: version
@@ -687,7 +695,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle.exe
-          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-x64-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-${{ matrix.arch }}-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -708,12 +716,12 @@ jobs:
         run: |
           mkdir -p dist
           mv target/release/bundle/wxsmsi/bin/Release/*.msi \
-             dist/nexus-client-${{ steps.version.outputs.VERSION }}-windows-x64.msi
+             dist/nexus-client-${{ steps.version.outputs.VERSION }}-windows-${{ matrix.arch }}.msi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-client
+          name: windows-client-${{ matrix.arch }}
           path: dist/*.msi
 
   # Build Windows server
@@ -857,7 +865,19 @@ jobs:
     name: Create Release
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    needs: [prepare-tracker-version, build-linux-client, build-linux-server, build-linux-tracker, build-macos-client-universal, build-macos-server, build-macos-tracker, build-windows-client, build-windows-server, build-windows-tracker]
+    needs:
+      [
+        prepare-tracker-version,
+        build-linux-client,
+        build-linux-server,
+        build-linux-tracker,
+        build-macos-client-universal,
+        build-macos-server,
+        build-macos-tracker,
+        build-windows-client,
+        build-windows-server,
+        build-windows-tracker,
+      ]
     permissions:
       contents: write
     steps:
@@ -907,7 +927,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: windows-client
+          pattern: windows-client-*
 
       - name: Download Windows server artifacts
         uses: actions/download-artifact@v4
@@ -943,7 +963,8 @@ jobs:
           cp artifacts/macos-tracker/* release/
 
           # Windows
-          cp artifacts/windows-client/* release/
+          cp artifacts/windows-client-x64/* release/
+          cp artifacts/windows-client-arm64/* release/
           cp artifacts/windows-server-x64/* release/
           cp artifacts/windows-server-arm64/* release/
           cp artifacts/windows-tracker-x64/* release/
@@ -989,6 +1010,7 @@ jobs:
             | Architecture | Download |
             |--------------|----------|
             | x64 (Installer) | `nexus-client-${{ steps.version.outputs.VERSION }}-windows-x64.msi` |
+            | ARM64 (Installer) | `nexus-client-${{ steps.version.outputs.VERSION }}-windows-arm64.msi` |
 
             #### Linux
             | Format | x64 | ARM64 |
@@ -1248,7 +1270,12 @@ jobs:
     name: Create Tracker Docker Manifest
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [prepare-tracker-version, build-docker-tracker-amd64, build-docker-tracker-arm64]
+    needs:
+      [
+        prepare-tracker-version,
+        build-docker-tracker-amd64,
+        build-docker-tracker-arm64,
+      ]
     permissions:
       contents: read
       packages: write

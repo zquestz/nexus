@@ -36,6 +36,7 @@ Pre-built binaries are available on the [Releases](https://github.com/zquestz/ne
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | macOS (Universal) | `nexus-client-{version}-macos-universal.dmg`                                                                                               |
 | Windows (x64)     | `nexus-client-{version}-windows-x64.msi`                                                                                                   |
+| Windows (arm64)   | `nexus-client-{version}-windows-arm64.msi`                                                                                                 |
 | Linux (x64)       | `.AppImage` or `.deb`                                                                                                                      |
 | Linux (arm64)     | `.AppImage` or `.deb`                                                                                                                      |
 | Arch Linux (AUR)  | [nexus-client](https://aur.archlinux.org/packages/nexus-client) or [nexus-client-git](https://aur.archlinux.org/packages/nexus-client-git) |

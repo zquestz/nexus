@@ -4,15 +4,15 @@ on:
   push:
     branches: [main, master]
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
     branches: [main, master]
     paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -31,7 +31,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-latest, windows-latest, windows-11-arm]
+        os:
+          [
+            ubuntu-22.04,
+            ubuntu-22.04-arm,
+            macos-latest,
+            windows-latest,
+            windows-11-arm,
+          ]
     steps:
       - uses: actions/checkout@v4
 
