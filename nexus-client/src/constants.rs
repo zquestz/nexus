@@ -273,3 +273,14 @@ pub const ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD: &str =
 /// Format prefix for IPC errors logged to stderr. Composed as
 /// `format!("{}{}", ERR_IPC_PREFIX, e)` (trailing ": " included).
 pub const ERR_IPC_PREFIX: &str = "IPC error: ";
+
+/// macOS bundle identifier. Must match the `[package.metadata.bundle]`
+/// `identifier` in `nexus-client/Cargo.toml`.
+#[cfg(target_os = "macos")]
+pub const MACOS_BUNDLE_ID: &str = "at.greyh.nexus";
+
+/// Format prefix for macOS notification-backend registration failures
+/// logged to stderr (trailing ": " included). Expected on unbundled dev
+/// runs, where the bundle identifier resolves to no installed app.
+#[cfg(target_os = "macos")]
+pub const ERR_MACOS_NOTIFY_APP_PREFIX: &str = "Failed to set notification application: ";

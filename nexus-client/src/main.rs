@@ -62,6 +62,8 @@ use types::{
 };
 
 use crate::constants::{ERR_IPC_PREFIX, ERR_RUSTLS_PROVIDER, ERR_STARTUP_URI_LOCK_POISONED};
+#[cfg(target_os = "macos")]
+use crate::constants::{ERR_MACOS_NOTIFY_APP_PREFIX, MACOS_BUNDLE_ID};
 use crate::i18n::t_args;
 
 /// Startup URI passed via command line (consumed by NexusApp::new)
@@ -375,6 +377,18 @@ pub fn main() -> iced::Result {
     tokio_rustls::rustls::crypto::ring::default_provider()
         .install_default()
         .expect(ERR_RUSTLS_PROVIDER);
+
+    // Register our bundle identifier with the notification backend before
+    // any notification is shown. Without this, mac-notification-sys falls
+    // back to an AppleScript lookup of a nonexistent app name on first
+    // use, which pops an application-chooser dialog and can crash the
+    // process by masquerading as a foreign bundle if the user picks
+    // anything other than Nexus BBS. Fails harmlessly on unbundled dev
+    // runs (notifications then post with the process's real identity).
+    #[cfg(target_os = "macos")]
+    if let Err(e) = notify_rust::set_application(MACOS_BUNDLE_ID) {
+        eprintln!("{}{}", ERR_MACOS_NOTIFY_APP_PREFIX, e);
+    }
 
     // Single-instance enforcement: always check for an existing instance
     let startup_uri = get_startup_uri();
