@@ -259,14 +259,14 @@ pub const ERR_RESAMPLER_PROCESS: &str = "Resampler error";
 
 /// macOS only: the App-Nap suppression call returned nil instead of a
 /// valid activity token. App Nap may not be suppressed on this run.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", debug_assertions))]
 pub const ERR_NSPROCESSINFO_BEGIN_ACTIVITY_NIL: &str =
     "macos_nap: beginActivityWithOptions returned nil";
 
 /// macOS only: the URL-handler installer was called from a non-main
 /// thread; AppKit requires the main thread for `NSAppleEventManager`
 /// registration, so the install is skipped.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", debug_assertions))]
 pub const ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD: &str =
     "macos_url: not on main thread, skipping URL handler install";
 

@@ -6,7 +6,7 @@ use iced::widget::button as btn;
 use iced::widget::{Column, Space, button, checkbox, pick_list, row, slider};
 
 use crate::config::events::{EventSettings, EventType, NotificationContent, SoundChoice};
-use crate::config::settings::{SOUND_VOLUME_MAX, SOUND_VOLUME_MIN};
+use crate::config::settings::{SOUND_VOLUME_MAX, SOUND_VOLUME_MIN, SOUND_VOLUME_STEP};
 use crate::i18n::t;
 use crate::style::{
     ELEMENT_SPACING, INPUT_PADDING, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
@@ -61,7 +61,7 @@ pub(super) fn events_tab_content<'a>(
         sound_volume,
         Message::SoundVolumeChanged,
     )
-    .step(0.01);
+    .step(SOUND_VOLUME_STEP);
 
     let volume_row = row![
         volume_label,

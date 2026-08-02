@@ -339,6 +339,9 @@ pub const SOUND_VOLUME_MIN: f32 = 0.0;
 /// Maximum sound volume
 pub const SOUND_VOLUME_MAX: f32 = 1.0;
 
+/// Volume slider step size
+pub const SOUND_VOLUME_STEP: f32 = 0.01;
+
 /// Default chat font size
 pub const CHAT_FONT_SIZE_DEFAULT: u8 = 13;
 
