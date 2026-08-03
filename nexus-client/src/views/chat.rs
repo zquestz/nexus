@@ -5,7 +5,8 @@ use std::hash::{Hash, Hasher};
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, button, column, container, lazy, rich_text, row, scrollable, span, text::Rich, tooltip,
+    Column, button, column, container, lazy, rich_text, row, scrollable, selectable_group, span,
+    text::Rich, tooltip,
 };
 use iced::{Color, Element, Fill, Font, Theme};
 use linkify::{LinkFinder, LinkKind};
@@ -198,6 +199,7 @@ fn styled_message<'a>(
 
     let text_widget: Rich<'a, String, Message> = rich_text(spans)
         .on_link_click(Message::OpenUrl)
+        .selectable(true)
         .size(style.font_size)
         .line_height(CHAT_LINE_HEIGHT)
         .font(MONOSPACE_FONT)
@@ -645,7 +647,10 @@ fn render_message_list(deps: &ChatMessagesDeps<'_>) -> Element<'static, Message>
         }
     }
 
-    chat_column.into()
+    // Coordinate drag-selection across all message lines so one drag
+    // (and Ctrl+C) can span multiple messages. `Link = String` matches
+    // the `Rich<'_, String, Message>` widgets built above.
+    selectable_group::<String, _, _, _>(chat_column).into()
 }
 
 // ============================================================================
