@@ -11,7 +11,7 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 
 ## Features
 
-- **Chat** — Real-time messaging with channels, user messages, broadcasts, and persistent message history
+- **Chat** — Real-time messaging with channels, user messages, broadcasts, text selection, and persistent message history
 - **Voice** — Push-to-talk voice chat with Opus codec, DTLS encryption, and WebRTC audio processing (noise suppression, echo cancellation, automatic gain control)
 - **Files** — Multi-tab browser with search, downloads, uploads, pause/resume, and queue management
 - **Bandwidth Control** — Server-side outbound speed limits with per-account weighted fairness across BBS and transfers; LAN/private clients bypass the scheduler while WAN/Yggdrasil traffic is managed

@@ -15,6 +15,10 @@ News posts appear as cards with:
 - **Content** — Text and/or image
 - **Actions** — Edit and delete buttons (if permitted)
 
+Post content is selectable — drag to highlight text (selections can span
+paragraphs), then press **Ctrl+C** (**Cmd+C** on macOS) to copy. Clicking
+a link still opens it; only dragging starts a selection.
+
 ### Markdown Support
 
 News posts support markdown formatting:

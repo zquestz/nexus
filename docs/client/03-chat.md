@@ -152,6 +152,18 @@ To send a message starting with `/`:
 - Type `//` — sends a message starting with `/`
 - Start with a space — ` /not a command`
 
+## Selecting and Copying Text
+
+Chat messages are selectable in every tab (Console, channels, and user messages):
+
+- **Drag** across text to select — selections can span multiple messages
+- **Double-click** selects a word; **triple-click** selects a line
+- **Shift+Arrow keys** (with **Home**/**End**) extend or adjust the selection
+- **Ctrl+C** (**Cmd+C** on macOS) copies the selection; text spanning multiple messages is joined with newlines
+- **Escape** or clicking elsewhere clears the selection
+
+Clicking a link still opens it — only dragging across a link starts a selection.
+
 ## Flood Protection
 
 Chat messages are rate-limited to prevent flooding. This applies to both channel messages and user messages.
