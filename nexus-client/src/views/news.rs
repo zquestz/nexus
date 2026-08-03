@@ -380,8 +380,13 @@ fn build_news_item_row<'a>(
     if item.body.is_some()
         && let Some(markdown_items) = news_markdown_cache.get(&item.id)
     {
-        // Create markdown settings with appropriate text size
-        let md_settings = markdown::Settings::with_text_size(TEXT_SIZE, theme);
+        // Create markdown settings with appropriate text size. Selection
+        // is grouped so a drag can span paragraphs within this news body.
+        let md_settings = markdown::Settings {
+            selectable: true,
+            group_selection: true,
+            ..markdown::Settings::with_text_size(TEXT_SIZE, theme)
+        };
 
         // Render markdown and map link clicks to OpenUrl message
         let md_view: Element<'a, Message> =
