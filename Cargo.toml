@@ -26,4 +26,8 @@ iced_core = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
 iced_debug = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
 iced_futures = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
 iced_graphics = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_renderer = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_runtime = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
 iced_tiny_skia = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_wgpu = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_widget = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }

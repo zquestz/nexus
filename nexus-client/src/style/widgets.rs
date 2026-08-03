@@ -311,6 +311,7 @@ pub fn context_menu_container_style(theme: &Theme) -> container::Style {
 pub fn error_text_style(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(ui::danger_color(theme)),
+        ..text::default(theme)
     }
 }
 
@@ -318,6 +319,7 @@ pub fn error_text_style(theme: &Theme) -> text::Style {
 pub fn muted_text_style(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(ui::muted_text_color(theme)),
+        ..text::default(theme)
     }
 }
 
@@ -327,6 +329,7 @@ pub fn muted_text_style(theme: &Theme) -> text::Style {
 pub fn success_text_style(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.extended_palette().success.base.color),
+        ..text::default(theme)
     }
 }
 
@@ -334,6 +337,7 @@ pub fn success_text_style(theme: &Theme) -> text::Style {
 pub fn upload_folder_style(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.extended_palette().primary.base.color),
+        ..text::default(theme)
     }
 }
 
