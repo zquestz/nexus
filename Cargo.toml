@@ -14,3 +14,16 @@ edition = "2024"
 [profile.release]
 strip = false
 lto = "thin"
+
+# Nexus iced fork: upstream's 0.14 maintenance branch plus essential
+# backported patches (tiny-skia software-rendering fixes; text selection
+# backport planned). The entries cover the fork's in-repo path-dep
+# closure so every reference unifies onto one copy of each crate —
+# patching a subset splits the graph into duplicate crate instances.
+# Drop when upstream 0.15 lands.
+[patch.crates-io]
+iced_core = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_debug = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_futures = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_graphics = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
+iced_tiny_skia = { git = "https://github.com/zquestz/iced", branch = "nexus-0.14" }
