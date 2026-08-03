@@ -171,7 +171,7 @@ requested features as unsupported by this server/session.
     "name": "My BBS",
     "description": "Welcome to my server!",
     "public_address": "bbs.example.com",
-    "version": "0.9.8",
+    "version": "0.9.9",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 3,
