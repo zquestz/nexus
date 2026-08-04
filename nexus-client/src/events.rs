@@ -17,11 +17,11 @@ use notify_rust::NotificationHandle;
 // so we hold onto handles until they expire naturally.
 // See: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/8797
 #[cfg(all(unix, not(target_os = "macos")))]
-pub static NOTIFICATION_HANDLES: Mutex<Vec<(Instant, NotificationHandle)>> = Mutex::new(Vec::new());
+static NOTIFICATION_HANDLES: Mutex<Vec<(Instant, NotificationHandle)>> = Mutex::new(Vec::new());
 
 /// How long to keep notification handles alive (slightly longer than the notification timeout)
 #[cfg(all(unix, not(target_os = "macos")))]
-pub const HANDLE_LIFETIME: Duration = Duration::from_secs(6);
+const HANDLE_LIFETIME: Duration = Duration::from_secs(6);
 
 use iced_toasts::{ToastLevel, toast};
 use nexus_common::names::fold_name;
@@ -41,6 +41,98 @@ use crate::types::{ActivePanel, ChatTab};
 const MAX_PATH_DISPLAY_LENGTH: usize = 50;
 /// Maximum length for news previews in notifications before truncating
 const MAX_NEWS_PREVIEW_LENGTH: usize = 100;
+/// How long a desktop notification stays on screen
+const NOTIFICATION_TIMEOUT_MS: u32 = 5000;
+/// Name of the macOS notification delivery thread (see [`show_notification`])
+#[cfg(target_os = "macos")]
+const NOTIFICATION_THREAD_NAME: &str = "notification";
+
+// =============================================================================
+// Desktop Notifications
+// =============================================================================
+
+/// Sender for the macOS notification delivery thread, created on first use.
+///
+/// A single long-lived worker (rather than a thread per notification)
+/// keeps notifications in the order they were emitted and bounds thread
+/// usage when events arrive in bursts.
+#[cfg(target_os = "macos")]
+fn macos_notification_sender() -> Option<&'static std::sync::mpsc::Sender<Notification>> {
+    use std::sync::OnceLock;
+    use std::sync::mpsc::{Sender, channel};
+
+    static SENDER: OnceLock<Option<Sender<Notification>>> = OnceLock::new();
+
+    SENDER
+        .get_or_init(|| {
+            let (sender, receiver) = channel::<Notification>();
+
+            // `Builder` rather than `thread::spawn` so a thread that can't
+            // be created leaves notifications disabled instead of taking
+            // the app down. The `OnceLock` owns the sender for the life of
+            // the process, so the channel never closes on its own.
+            std::thread::Builder::new()
+                .name(NOTIFICATION_THREAD_NAME.to_string())
+                .spawn(move || {
+                    while let Ok(notification) = receiver.recv() {
+                        // Delivery reaches Objective-C through a library
+                        // that unwraps its own mutex locks, so a panic
+                        // here is not ours to fix at the source. Catching
+                        // it costs this one notification instead of
+                        // killing the worker and silently ending
+                        // notifications for the rest of the session.
+                        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            notification.show()
+                        }));
+                    }
+                })
+                .ok()
+                .map(|_| sender)
+        })
+        .as_ref()
+}
+
+/// Build and display a desktop notification.
+///
+/// Shared by the event system and the Settings test-notification button so
+/// notification construction and the platform quirks below live in one place.
+pub fn show_notification(summary: &str, body: Option<&str>) {
+    let mut notification = Notification::new();
+    notification
+        .appname(APP_NAME)
+        .summary(summary)
+        .body(body.unwrap_or(""))
+        .auto_icon()
+        .timeout(notify_rust::Timeout::Milliseconds(NOTIFICATION_TIMEOUT_MS));
+
+    // On Linux, keep handle alive to prevent GNOME/Cinnamon from dismissing
+    // notifications when the D-Bus connection would otherwise be dropped.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    if let Ok(handle) = notification.show()
+        && let Ok(mut handles) = NOTIFICATION_HANDLES.lock()
+    {
+        let now = Instant::now();
+        handles.retain(|(created, _)| now.duration_since(*created) < HANDLE_LIFETIME);
+        handles.push((now, handle));
+    }
+
+    // On macOS, hand off to the delivery thread. The macOS backend sends
+    // the notification when its handle drops, and the underlying
+    // Objective-C layer pumps a nested run loop while awaiting delivery
+    // confirmation — but only when called on the main thread. Pumping it
+    // from inside the Iced update loop re-enters winit's queued event
+    // handling, which panics across an Objective-C block boundary and
+    // aborts the process. Off the main thread that wait is skipped
+    // entirely.
+    #[cfg(target_os = "macos")]
+    if let Some(sender) = macos_notification_sender() {
+        let _ = sender.send(notification);
+    }
+
+    // Other platforms show directly.
+    #[cfg(not(any(all(unix, not(target_os = "macos")), target_os = "macos")))]
+    let _ = notification.show();
+}
 
 // =============================================================================
 // Event Context
@@ -164,28 +256,7 @@ pub fn emit_event(app: &mut NexusApp, event_type: EventType, context: EventConte
         let (summary, body) =
             build_event_content(event_type, &context, config.notification_content);
 
-        let mut notification = Notification::new();
-        notification
-            .appname(APP_NAME)
-            .summary(&summary)
-            .body(body.as_deref().unwrap_or(""))
-            .auto_icon()
-            .timeout(notify_rust::Timeout::Milliseconds(5000));
-
-        // On Linux, keep handle alive to prevent GNOME/Cinnamon from dismissing
-        // notifications when the D-Bus connection would otherwise be dropped.
-        #[cfg(all(unix, not(target_os = "macos")))]
-        if let Ok(handle) = notification.show()
-            && let Ok(mut handles) = NOTIFICATION_HANDLES.lock()
-        {
-            let now = Instant::now();
-            handles.retain(|(created, _)| now.duration_since(*created) < HANDLE_LIFETIME);
-            handles.push((now, handle));
-        }
-
-        // On non-Linux platforms, just show and ignore result
-        #[cfg(not(all(unix, not(target_os = "macos"))))]
-        let _ = notification.show();
+        show_notification(&summary, body.as_deref());
     }
 
     // Handle toast notification (skip for self-triggered events)

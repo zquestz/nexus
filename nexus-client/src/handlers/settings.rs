@@ -6,9 +6,6 @@ use crate::config::audio::PttReleaseDelay;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, ImageDecodeProfile};
 
-#[cfg(all(unix, not(target_os = "macos")))]
-use std::time::Instant;
-
 use iced::Task;
 use iced::widget::Id;
 use nexus_common::voice::VoiceQuality;
@@ -615,31 +612,7 @@ impl NexusApp {
             let (summary, body) =
                 crate::events::build_test_event_content(event_type, config.notification_content);
 
-            // Show the notification
-            let mut notification = notify_rust::Notification::new();
-            notification
-                .appname("Nexus BBS")
-                .summary(&summary)
-                .body(body.as_deref().unwrap_or(""))
-                .auto_icon()
-                .timeout(notify_rust::Timeout::Milliseconds(5000));
-
-            // On Linux, keep handle alive to prevent GNOME/Cinnamon from dismissing
-            // notifications when the D-Bus connection would otherwise be dropped.
-            #[cfg(all(unix, not(target_os = "macos")))]
-            if let Ok(handle) = notification.show()
-                && let Ok(mut handles) = crate::events::NOTIFICATION_HANDLES.lock()
-            {
-                let now = Instant::now();
-                handles.retain(|(created, _)| {
-                    now.duration_since(*created) < crate::events::HANDLE_LIFETIME
-                });
-                handles.push((now, handle));
-            }
-
-            // On non-Linux platforms, just show and ignore result
-            #[cfg(not(all(unix, not(target_os = "macos"))))]
-            let _ = notification.show();
+            crate::events::show_notification(&summary, body.as_deref());
         }
         Task::none()
     }
