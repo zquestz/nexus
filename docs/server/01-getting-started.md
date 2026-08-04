@@ -28,10 +28,10 @@ cd nexusd
 
 Download the appropriate zip for your Windows machine:
 
-| Architecture    | File                                  |
-| --------------- | ------------------------------------- |
-| x64 (Intel/AMD) | `nexusd-{version}-windows-x64.zip`    |
-| ARM64           | `nexusd-{version}-windows-arm64.zip`  |
+| Architecture    | File                                 |
+| --------------- | ------------------------------------ |
+| x64 (Intel/AMD) | `nexusd-{version}-windows-x64.zip`   |
+| ARM64           | `nexusd-{version}-windows-arm64.zip` |
 
 Extract the zip file, then run `nexusd.exe` from Command Prompt or PowerShell.
 
@@ -108,7 +108,7 @@ Start the server with default settings:
 You'll see output like:
 
 ```
-2026-04-28T09:00:05.360381Z  INFO Nexus BBS Server v0.9.9
+2026-04-28T09:00:05.360381Z  INFO Nexus BBS Server v0.9.10
 2026-04-28T09:00:05.360455Z  INFO Log level: info
 2026-04-28T09:00:05.360473Z  INFO Log directory: ~/.local/share/nexusd/logs
 2026-04-28T09:00:05.371466Z  INFO Database: ~/.local/share/nexusd/nexus.db
