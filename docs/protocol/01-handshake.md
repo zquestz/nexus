@@ -29,20 +29,20 @@ Sent immediately after TLS connection is established.
 
 | Field     | Type   | Required | Description                                  |
 | --------- | ------ | -------- | -------------------------------------------- |
-| `version` | string | Yes      | Client's protocol version (e.g., `"0.9.10"`) |
+| `version` | string | Yes      | Client's protocol version (e.g., `"0.9.11"`) |
 
 **Example:**
 
 ```json
 {
-  "version": "0.9.10"
+  "version": "0.9.11"
 }
 ```
 
 **Full frame:**
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|19|{"version":"0.9.10"}
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.9.11"}
 ```
 
 ### HandshakeResponse (Server → Client)
@@ -65,7 +65,7 @@ The `fingerprint` field is sent on **every** response — both success and failu
 ```json
 {
   "success": true,
-  "version": "0.9.10",
+  "version": "0.9.11",
   "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
 }
 ```
@@ -75,9 +75,9 @@ The `fingerprint` field is sent on **every** response — both success and failu
 ```json
 {
   "success": false,
-  "version": "0.9.10",
+  "version": "0.9.11",
   "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
-  "error": "Unsupported protocol version. Server: 0.9.10, Client: 0.3.0"
+  "error": "Unsupported protocol version. Server: 0.9.11, Client: 0.3.0"
 }
 ```
 
@@ -97,12 +97,12 @@ During pre-1.0 development, each minor version bump can introduce breaking proto
 
 | Client | Server | Compatible | Reason                   |
 | ------ | ------ | ---------- | ------------------------ |
-| 0.9.10 | 0.9.10 | ✅ Yes     | Exact match              |
-| 0.9.3  | 0.9.10 | ✅ Yes     | Patch difference ignored |
-| 0.8.0  | 0.9.10 | ❌ No      | Minor mismatch (pre-1.0) |
-| 0.9.10 | 0.8.0  | ❌ No      | Minor mismatch (pre-1.0) |
-| 1.0.0  | 0.9.10 | ❌ No      | Major version mismatch   |
-| 0.9.10 | 1.0.0  | ❌ No      | Major version mismatch   |
+| 0.9.11 | 0.9.11 | ✅ Yes     | Exact match              |
+| 0.9.3  | 0.9.11 | ✅ Yes     | Patch difference ignored |
+| 0.8.0  | 0.9.11 | ❌ No      | Minor mismatch (pre-1.0) |
+| 0.9.11 | 0.8.0  | ❌ No      | Minor mismatch (pre-1.0) |
+| 1.0.0  | 0.9.11 | ❌ No      | Major version mismatch   |
+| 0.9.11 | 1.0.0  | ❌ No      | Major version mismatch   |
 
 ## Error Handling
 

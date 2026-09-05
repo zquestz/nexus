@@ -109,7 +109,7 @@ NX|<type_length>|<message_type>|<message_id>|<payload_length>|<json_payload>\n
 A handshake message:
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|19|{"version":"0.9.10"}\n
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.9.11"}\n
 ```
 
 Breaking it down:
@@ -118,8 +118,8 @@ Breaking it down:
 - `9` - Type length ("Handshake" is 9 characters)
 - `Handshake` - Message type
 - `a1b2c3d4e5f6` - Message ID (12 hex characters)
-- `19` - Payload length (19 bytes)
-- `{"version":"0.9.10"}` - JSON payload
+- `20` - Payload length (20 bytes)
+- `{"version":"0.9.11"}` - JSON payload
 - `\n` - Terminator
 
 ### Message ID
@@ -180,7 +180,7 @@ The BBS protocol version follows [Semantic Versioning](https://semver.org/):
 - **Minor** - Pre-1.0 (`0.x`): must match exactly; post-1.0: client minor ≤ server minor
 - **Patch** - Bug fixes (ignored for compatibility)
 
-Current version: `0.9.10`
+Current version: `0.9.11`
 
 ## Tracker Protocol Version
 
