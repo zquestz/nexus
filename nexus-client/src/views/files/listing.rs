@@ -121,7 +121,11 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
                 )
             })
             .into();
-            menu
+            if let Some(id) = row.scroll_target_id {
+                container(menu).id(id).into()
+            } else {
+                menu
+            }
         })
         .width(Fill);
 

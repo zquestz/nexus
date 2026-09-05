@@ -3,17 +3,14 @@
 use crate::i18n::{t, t_args};
 use crate::types::ChatMessage;
 
-use iced::widget::scrollable;
-use iced::{Task, widget::operation};
+use iced::Task;
 use nexus_common::ErrorKind;
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{FileEntry, FileInfoDetails, FileSearchResult};
 
 use crate::NexusApp;
 use crate::handlers::files::sort_search_results;
-use crate::types::{
-    FilesManagementState, InputId, Message, PendingOverwrite, ResponseRouting, ScrollableId,
-};
+use crate::types::{FilesManagementState, InputId, Message, PendingOverwrite, ResponseRouting};
 
 /// Data from a FileListResponse message
 pub struct FileListResponseData {
@@ -48,9 +45,6 @@ impl NexusApp {
             _ => return Task::none(),
         };
 
-        // Check if this response is for the currently active tab (for scroll behavior)
-        let is_active_tab = conn.files_management.active_tab_id() == tab_id;
-
         // Find the tab by ID (it may have been closed)
         let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) else {
             return Task::none();
@@ -71,6 +65,16 @@ impl NexusApp {
 
             // Build sorted entries cache
             tab.update_sorted_entries();
+
+            if let Some(target) = &tab.scroll_target
+                && !tab
+                    .entries
+                    .as_ref()
+                    .is_some_and(|entries| entries.iter().any(|entry| entry.name == target.name))
+            {
+                tab.error = Some(t_args("files-not-found", &[("name", &target.name)]));
+                tab.scroll_target = None;
+            }
 
             // Check for URI target (from nexus:// URI navigation)
             // Match against both the full name (with suffix) and display name (without suffix)
@@ -119,18 +123,16 @@ impl NexusApp {
         } else {
             tab.entries = None;
             tab.sorted_entries = None;
+            tab.scroll_target = None;
             tab.error = data.error;
         }
 
-        // Snap scroll to beginning when directory content changes (only for active tab)
-        if is_active_tab {
-            operation::snap_to(
-                ScrollableId::FilesContent,
-                scrollable::RelativeOffset::START,
-            )
-        } else {
-            Task::none()
+        // Restore/reset only this listing, including when it arrives in the
+        // background. The view reveals any pending target after layout.
+        if !tab.is_searching() {
+            tab.reset_scroll();
         }
+        Task::none()
     }
 
     /// Handle file create directory response

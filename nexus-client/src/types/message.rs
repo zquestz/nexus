@@ -13,8 +13,9 @@ use nexus_common::validators::PasswordStrength;
 use nexus_common::voice::VoiceQuality;
 
 use super::panel::{
-    FileSortColumn, GroupManagementSortColumn, SettingsTab, TabId, TrackerBrowserSortColumn,
-    TrackerManagementSortColumn, UserManagementSortColumn, UserManagementTab,
+    FileScrollOutcome, FileSortColumn, GroupManagementSortColumn, SettingsTab, TabId,
+    TrackerBrowserSortColumn, TrackerManagementSortColumn, UserManagementSortColumn,
+    UserManagementTab,
 };
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::config::audio::{PttMode, PttReleaseDelay};
@@ -789,6 +790,24 @@ pub enum Message {
     FileTabSwitch(TabId),
     /// Files: Close tab by ID
     FileTabClose(TabId),
+    /// Files: Save the viewport for the tab and content that produced it.
+    FileScrolled {
+        tab_id: TabId,
+        scroll_id: iced::widget::Id,
+        offset: f32,
+    },
+    /// Files: Destination listing has been rendered and can reveal its target.
+    FileScrollToTarget {
+        tab_id: TabId,
+        target_id: iced::widget::Id,
+    },
+    /// Files: Widget operation finished attempting to reveal a search result.
+    FileScrollCompleted {
+        connection_id: usize,
+        tab_id: TabId,
+        target_id: iced::widget::Id,
+        outcome: FileScrollOutcome,
+    },
     /// Files: Share - copy nexus:// link for file path to clipboard
     FileShare(String),
     /// Server info: Copy the server's public `nexus://` URI to the clipboard

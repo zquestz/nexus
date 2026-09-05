@@ -11,6 +11,7 @@
 mod directories;
 mod navigation;
 mod operations;
+mod scroll;
 mod search;
 mod tabs;
 mod transfers;
@@ -191,6 +192,8 @@ impl NexusApp {
 
         // Set loading state and clear previous results
         // Store the viewing_root used for this search (for downloads from results)
+        tab.scroll_target = None;
+        tab.reset_scroll();
         tab.search_query = Some(query.clone());
         tab.search_viewing_root = viewing_root;
         tab.search_loading = true;

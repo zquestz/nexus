@@ -1452,6 +1452,20 @@ impl NexusApp {
             Message::FileOverwriteCancel => self.handle_file_overwrite_cancel(),
             Message::FileTabNew => self.handle_file_tab_new(),
             Message::FileTabSwitch(tab_id) => self.handle_file_tab_switch(tab_id),
+            Message::FileScrolled {
+                tab_id,
+                scroll_id,
+                offset,
+            } => self.handle_file_scrolled(tab_id, scroll_id, offset),
+            Message::FileScrollToTarget { tab_id, target_id } => {
+                self.handle_file_scroll_to_target(tab_id, target_id)
+            }
+            Message::FileScrollCompleted {
+                connection_id,
+                tab_id,
+                target_id,
+                outcome,
+            } => self.handle_file_scroll_completed(connection_id, tab_id, target_id, outcome),
             Message::FileTabClose(tab_id) => self.handle_file_tab_close(tab_id),
             Message::FileShare(path) => self.handle_file_share(path),
             Message::CopyServerUri(uri) => self.handle_copy_server_uri(uri),

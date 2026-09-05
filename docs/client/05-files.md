@@ -89,7 +89,7 @@ Click any column header to sort. When sorting by Name, directories appear first.
 - **Right-click** for context menu:
   - **Download** — Download the file or folder
   - **Info** — View detailed information
-  - **Open** — Files: open the parent directory in a new tab; Folders: same as left-click
+  - **Open** — Files: open the parent directory in a new tab and scroll to the file; Folders: same as left-click
 
 ### Search Scope
 
@@ -102,7 +102,7 @@ Click any column header to sort. When sorting by Name, directories appear first.
 - Click the **Home** button
 - Press **Escape**
 
-Search results are preserved per-tab, so you can switch tabs and return to your search.
+Search results and their scroll position are preserved per-tab, so you can switch tabs and return to your search where you left off.
 
 ### Tabs
 

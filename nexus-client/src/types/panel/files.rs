@@ -2,6 +2,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use iced::widget::Id;
 use nexus_common::folders::strip_folder_suffix;
 use nexus_common::framing::MessageId;
 
@@ -82,6 +83,25 @@ fn next_tab_id() -> TabId {
 /// async responses back to the correct tab.
 pub type TabId = u64;
 
+/// Result of revealing a file in the currently rendered widget tree.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FileScrollOutcome {
+    /// The row was revealed at this absolute vertical scroll offset.
+    Scrolled(f32),
+    /// The originating listing is no longer mounted; defer until it is shown.
+    ViewUnavailable,
+    /// The listing is mounted, but the expected row cannot be reached.
+    TargetMissing,
+}
+
+/// A search result to reveal once its containing directory is visible.
+#[derive(Debug, Clone)]
+pub struct FileScrollTarget {
+    pub name: String,
+    /// Renewed when content changes or an attempt must be retried.
+    pub id: Id,
+}
+
 /// A single file browser tab (per-tab state)
 #[derive(Debug, Clone)]
 pub struct FileTab {
@@ -110,6 +130,12 @@ pub struct FileTab {
     pub sort_ascending: bool,
     /// Cached sorted entries (updated when entries or sort settings change)
     pub sorted_entries: Option<Vec<nexus_common::protocol::FileEntry>>,
+    /// One-shot scroll target, retained while this tab is loading or hidden.
+    pub scroll_target: Option<FileScrollTarget>,
+    /// Identifies this tab's current scrollable content, including reloads.
+    pub scroll_id: Id,
+    /// Last vertical offset, restored before a reused widget handles events.
+    pub scroll_offset: f32,
     /// Whether the "New Directory" dialog is open
     pub creating_directory: bool,
     /// New directory name input
@@ -175,6 +201,9 @@ impl Default for FileTab {
             sort_column: FileSortColumn::Name,
             sort_ascending: true,
             sorted_entries: None,
+            scroll_target: None,
+            scroll_id: Id::unique(),
+            scroll_offset: 0.0,
             creating_directory: false,
             new_directory_name: String::new(),
             new_directory_error: None,
@@ -205,6 +234,15 @@ impl Default for FileTab {
 }
 
 impl FileTab {
+    /// Start new content at the top and ignore queued viewport events for the old content.
+    pub fn reset_scroll(&mut self) {
+        self.scroll_id = Id::unique();
+        self.scroll_offset = 0.0;
+        if let Some(target) = &mut self.scroll_target {
+            target.id = Id::unique();
+        }
+    }
+
     /// Create a new tab copying another tab's location and sort settings
     ///
     /// The new tab will have a new unique ID, the same path, viewing_root,
@@ -221,6 +259,9 @@ impl FileTab {
             sort_column: other.sort_column,
             sort_ascending: other.sort_ascending,
             sorted_entries: None,
+            scroll_target: None,
+            scroll_id: Id::unique(),
+            scroll_offset: 0.0,
             creating_directory: false,
             new_directory_name: String::new(),
             new_directory_error: None,
@@ -264,6 +305,9 @@ impl FileTab {
             sort_column: FileSortColumn::Name,
             sort_ascending: true,
             sorted_entries: None,
+            scroll_target: None,
+            scroll_id: Id::unique(),
+            scroll_offset: 0.0,
             creating_directory: false,
             new_directory_name: String::new(),
             new_directory_error: None,
@@ -299,6 +343,9 @@ impl FileTab {
 
     /// Clear search state and return to normal browsing
     pub fn clear_search(&mut self) {
+        if self.is_searching() {
+            self.reset_scroll();
+        }
         self.search_input.clear();
         self.search_query = None;
         self.search_results = None;
@@ -355,6 +402,8 @@ impl FileTab {
 
     /// Navigate to a new path (preserves viewing_root state)
     pub fn navigate_to(&mut self, path: String) {
+        self.reset_scroll();
+        self.scroll_target = None;
         self.current_path = path;
         self.entries = None;
         self.sorted_entries = None;
@@ -363,6 +412,8 @@ impl FileTab {
 
     /// Navigate to home directory (preserves viewing_root state, clears search)
     pub fn navigate_home(&mut self) {
+        self.reset_scroll();
+        self.scroll_target = None;
         self.current_path = String::new();
         self.entries = None;
         self.sorted_entries = None;
@@ -372,6 +423,8 @@ impl FileTab {
 
     /// Toggle between root view and user area view
     pub fn toggle_root(&mut self) {
+        self.reset_scroll();
+        self.scroll_target = None;
         self.viewing_root = !self.viewing_root;
         self.current_path = String::new();
         self.entries = None;
@@ -404,6 +457,9 @@ impl FileTab {
         if self.current_path.is_empty() || self.current_path == "/" {
             return;
         }
+
+        self.reset_scroll();
+        self.scroll_target = None;
 
         // Remove trailing slash if present
         let path = self.current_path.trim_end_matches('/');
@@ -632,6 +688,29 @@ impl FilesManagementState {
 mod tests {
     use super::*;
 
+    #[test]
+    fn scroll_resets_for_new_content_but_not_an_already_empty_search() {
+        let mut tab = FileTab {
+            scroll_offset: 240.0,
+            ..FileTab::default()
+        };
+        let id = tab.scroll_id.clone();
+        tab.clear_search();
+        assert_eq!(tab.scroll_id, id);
+        assert_eq!(tab.scroll_offset, 240.0);
+
+        tab.navigate_home();
+        assert_ne!(tab.scroll_id, id);
+        assert_eq!(tab.scroll_offset, 0.0);
+
+        tab.search_query = Some("target".to_string());
+        tab.scroll_offset = 240.0;
+        let id = tab.scroll_id.clone();
+        tab.clear_search();
+        assert_ne!(tab.scroll_id, id);
+        assert_eq!(tab.scroll_offset, 0.0);
+    }
+
     // =========================================================================
     // FileTab Tests
     // =========================================================================
@@ -859,6 +938,9 @@ mod tests {
             sort_column: FileSortColumn::Name,
             sort_ascending: true,
             sorted_entries: None,
+            scroll_target: None,
+            scroll_id: Id::unique(),
+            scroll_offset: 0.0,
             creating_directory: true,
             new_directory_name: "My Folder".to_string(),
             new_directory_error: Some("Name already exists".to_string()),

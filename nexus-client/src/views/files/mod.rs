@@ -29,7 +29,7 @@ use search::lazy_search_results_table;
 use tabs::build_file_tab_bar;
 use toolbar::{breadcrumb_bar, search_breadcrumb, search_input_row, toolbar};
 
-use iced::widget::{Space, button, column, container, row, scrollable, stack, tooltip};
+use iced::widget::{Id, Space, button, column, container, row, scrollable, sensor, stack, tooltip};
 use iced::{Center, Element, Fill, alignment};
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{FileEntry, FileSearchResult};
@@ -43,9 +43,8 @@ use crate::style::{
     content_background_style, drop_overlay_style, error_text_style, muted_text_style, shaped_text,
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
-use crate::types::{
-    ClipboardOperation, FileSortColumn, FilesManagementState, Message, ScrollableId,
-};
+use crate::types::{ClipboardOperation, FileSortColumn, FilesManagementState, Message};
+use crate::widgets::RestoreScroll;
 
 /// File permission flags for view rendering
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -109,6 +108,8 @@ struct FileRowData {
     path: String,
     /// Whether this entry is cut (pending move)
     is_cut: bool,
+    /// Unique widget ID only for the pending search-result scroll target.
+    scroll_target_id: Option<Id>,
     /// User permissions (Copy, so cheap to include per-row)
     perms: FilePermissions,
     /// Whether clipboard has content (for paste option)
@@ -128,6 +129,7 @@ impl Hash for FileRowData {
             entry,
             path,
             is_cut,
+            scroll_target_id,
             perms,
             has_clipboard,
             bypass_via_ownership,
@@ -146,6 +148,7 @@ impl Hash for FileRowData {
         can_upload.hash(state);
         path.hash(state);
         is_cut.hash(state);
+        scroll_target_id.hash(state);
         perms.hash(state);
         has_clipboard.hash(state);
         bypass_via_ownership.hash(state);
@@ -431,6 +434,11 @@ pub fn files_view<'a>(
                             entry: entry.clone(),
                             path,
                             is_cut,
+                            scroll_target_id: tab
+                                .scroll_target
+                                .as_ref()
+                                .filter(|target| target.name == entry.name)
+                                .map(|target| target.id.clone()),
                             perms,
                             has_clipboard: files_management.clipboard.is_some(),
                             bypass_via_ownership,
@@ -482,8 +490,44 @@ pub fn files_view<'a>(
     }
 
     // Add scrollable content
-    form_column = form_column
-        .push(container(scrollable(content).id(ScrollableId::FilesContent)).height(Fill));
+    let mut scroll_content = scrollable(content).id(tab.scroll_id.clone());
+    let content_ready = if is_searching {
+        !tab.search_loading && tab.search_results.is_some()
+    } else {
+        tab.entries.is_some() && tab.scroll_target.is_none()
+    };
+    if content_ready {
+        let tab_id = tab.id;
+        let scroll_id = tab.scroll_id.clone();
+        scroll_content = scroll_content.on_scroll(move |viewport| Message::FileScrolled {
+            tab_id,
+            scroll_id: scroll_id.clone(),
+            offset: viewport.absolute_offset().y,
+        });
+    }
+    let scroll_content = sensor(RestoreScroll::new(
+        scroll_content,
+        tab.scroll_id.clone(),
+        tab.scroll_offset,
+    ))
+    .key((
+        tab.id,
+        tab.scroll_target.as_ref().map(|target| target.id.clone()),
+    ));
+    let scroll_content = if !is_searching
+        && tab.entries.is_some()
+        && let Some(target) = &tab.scroll_target
+    {
+        let tab_id = tab.id;
+        let target_id = target.id.clone();
+        scroll_content.on_show(move |_| Message::FileScrollToTarget {
+            tab_id,
+            target_id: target_id.clone(),
+        })
+    } else {
+        scroll_content
+    };
+    form_column = form_column.push(container(scroll_content).height(Fill));
 
     let form = form_column
         .spacing(SPACER_SIZE_SMALL)
@@ -583,6 +627,7 @@ mod tests {
                 entry: sample_file_entry(),
                 path: "/file.txt".to_string(),
                 is_cut: false,
+                scroll_target_id: None,
                 perms: sample_permissions(),
                 has_clipboard: true,
                 bypass_via_ownership: false,
@@ -608,6 +653,7 @@ mod tests {
         assert_file_hash_changes(|d| d.rows[0].entry.can_upload = true);
         assert_file_hash_changes(|d| d.rows[0].path = "/other.txt".to_string());
         assert_file_hash_changes(|d| d.rows[0].is_cut = true);
+        assert_file_hash_changes(|d| d.rows[0].scroll_target_id = Some(Id::unique()));
         assert_file_hash_changes(|d| d.rows[0].perms.file_download = false);
         assert_file_hash_changes(|d| d.rows[0].has_clipboard = false);
         assert_file_hash_changes(|d| d.rows[0].bypass_via_ownership = true);
