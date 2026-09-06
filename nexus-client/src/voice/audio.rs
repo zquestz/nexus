@@ -680,11 +680,13 @@ where
 
                 // Downmix stereo to mono by averaging L+R channels
                 mono_samples.clear();
-                mono_samples.extend(data.chunks_exact(STEREO as usize).map(|chunk| {
-                    let left = f32::from_sample(chunk[0]);
-                    let right = f32::from_sample(chunk[1]);
-                    (left + right) * 0.5
-                }));
+                mono_samples.extend(data.as_chunks::<{ STEREO as usize }>().0.iter().map(
+                    |chunk| {
+                        let left = f32::from_sample(chunk[0]);
+                        let right = f32::from_sample(chunk[1]);
+                        (left + right) * 0.5
+                    },
+                ));
 
                 // Resample if needed, otherwise use directly
                 let output_samples = if let Some(ref resampler) = resampler {
@@ -1342,7 +1344,12 @@ where
                     state.mix_and_drain(stereo_frames_needed);
 
                     // Apply soft clipping and upmix mono to stereo directly
-                    for (i, chunk) in data.chunks_exact_mut(STEREO as usize).enumerate() {
+                    for (i, chunk) in data
+                        .as_chunks_mut::<{ STEREO as usize }>()
+                        .0
+                        .iter_mut()
+                        .enumerate()
+                    {
                         let sample = soft_clip(state.mix_buffer.get(i).copied().unwrap_or(0.0));
                         let out = T::from_sample(sample);
                         chunk[0] = out;

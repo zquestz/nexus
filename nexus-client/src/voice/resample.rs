@@ -465,7 +465,7 @@ mod tests {
         );
 
         // Verify stereo: each pair should have L == R
-        for (i, chunk) in stereo_output.chunks_exact(2).enumerate() {
+        for (i, chunk) in stereo_output.as_chunks::<STEREO>().0.iter().enumerate() {
             let left = chunk[0];
             let right = chunk[1];
             assert_eq!(
