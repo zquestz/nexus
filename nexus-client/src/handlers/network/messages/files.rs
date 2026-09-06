@@ -91,7 +91,7 @@ impl NexusApp {
                     name_lower == target_lower || display_lower == target_lower
                 }) {
                     if entry.dir_type.is_some() {
-                        // It's a directory - navigate into it
+                        // Continue in the originating tab, even if it is now in the background.
                         let new_path = if tab.current_path.is_empty() {
                             entry.name.clone()
                         } else {
@@ -100,21 +100,28 @@ impl NexusApp {
                         let root = tab.viewing_root;
                         let show_hidden = self.config.settings.show_hidden_files;
                         tab.navigate_to(new_path.clone());
-                        return self.send_file_list_request(
+                        return self.send_file_list_request_for_tab(
                             connection_id,
+                            tab_id,
                             new_path,
                             root,
                             show_hidden,
+                            None,
                         );
                     } else {
-                        // It's a file - initiate download
+                        // Download through the connection that supplied this listing.
                         let file_path = if tab.current_path.is_empty() {
                             entry.name.clone()
                         } else {
                             format!("{}/{}", tab.current_path, entry.name)
                         };
                         let remote_root = tab.viewing_root;
-                        return self.queue_download_with_root(file_path, false, remote_root);
+                        return self.queue_download_with_root(
+                            connection_id,
+                            file_path,
+                            false,
+                            remote_root,
+                        );
                     }
                 }
                 // Target not found - show error message above the listing
@@ -682,5 +689,325 @@ impl NexusApp {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use nexus_common::protocol::{ClientMessage, FileEntryDirType};
+    use tempfile::TempDir;
+    use tokio::sync::mpsc::UnboundedReceiver;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::handlers::files::FilesOpenIntent;
+    use crate::testing::support::test_connection_with_receiver;
+    use crate::transfers::{TransferDirection, TransferManager, TransferStatus};
+    use crate::types::{ActivePanel, TabId};
+
+    struct PendingUri {
+        app: NexusApp,
+        origin_tab: TabId,
+        other_tab: TabId,
+        request_id: MessageId,
+        origin_rx: UnboundedReceiver<(MessageId, ClientMessage)>,
+        other_rx: UnboundedReceiver<(MessageId, ClientMessage)>,
+        temp: TempDir,
+    }
+
+    fn pending_uri(target: &str) -> PendingUri {
+        let temp = TempDir::new().unwrap();
+        let (mut conn, mut origin_rx) = test_connection_with_receiver(1);
+        conn.bookmark_id = Some(Uuid::new_v4());
+        conn.connection_info.server_name = "Origin server".into();
+        conn.connection_info.address = "origin.example.test".into();
+        conn.connection_info.port = 7500;
+        conn.connection_info.transfer_port = 7501;
+        conn.connection_info.certificate_fingerprint = "origin-fingerprint".into();
+        conn.connection_info.username = "origin-user".into();
+        conn.connection_info.password = "origin-password".into();
+        conn.connection_info.nickname = "Origin user".into();
+        let tab = conn.files_management.active_tab_mut();
+        tab.navigate_to("Other tab".into());
+        tab.viewing_root = true;
+        tab.error = Some("Other tab error".into());
+        let other_tab = tab.id;
+        conn.files_management.new_tab();
+        let origin_tab = conn.files_management.active_tab_id();
+
+        let (mut other_conn, other_rx) = test_connection_with_receiver(2);
+        other_conn.active_panel = ActivePanel::Files;
+        other_conn.connection_info.address = "other.example.test".into();
+        let tab = other_conn.files_management.active_tab_mut();
+        tab.navigate_to("Other connection".into());
+        tab.viewing_root = true;
+        tab.error = Some("Other connection error".into());
+
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            transfer_manager: TransferManager::new_for_test(temp.path().join("transfers.json")),
+            ..NexusApp::default()
+        };
+        app.config.settings.download_path =
+            Some(temp.path().join("downloads").to_str().unwrap().into());
+        app.config.settings.queue_transfers = true;
+        app.config.settings.show_hidden_files = true;
+        app.connections.insert(1, conn);
+        app.connections.insert(2, other_conn);
+
+        drop(app.handle_toggle_files(FilesOpenIntent::UriPath(format!("Music/{target}"))));
+        let (request_id, request) = origin_rx.try_recv().expect("URI parent listing request");
+        assert!(matches!(request, ClientMessage::FileList {
+            path, root: false, show_hidden: true
+        } if path == "Music"));
+        assert!(matches!(
+            app.connections[&1].pending_requests.get(&request_id),
+            Some(ResponseRouting::PopulateFileList { tab_id, uri_target: Some(name) })
+                if *tab_id == origin_tab && name == target
+        ));
+        assert!(origin_rx.try_recv().is_err());
+
+        PendingUri {
+            app,
+            origin_tab,
+            other_tab,
+            request_id,
+            origin_rx,
+            other_rx,
+            temp,
+        }
+    }
+
+    fn listing(path: &str, name: &str, is_directory: bool) -> FileListResponseData {
+        FileListResponseData {
+            success: true,
+            error: None,
+            path: Some(path.into()),
+            entries: Some(vec![FileEntry {
+                name: name.into(),
+                size: 0,
+                modified: 0,
+                dir_type: is_directory.then_some(FileEntryDirType::Upload),
+                can_upload: false,
+            }]),
+            can_upload: false,
+            dropbox_owner: None,
+        }
+    }
+
+    #[test]
+    fn delayed_uri_directory_listing_stays_with_originating_tab() {
+        for switch_connection in [false, true] {
+            let mut fixture = pending_uri("album");
+            let app = &mut fixture.app;
+            drop(app.handle_file_tab_switch(fixture.other_tab));
+            if switch_connection {
+                drop(app.handle_switch_to_connection(2));
+            }
+            let active_connection = app.active_connection;
+            let other_tab_before =
+                format!("{:?}", app.connections[&1].files_management.active_tab());
+            let other_connection_before = format!("{:?}", app.connections[&2].files_management);
+
+            drop(app.handle_file_list_response(
+                1,
+                fixture.request_id,
+                listing("Music [NEXUS-UL]", "Album [NEXUS-UL]", true),
+            ));
+
+            let (followup_id, request) = fixture.origin_rx.try_recv().expect("directory listing");
+            let directory = "Music [NEXUS-UL]/Album [NEXUS-UL]";
+            assert!(matches!(request, ClientMessage::FileList {
+                path, root: false, show_hidden: true
+            } if path == directory));
+            assert!(matches!(
+                app.connections[&1].pending_requests.get(&followup_id),
+                Some(ResponseRouting::PopulateFileList { tab_id, uri_target: None })
+                    if *tab_id == fixture.origin_tab
+            ));
+
+            let contents = listing(directory, "track.mp3", false);
+            let expected_entries = contents.entries.clone();
+            drop(app.handle_file_list_response(1, followup_id, contents));
+
+            let conn = &app.connections[&1];
+            let origin = conn.files_management.tab_by_id(fixture.origin_tab).unwrap();
+            assert_eq!(origin.current_path, directory);
+            assert_eq!(origin.entries, expected_entries);
+            assert!(!conn.pending_requests.contains_key(&fixture.request_id));
+            assert!(!conn.pending_requests.contains_key(&followup_id));
+            assert_eq!(conn.files_management.active_tab_id(), fixture.other_tab);
+            assert_eq!(
+                format!("{:?}", conn.files_management.active_tab()),
+                other_tab_before
+            );
+            assert_eq!(
+                format!("{:?}", app.connections[&2].files_management),
+                other_connection_before
+            );
+            assert_eq!(app.active_connection, active_connection);
+            assert_eq!(app.active_panel(), ActivePanel::Files);
+            assert_eq!(app.transfer_manager.all().count(), 0);
+            assert!(!fixture.temp.path().join("transfers.json").exists());
+            assert!(fixture.origin_rx.try_recv().is_err());
+            assert!(fixture.other_rx.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn delayed_uri_download_uses_originating_connection() {
+        let mut fixture = pending_uri("TRACK.MP3");
+        let app = &mut fixture.app;
+        let expected_connection =
+            serde_json::to_value(&app.connections[&1].connection_info).unwrap();
+        let expected_bookmark = app.connections[&1].bookmark_id;
+        drop(app.handle_file_tab_switch(fixture.other_tab));
+        drop(app.handle_switch_to_connection(2));
+        let other_tab_before = format!("{:?}", app.connections[&1].files_management.active_tab());
+        let other_connection_before = format!("{:?}", app.connections[&2].files_management);
+
+        drop(app.handle_file_list_response(
+            1,
+            fixture.request_id,
+            listing("Music [NEXUS-UL]", "track.mp3", false),
+        ));
+        // Duplicate delivery cannot queue a second download after the routing is consumed.
+        drop(app.handle_file_list_response(
+            1,
+            fixture.request_id,
+            listing("Music [NEXUS-UL]", "track.mp3", false),
+        ));
+
+        assert_eq!(app.transfer_manager.all().count(), 1);
+        let transfer = app.transfer_manager.all().next().unwrap();
+        assert_eq!(
+            serde_json::to_value(&transfer.connection_info).unwrap(),
+            expected_connection
+        );
+        assert_eq!(transfer.bookmark_id, expected_bookmark);
+        assert_eq!(transfer.remote_path, "Music [NEXUS-UL]/track.mp3");
+        assert!(!transfer.remote_root);
+        assert!(!transfer.is_directory);
+        assert_eq!(transfer.direction, TransferDirection::Download);
+        assert_eq!(transfer.status, TransferStatus::Queued);
+        assert_eq!(
+            transfer.local_path,
+            fixture.temp.path().join("downloads/track.mp3")
+        );
+        let saved: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.temp.path().join("transfers.json")).unwrap())
+                .unwrap();
+        assert_eq!(saved["transfers"], serde_json::json!([transfer]));
+        assert!(!fixture.temp.path().join("downloads").exists());
+
+        let conn = &app.connections[&1];
+        assert!(!conn.pending_requests.contains_key(&fixture.request_id));
+        assert_eq!(conn.files_management.active_tab_id(), fixture.other_tab);
+        assert_eq!(
+            format!("{:?}", conn.files_management.active_tab()),
+            other_tab_before
+        );
+        assert_eq!(
+            format!("{:?}", app.connections[&2].files_management),
+            other_connection_before
+        );
+        assert_eq!(app.active_connection, Some(2));
+        assert_eq!(app.active_panel(), ActivePanel::Files);
+        assert!(fixture.origin_rx.try_recv().is_err());
+        assert!(fixture.other_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn delayed_uri_response_is_ignored_after_origin_is_removed() {
+        for is_directory in [false, true] {
+            for remove_connection in [false, true] {
+                let mut fixture = pending_uri("target");
+                let app = &mut fixture.app;
+                if remove_connection {
+                    app.connections.remove(&1);
+                } else {
+                    drop(app.handle_file_tab_close(fixture.origin_tab));
+                    let conn = &app.connections[&1];
+                    assert!(
+                        conn.files_management
+                            .tab_by_id(fixture.origin_tab)
+                            .is_none()
+                    );
+                    assert!(!conn.pending_requests.contains_key(&fixture.request_id));
+                }
+                drop(app.handle_switch_to_connection(2));
+                let other_tab_before = app
+                    .connections
+                    .get(&1)
+                    .map(|conn| format!("{:?}", conn.files_management));
+                let other_connection_before = format!("{:?}", app.connections[&2].files_management);
+
+                drop(app.handle_file_list_response(
+                    1,
+                    fixture.request_id,
+                    listing("Music", "target", is_directory),
+                ));
+
+                assert_eq!(
+                    app.connections
+                        .get(&1)
+                        .map(|conn| format!("{:?}", conn.files_management)),
+                    other_tab_before
+                );
+                assert_eq!(
+                    format!("{:?}", app.connections[&2].files_management),
+                    other_connection_before
+                );
+                assert_eq!(app.active_connection, Some(2));
+                assert_eq!(app.transfer_manager.all().count(), 0);
+                assert!(!fixture.temp.path().join("transfers.json").exists());
+                assert!(fixture.origin_rx.try_recv().is_err());
+                assert!(fixture.other_rx.try_recv().is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn delayed_uri_directory_followup_is_ignored_after_tab_closes() {
+        let mut fixture = pending_uri("album");
+        let app = &mut fixture.app;
+        drop(app.handle_file_list_response(1, fixture.request_id, listing("Music", "album", true)));
+        let (followup_id, _) = fixture.origin_rx.try_recv().expect("directory listing");
+        drop(app.handle_file_tab_close(fixture.origin_tab));
+        assert!(
+            app.connections[&1]
+                .files_management
+                .tab_by_id(fixture.origin_tab)
+                .is_none()
+        );
+        assert!(
+            !app.connections[&1]
+                .pending_requests
+                .contains_key(&followup_id)
+        );
+        drop(app.handle_switch_to_connection(2));
+        let other_tab_before = format!("{:?}", app.connections[&1].files_management);
+        let other_connection_before = format!("{:?}", app.connections[&2].files_management);
+
+        drop(app.handle_file_list_response(
+            1,
+            followup_id,
+            listing("Music/album", "track.mp3", false),
+        ));
+
+        assert_eq!(
+            format!("{:?}", app.connections[&1].files_management),
+            other_tab_before
+        );
+        assert_eq!(
+            format!("{:?}", app.connections[&2].files_management),
+            other_connection_before
+        );
+        assert_eq!(app.active_connection, Some(2));
+        assert_eq!(app.transfer_manager.all().count(), 0);
+        assert!(fixture.origin_rx.try_recv().is_err());
+        assert!(fixture.other_rx.try_recv().is_err());
     }
 }

@@ -129,9 +129,9 @@ impl NexusApp {
         let path = strip_leading_slash(&result.path);
 
         if result.is_directory {
-            self.queue_download_with_root(path.to_string(), true, remote_root)
+            self.queue_download_with_root(conn_id, path.to_string(), true, remote_root)
         } else {
-            self.queue_download_with_root(path.to_string(), false, remote_root)
+            self.queue_download_with_root(conn_id, path.to_string(), false, remote_root)
         }
     }
 

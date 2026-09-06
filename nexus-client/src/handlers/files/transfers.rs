@@ -109,24 +109,21 @@ impl NexusApp {
         // Get the current viewing mode (root or user area)
         let remote_root = conn.files_management.active_tab().viewing_root;
 
-        self.queue_download_with_root(remote_path, is_directory, remote_root)
+        self.queue_download_with_root(conn_id, remote_path, is_directory, remote_root)
     }
 
-    /// Queue a download transfer with explicit root context
+    /// Queue a download transfer with explicit connection and root context
     ///
-    /// This variant is used when the root context is known explicitly,
-    /// such as when downloading from search results where the search
-    /// may have been performed with a different root setting than the
-    /// current tab's browsing mode.
+    /// Response handlers must retain their originating connection rather than
+    /// using the current selection. Search downloads also retain the search's
+    /// root setting, which can differ from the tab's browsing mode.
     pub(crate) fn queue_download_with_root(
         &mut self,
+        conn_id: usize,
         remote_path: String,
         is_directory: bool,
         remote_root: bool,
     ) -> Task<Message> {
-        let Some(conn_id) = self.active_connection else {
-            return Task::none();
-        };
         let Some(conn) = self.connections.get(&conn_id) else {
             return Task::none();
         };

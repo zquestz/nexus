@@ -18,14 +18,6 @@ tracked separately below.
 
 ### Confirmed Fixes
 
-- [ ] **Preserve file-URI request ownership.** A delayed listing response can
-  navigate through the newly active tab or download through the newly active
-  connection. Carry the originating connection and tab IDs through the entire
-  continuation, and ignore it if its origin no longer exists.
-  Code: `nexus-client/src/handlers/network/messages/files.rs`.
-  Verification: switch tabs and connections, or close the originating tab,
-  before delivering the response; no action may be redirected to another origin.
-
 - [ ] **Correct last-admin protection for disabled admins.** With one enabled
   admin and another disabled admin, an unrelated edit to the disabled account
   can be rejected. Apply enabled-admin protection only to updates that would
