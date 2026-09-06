@@ -1,11 +1,15 @@
 //! TLS configuration and connection establishment
 
-use std::net::{IpAddr, ToSocketAddrs};
+use std::future::Future;
+use std::io;
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
+use iced::futures::{StreamExt, stream::FuturesUnordered};
 use nexus_common::address;
 use once_cell::sync::Lazy;
 use tokio::net::TcpStream;
+use tokio::time::{Instant, sleep};
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::client::ClientConnection;
@@ -21,7 +25,7 @@ use tokio_socks::tcp::Socks5Stream;
 
 use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, LOCALHOST_HOSTNAME, SNI_SERVER_NAME};
 
-use super::constants::{CONNECTION_TIMEOUT, DNS_LOOKUP_TIMEOUT};
+use super::constants::{CONNECTION_TIMEOUT, DNS_LOOKUP_TIMEOUT, TCP_CONNECT_ATTEMPT_DELAY};
 use super::types::{ConnectError, ProxyConfig, TlsStream};
 
 /// Global TLS connector (TOFU certificate trust, verified handshake signatures).
@@ -200,20 +204,7 @@ async fn establish_direct_connection(
             error: e.to_string(),
         })?;
 
-    let socket_addr = addrs
-        .into_iter()
-        .next()
-        .ok_or_else(|| ConnectError::CouldNotResolve {
-            address: address.to_string(),
-        })?;
-
-    // Establish TCP connection with timeout
-    let tcp_stream = tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
-        .await
-        .map_err(|_| ConnectError::TcpTimeout)?
-        .map_err(|e| ConnectError::TcpFailed {
-            error: e.to_string(),
-        })?;
+    let tcp_stream = connect_tcp_to_addresses(address, &addrs).await?;
 
     // Perform TLS handshake — bound by `CONNECTION_TIMEOUT` so a peer
     // that completes TCP and stalls TLS (no ServerHello / mid-handshake
@@ -237,6 +228,68 @@ async fn establish_direct_connection(
     let fingerprint = calculate_certificate_fingerprint(&tls_stream)?;
 
     Ok((tls_stream, fingerprint))
+}
+
+/// Connect to resolved addresses before starting TLS. The original hostname is
+/// retained only for resolution errors; no DNS lookup happens here.
+///
+/// Attempts start in resolver order, staggered while earlier ones are pending
+/// and advanced immediately on failure. All share one TCP deadline. The first
+/// successful connection wins; dropping the other futures closes their sockets.
+/// No tasks are spawned, so cancelling the caller also cancels every attempt.
+pub(crate) async fn connect_tcp_to_addresses(
+    address: &str,
+    addrs: &[SocketAddr],
+) -> Result<TcpStream, ConnectError> {
+    connect_tcp_to_addresses_with(address, addrs, TcpStream::connect).await
+}
+
+async fn connect_tcp_to_addresses_with<T, F>(
+    address: &str,
+    addrs: &[SocketAddr],
+    mut connect: impl FnMut(SocketAddr) -> F,
+) -> Result<T, ConnectError>
+where
+    F: Future<Output = io::Result<T>>,
+{
+    let mut addrs = addrs.iter().copied();
+    let first = addrs.next().ok_or_else(|| ConnectError::CouldNotResolve {
+        address: address.to_string(),
+    })?;
+
+    let deadline = sleep(CONNECTION_TIMEOUT);
+    let next_attempt = sleep(TCP_CONNECT_ATTEMPT_DELAY);
+    tokio::pin!(deadline, next_attempt);
+    let mut attempts = FuturesUnordered::new();
+    attempts.push(connect(first));
+
+    loop {
+        tokio::select! {
+            // Never extend the total deadline. Prefer a completed connection
+            // over starting another attempt when both become ready together.
+            biased;
+            _ = &mut deadline => return Err(ConnectError::TcpTimeout),
+            Some(result) = attempts.next() => {
+                match result {
+                    Ok(stream) => return Ok(stream),
+                    Err(error) => {
+                        if let Some(addr) = addrs.next() {
+                            attempts.push(connect(addr));
+                            next_attempt.as_mut().reset(Instant::now() + TCP_CONNECT_ATTEMPT_DELAY);
+                        } else if attempts.is_empty() {
+                            return Err(ConnectError::TcpFailed { error: error.to_string() });
+                        }
+                    }
+                }
+            }
+            _ = &mut next_attempt, if addrs.len() > 0 => {
+                if let Some(addr) = addrs.next() {
+                    attempts.push(connect(addr));
+                    next_attempt.as_mut().reset(Instant::now() + TCP_CONNECT_ATTEMPT_DELAY);
+                }
+            }
+        }
+    }
 }
 
 /// Establish a TLS connection through a SOCKS5 proxy
@@ -324,7 +377,15 @@ fn calculate_certificate_fingerprint(tls_stream: &TlsStream) -> Result<String, C
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::future::pending;
+    use std::time::Duration;
+
+    use iced::futures::poll;
     use rcgen::{CertificateParams, KeyPair};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpSocket};
+    use tokio::time::{Instant, advance, sleep, timeout};
     use tokio_rustls::rustls::crypto::ring;
     use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
     use tokio_rustls::rustls::sign::{CertifiedKey, SingleCertAndKey};
@@ -335,8 +396,307 @@ mod tests {
     };
 
     use super::*;
+    use crate::network::constants::TCP_CONNECT_ATTEMPT_DELAY;
 
     const MAX_HANDSHAKE_ROUNDS: usize = 8;
+
+    #[derive(Default)]
+    struct TcpAttempts {
+        started: RefCell<Vec<(SocketAddr, Instant)>>,
+        dropped: RefCell<Vec<SocketAddr>>,
+    }
+
+    struct PendingTcpAttempt<'a> {
+        address: SocketAddr,
+        attempts: &'a TcpAttempts,
+    }
+
+    impl Drop for PendingTcpAttempt<'_> {
+        fn drop(&mut self) {
+            self.attempts.dropped.borrow_mut().push(self.address);
+        }
+    }
+
+    async fn simulated_tcp_connect(
+        address: SocketAddr,
+        attempts: &TcpAttempts,
+        delay: Option<Duration>,
+        succeeds: bool,
+    ) -> io::Result<SocketAddr> {
+        attempts
+            .started
+            .borrow_mut()
+            .push((address, Instant::now()));
+        let _attempt = PendingTcpAttempt { address, attempts };
+        match delay {
+            Some(delay) => sleep(delay).await,
+            None => pending::<()>().await,
+        }
+        if succeeds {
+            Ok(address)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                address.to_string(),
+            ))
+        }
+    }
+
+    fn tcp_test_addresses() -> [SocketAddr; 3] {
+        ["[::1]:7500", "127.0.0.1:7500", "127.0.0.2:7500"].map(|address| address.parse().unwrap())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_first_success_does_not_start_other_addresses() {
+        for delay in [Duration::ZERO, TCP_CONNECT_ATTEMPT_DELAY] {
+            let addrs = tcp_test_addresses();
+            let attempts = TcpAttempts::default();
+            let start = Instant::now();
+            let connected = connect_tcp_to_addresses_with("test", &addrs, |addr| {
+                simulated_tcp_connect(addr, &attempts, Some(delay), true)
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(connected, addrs[0]);
+            assert_eq!(*attempts.started.borrow(), vec![(addrs[0], start)]);
+            assert_eq!(start.elapsed(), delay);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_failure_advances_immediately() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let connected = connect_tcp_to_addresses_with("test", &addrs, |addr| {
+            simulated_tcp_connect(addr, &attempts, Some(Duration::ZERO), addr == addrs[1])
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(connected, addrs[1]);
+        assert_eq!(
+            *attempts.started.borrow(),
+            vec![(addrs[0], start), (addrs[1], start)]
+        );
+        assert_eq!(start.elapsed(), Duration::ZERO);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_stalled_first_address_falls_back_and_is_cancelled() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let connected = connect_tcp_to_addresses_with("test", &addrs, |addr| {
+            let delay = (addr != addrs[0]).then_some(Duration::ZERO);
+            simulated_tcp_connect(addr, &attempts, delay, true)
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(connected, addrs[1]);
+        assert_eq!(start.elapsed(), TCP_CONNECT_ATTEMPT_DELAY);
+        assert_eq!(
+            *attempts.started.borrow(),
+            vec![
+                (addrs[0], start),
+                (addrs[1], start + TCP_CONNECT_ATTEMPT_DELAY),
+            ]
+        );
+        assert!(attempts.dropped.borrow().contains(&addrs[0]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_earlier_attempt_can_win_after_fallback_starts() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let first_delay = TCP_CONNECT_ATTEMPT_DELAY + TCP_CONNECT_ATTEMPT_DELAY / 2;
+        let connected = connect_tcp_to_addresses_with("test", &addrs, |addr| {
+            let delay = (addr == addrs[0]).then_some(first_delay);
+            simulated_tcp_connect(addr, &attempts, delay, true)
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(connected, addrs[0]);
+        assert_eq!(start.elapsed(), first_delay);
+        assert_eq!(
+            *attempts.started.borrow(),
+            vec![
+                (addrs[0], start),
+                (addrs[1], start + TCP_CONNECT_ATTEMPT_DELAY),
+            ]
+        );
+        assert!(attempts.dropped.borrow().contains(&addrs[1]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_failure_advances_while_older_attempt_is_pending() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let connected = connect_tcp_to_addresses_with("test", &addrs, |addr| {
+            let delay = if addr == addrs[0] {
+                None
+            } else if addr == addrs[1] {
+                Some(TCP_CONNECT_ATTEMPT_DELAY / 2)
+            } else {
+                Some(Duration::ZERO)
+            };
+            simulated_tcp_connect(addr, &attempts, delay, addr == addrs[2])
+        })
+        .await
+        .unwrap();
+
+        let third_start = TCP_CONNECT_ATTEMPT_DELAY + TCP_CONNECT_ATTEMPT_DELAY / 2;
+        assert_eq!(connected, addrs[2]);
+        assert_eq!(start.elapsed(), third_start);
+        assert_eq!(
+            *attempts.started.borrow(),
+            vec![
+                (addrs[0], start),
+                (addrs[1], start + TCP_CONNECT_ATTEMPT_DELAY),
+                (addrs[2], start + third_start),
+            ]
+        );
+        assert!(attempts.dropped.borrow().contains(&addrs[0]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_exhausted_addresses_wait_for_pending_attempt() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let first_delay = TCP_CONNECT_ATTEMPT_DELAY * 2;
+        let connected = connect_tcp_to_addresses_with("test", &addrs[..2], |addr| {
+            let delay = if addr == addrs[0] {
+                first_delay
+            } else {
+                Duration::ZERO
+            };
+            simulated_tcp_connect(addr, &attempts, Some(delay), addr == addrs[0])
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(connected, addrs[0]);
+        assert_eq!(start.elapsed(), first_delay);
+        assert_eq!(
+            *attempts.started.borrow(),
+            vec![
+                (addrs[0], start),
+                (addrs[1], start + TCP_CONNECT_ATTEMPT_DELAY),
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_all_failed_addresses_return_last_error() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let result = connect_tcp_to_addresses_with("test", &addrs, |addr| {
+            simulated_tcp_connect(addr, &attempts, Some(Duration::ZERO), false)
+        })
+        .await;
+
+        assert!(
+            matches!(result, Err(ConnectError::TcpFailed { error }) if error == addrs[2].to_string())
+        );
+        assert_eq!(attempts.started.borrow().len(), addrs.len());
+        assert_eq!(attempts.dropped.borrow().len(), addrs.len());
+        assert_eq!(start.elapsed(), Duration::ZERO);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_pending_addresses_share_one_deadline() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let result = connect_tcp_to_addresses_with("test", &addrs, |addr| {
+            simulated_tcp_connect(addr, &attempts, None, true)
+        })
+        .await;
+
+        assert!(matches!(result, Err(ConnectError::TcpTimeout)));
+        assert_eq!(start.elapsed(), CONNECTION_TIMEOUT);
+        assert_eq!(
+            *attempts.started.borrow(),
+            vec![
+                (addrs[0], start),
+                (addrs[1], start + TCP_CONNECT_ATTEMPT_DELAY),
+                (addrs[2], start + TCP_CONNECT_ATTEMPT_DELAY * 2),
+            ]
+        );
+        assert_eq!(attempts.dropped.borrow().len(), addrs.len());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_caller_cancellation_drops_pending_attempts() {
+        let addrs = tcp_test_addresses();
+        let attempts = TcpAttempts::default();
+        let mut connect = Box::pin(connect_tcp_to_addresses_with("test", &addrs, |addr| {
+            simulated_tcp_connect(addr, &attempts, None, true)
+        }));
+
+        assert!(poll!(connect.as_mut()).is_pending());
+        advance(TCP_CONNECT_ATTEMPT_DELAY).await;
+        assert!(poll!(connect.as_mut()).is_pending());
+        assert_eq!(attempts.started.borrow().len(), 2);
+        assert!(attempts.dropped.borrow().is_empty());
+        drop(connect);
+
+        let mut dropped = attempts.dropped.borrow().clone();
+        dropped.sort();
+        let mut expected = addrs[..2].to_vec();
+        expected.sort();
+        assert_eq!(dropped, expected);
+        advance(CONNECTION_TIMEOUT).await;
+        assert_eq!(attempts.started.borrow().len(), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tcp_empty_addresses_do_not_start_an_attempt() {
+        let attempts = TcpAttempts::default();
+        let start = Instant::now();
+        let result = connect_tcp_to_addresses_with("missing.example", &[], |addr| {
+            simulated_tcp_connect(addr, &attempts, None, true)
+        })
+        .await;
+
+        assert!(
+            matches!(result, Err(ConnectError::CouldNotResolve { address }) if address == "missing.example")
+        );
+        assert!(attempts.started.borrow().is_empty());
+        assert_eq!(start.elapsed(), Duration::ZERO);
+    }
+
+    #[tokio::test]
+    async fn tcp_fallback_connects_to_a_real_listener() {
+        timeout(Duration::from_secs(5), async {
+            // Reserve a port without listening so no other test can claim it.
+            let refused = TcpSocket::new_v4().unwrap();
+            refused.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addrs = [
+                refused.local_addr().unwrap(),
+                listener.local_addr().unwrap(),
+            ];
+            let mut client = connect_tcp_to_addresses("test", &addrs).await.unwrap();
+            let (mut server, peer) = listener.accept().await.unwrap();
+
+            assert_eq!(client.peer_addr().unwrap(), addrs[1]);
+            assert_eq!(client.local_addr().unwrap(), peer);
+            client.write_all(b"fallback").await.unwrap();
+            let mut bytes = [0; 8];
+            server.read_exact(&mut bytes).await.unwrap();
+            assert_eq!(&bytes, b"fallback");
+        })
+        .await
+        .expect("local TCP fallback must finish promptly");
+    }
 
     fn handshake(
         version: &'static SupportedProtocolVersion,

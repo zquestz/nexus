@@ -177,10 +177,11 @@ pub enum ConnectError {
     /// from `CouldNotResolve` (resolver answered "no records") and
     /// `InvalidAddress` (parse / IDN issue).
     DnsTimeout { address: String },
-    /// TCP `connect()` timed out (peer never SYN-ACK'd in
-    /// [`super::constants::CONNECTION_TIMEOUT`]).
+    /// No resolved TCP address connected within the shared
+    /// [`super::constants::CONNECTION_TIMEOUT`] deadline.
     TcpTimeout,
-    /// TCP `connect()` returned an error (refused, no route, etc.).
+    /// Every resolved TCP address failed (refused, no route, etc.). Carries
+    /// the last completed attempt's error.
     TcpFailed { error: String },
     /// TLS handshake failed AFTER TCP succeeded. Reliable signal that
     /// the peer accepted the connection then dropped — typically

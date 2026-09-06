@@ -7,7 +7,6 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use tokio::io::{AsyncRead, AsyncWrite, BufReader, ReadHalf, WriteHalf};
-use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
@@ -22,6 +21,7 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, PROTOCOL_VERSION, SNI_SERVER_NAME};
 
 use super::{CONNECTION_TIMEOUT, IDLE_TIMEOUT, TRANSFER_SETUP_WRITE_TIMEOUT, TransferError};
+use crate::network::tls::connect_tcp_to_addresses;
 use crate::network::{DNS_LOOKUP_TIMEOUT, ProxyConfig};
 use crate::types::ConnectionInfo;
 
@@ -151,18 +151,14 @@ pub async fn connect_and_authenticate(
                 .to_socket_addrs()
                 .map(|iter| iter.collect::<Vec<_>>())
         });
-        let socket_addr = timeout(DNS_LOOKUP_TIMEOUT, lookup)
+        let addrs = timeout(DNS_LOOKUP_TIMEOUT, lookup)
             .await
             .map_err(|_| TransferError::ConnectionError)?
             .map_err(|_| TransferError::ConnectionError)?
-            .map_err(|_| TransferError::ConnectionError)?
-            .into_iter()
-            .next()
-            .ok_or(TransferError::ConnectionError)?;
+            .map_err(|_| TransferError::ConnectionError)?;
 
-        let tcp_stream = timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
+        let tcp_stream = connect_tcp_to_addresses(target_addr, &addrs)
             .await
-            .map_err(|_| TransferError::ConnectionError)?
             .map_err(|_| TransferError::ConnectionError)?;
 
         let tls_stream = timeout(

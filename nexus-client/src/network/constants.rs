@@ -2,8 +2,13 @@
 
 use std::time::Duration;
 
-/// Connection timeout duration (30 seconds)
+/// Per-phase connection timeout (30 seconds). Resolved TCP attempts share one
+/// deadline; TLS retains its own phase deadline.
 pub const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Delay before starting another resolved TCP address while earlier attempts
+/// are pending. All attempts share `CONNECTION_TIMEOUT`.
+pub(super) const TCP_CONNECT_ATTEMPT_DELAY: Duration = Duration::from_millis(250);
 
 /// DNS resolution timeout (15 seconds). Mirrors the BBS-server
 /// tracker task's `DNS_LOOKUP_TIMEOUT` so client and server

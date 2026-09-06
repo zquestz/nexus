@@ -18,14 +18,6 @@ tracked separately below.
 
 ### Confirmed Fixes
 
-- [ ] **Try alternate DNS addresses for direct connections.** BBS and transfer
-  connections currently select only the first resolved address. Try the resolved
-  alternatives under a bounded overall connection deadline.
-  Code: `nexus-client/src/network/tls.rs` and
-  `nexus-client/src/transfers/executor/connection.rs`.
-  Verification: an unavailable first address followed by a reachable address
-  connects successfully; all-failure cases respect the overall deadline.
-
 - [ ] **Remove workspace formatting from the client build script.** Building
   currently invokes `cargo fmt --all`, which can modify unrelated source files.
   Keep formatting an explicit developer or CI step rather than a build side
