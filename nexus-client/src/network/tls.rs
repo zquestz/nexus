@@ -9,7 +9,14 @@ use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::client::ClientConnection;
-use tokio_rustls::rustls::pki_types::ServerName;
+use tokio_rustls::rustls::client::danger::{
+    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
+};
+use tokio_rustls::rustls::crypto::{
+    WebPkiSupportedAlgorithms, verify_tls12_signature, verify_tls13_signature,
+};
+use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use tokio_rustls::rustls::{DigitallySignedStruct, Error as RustlsError, SignatureScheme};
 use tokio_socks::tcp::Socks5Stream;
 
 use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, LOCALHOST_HOSTNAME, SNI_SERVER_NAME};
@@ -17,80 +24,67 @@ use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, LOCALHOST_HOSTNAME, SNI_SER
 use super::constants::{CONNECTION_TIMEOUT, DNS_LOOKUP_TIMEOUT};
 use super::types::{ConnectError, ProxyConfig, TlsStream};
 
-/// Global TLS connector (accepts any certificate, no hostname verification).
+/// Global TLS connector (TOFU certificate trust, verified handshake signatures).
 /// Built from `create_tls_config` so the BBS and transfer ports share a single
 /// TLS verification policy.
 pub(super) static TLS_CONNECTOR: Lazy<TlsConnector> =
     Lazy::new(|| TlsConnector::from(Arc::new(create_tls_config())));
 
-/// Custom certificate verifier that accepts any certificate (no verification)
+/// Verifies possession of the certificate's private key without a CA path.
+/// Certificate trust is checked through TOFU fingerprint pinning after TLS.
 #[derive(Debug)]
-struct NoVerifier;
+struct TofuVerifier {
+    supported_algorithms: WebPkiSupportedAlgorithms,
+}
 
-impl tokio_rustls::rustls::client::danger::ServerCertVerifier for NoVerifier {
+impl ServerCertVerifier for TofuVerifier {
     fn verify_server_cert(
         &self,
-        _end_entity: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
-        _intermediates: &[tokio_rustls::rustls::pki_types::CertificateDer<'_>],
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
         _server_name: &ServerName<'_>,
         _ocsp_response: &[u8],
-        _now: tokio_rustls::rustls::pki_types::UnixTime,
-    ) -> Result<tokio_rustls::rustls::client::danger::ServerCertVerified, tokio_rustls::rustls::Error>
-    {
-        // Accept any certificate without verification
-        Ok(tokio_rustls::rustls::client::danger::ServerCertVerified::assertion())
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, RustlsError> {
+        Ok(ServerCertVerified::assertion())
     }
 
     fn verify_tls12_signature(
         &self,
-        _message: &[u8],
-        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
-        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
-    ) -> Result<
-        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
-        tokio_rustls::rustls::Error,
-    > {
-        // Accept any signature without verification
-        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, RustlsError> {
+        verify_tls12_signature(message, cert, dss, &self.supported_algorithms)
     }
 
     fn verify_tls13_signature(
         &self,
-        _message: &[u8],
-        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
-        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
-    ) -> Result<
-        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
-        tokio_rustls::rustls::Error,
-    > {
-        // Accept any signature without verification
-        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, RustlsError> {
+        verify_tls13_signature(message, cert, dss, &self.supported_algorithms)
     }
 
-    fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
-        vec![
-            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA256,
-            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA384,
-            tokio_rustls::rustls::SignatureScheme::RSA_PKCS1_SHA512,
-            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
-            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
-            tokio_rustls::rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
-            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA256,
-            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA384,
-            tokio_rustls::rustls::SignatureScheme::RSA_PSS_SHA512,
-            tokio_rustls::rustls::SignatureScheme::ED25519,
-        ]
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.supported_algorithms.supported_schemes()
     }
 }
 
 /// Create the client's TLS config (TOFU model: accepts any certificate, no SNI).
 ///
+/// Handshake signatures must prove possession of the certificate's private key.
 /// Single source of truth for the client's TLS verification policy — used by the
 /// BBS `TLS_CONNECTOR` and by the transfer executor for the transfer port (7501).
 pub fn create_tls_config() -> ClientConfig {
-    let mut config = ClientConfig::builder()
+    let builder = ClientConfig::builder();
+    let verifier = TofuVerifier {
+        supported_algorithms: builder.crypto_provider().signature_verification_algorithms,
+    };
+    let mut config = builder
         .dangerous()
-        .with_custom_certificate_verifier(Arc::new(NoVerifier))
+        .with_custom_certificate_verifier(Arc::new(verifier))
         .with_no_client_auth();
 
     // Disable SNI (Server Name Indication) since we're not verifying hostnames
@@ -330,7 +324,154 @@ fn calculate_certificate_fingerprint(tls_stream: &TlsStream) -> Result<String, C
 
 #[cfg(test)]
 mod tests {
+    use rcgen::{CertificateParams, KeyPair};
+    use tokio_rustls::rustls::crypto::ring;
+    use tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer;
+    use tokio_rustls::rustls::sign::{CertifiedKey, SingleCertAndKey};
+    use tokio_rustls::rustls::version::{TLS12, TLS13};
+    use tokio_rustls::rustls::{
+        CertificateError, InconsistentKeys, ServerConfig, ServerConnection,
+        SupportedProtocolVersion,
+    };
+
     use super::*;
+
+    const MAX_HANDSHAKE_ROUNDS: usize = 8;
+
+    fn handshake(
+        version: &'static SupportedProtocolVersion,
+        is_wrong_key: bool,
+    ) -> Result<(), RustlsError> {
+        let _ = ring::default_provider().install_default();
+        let client_config = create_tls_config();
+        assert!(!client_config.enable_sni);
+        let provider = Arc::clone(client_config.crypto_provider());
+
+        let certificate_key = KeyPair::generate().expect("generate certificate key");
+        let certificate = CertificateParams::new(vec!["certificate.example".to_owned()])
+            .expect("create certificate parameters")
+            .self_signed(&certificate_key)
+            .expect("generate self-signed certificate");
+        let signing_key = if is_wrong_key {
+            KeyPair::generate().expect("generate unrelated signing key")
+        } else {
+            certificate_key
+        };
+        let signing_key = provider
+            .key_provider
+            .load_private_key(PrivatePkcs8KeyDer::from(signing_key.serialize_der()).into())
+            .expect("load signing key");
+        let certified_key = CertifiedKey::new(vec![certificate.der().clone()], signing_key);
+        if is_wrong_key {
+            assert_eq!(
+                certified_key.keys_match(),
+                Err(RustlsError::InconsistentKeys(InconsistentKeys::KeyMismatch))
+            );
+        } else {
+            certified_key
+                .keys_match()
+                .expect("matching certificate key");
+        }
+
+        // The resolver deliberately permits a mismatched key, so the client
+        // must reject the handshake rather than the server rejecting setup.
+        let server_config = ServerConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[version])
+            .expect("enable requested TLS version")
+            .with_no_client_auth()
+            .with_cert_resolver(Arc::new(SingleCertAndKey::from(certified_key)));
+        let mut server = ServerConnection::new(Arc::new(server_config)).expect("create server");
+        let mut client = ClientConnection::new(
+            Arc::new(client_config),
+            ServerName::try_from("different.example").expect("valid test hostname"),
+        )
+        .expect("create client");
+
+        for _ in 0..MAX_HANDSHAKE_ROUNDS {
+            let mut client_records = Vec::new();
+            client
+                .write_tls(&mut client_records)
+                .expect("write client TLS records");
+            let mut incoming = client_records.as_slice();
+            while !incoming.is_empty() {
+                assert!(server.read_tls(&mut incoming).expect("read client records") > 0);
+                server
+                    .process_new_packets()
+                    .expect("server accepts client handshake");
+            }
+
+            let mut server_records = Vec::new();
+            server
+                .write_tls(&mut server_records)
+                .expect("write server TLS records");
+            let mut incoming = server_records.as_slice();
+            while !incoming.is_empty() {
+                assert!(client.read_tls(&mut incoming).expect("read server records") > 0);
+                client.process_new_packets()?;
+            }
+
+            if !client.is_handshaking() && !server.is_handshaking() {
+                assert_eq!(client.protocol_version(), Some(version.version));
+                assert_eq!(server.protocol_version(), Some(version.version));
+                assert!(server.server_name().is_none());
+                assert_eq!(
+                    client.peer_certificates(),
+                    Some(std::slice::from_ref(certificate.der()))
+                );
+                assert_eq!(
+                    get_certificate_fingerprint(&client),
+                    Some(nexus_common::fingerprint::format_certificate_fingerprint(
+                        certificate.der().as_ref()
+                    ))
+                );
+                return Ok(());
+            }
+        }
+        panic!("handshake did not complete within the round limit");
+    }
+
+    #[test]
+    fn test_tls12_accepts_self_signed_handshake() {
+        handshake(&TLS12, false).expect("valid TLS 1.2 handshake");
+    }
+
+    #[test]
+    fn test_tls13_accepts_self_signed_handshake() {
+        handshake(&TLS13, false).expect("valid TLS 1.3 handshake");
+    }
+
+    #[test]
+    fn test_tls12_rejects_wrong_signing_key() {
+        assert_eq!(
+            handshake(&TLS12, true),
+            Err(RustlsError::InvalidCertificate(
+                CertificateError::BadSignature
+            ))
+        );
+    }
+
+    #[test]
+    fn test_tls13_rejects_wrong_signing_key() {
+        assert_eq!(
+            handshake(&TLS13, true),
+            Err(RustlsError::InvalidCertificate(
+                CertificateError::BadSignature
+            ))
+        );
+    }
+
+    #[test]
+    fn test_verify_schemes_follow_supplied_algorithms() {
+        let mut supported_algorithms = ring::default_provider().signature_verification_algorithms;
+        supported_algorithms.mapping = &supported_algorithms.mapping[1..];
+        let verifier = TofuVerifier {
+            supported_algorithms,
+        };
+        assert_eq!(
+            verifier.supported_verify_schemes(),
+            supported_algorithms.supported_schemes()
+        );
+    }
 
     #[test]
     fn test_bypass_localhost() {

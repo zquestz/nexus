@@ -4469,6 +4469,7 @@ dependencies = [
  "open",
  "opus",
  "percent-encoding",
+ "rcgen 0.14.10",
  "rfd",
  "rubato",
  "rustls-native-certs",
