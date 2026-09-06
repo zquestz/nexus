@@ -13,18 +13,7 @@
 
 ## Audit Follow-Ups
 
-Deferred items from the code audit. Confirmed fixes and open investigations are
-tracked separately below.
-
-### Confirmed Fixes
-
-- [ ] **Remove workspace formatting from the client build script.** Building
-  currently invokes `cargo fmt --all`, which can modify unrelated source files.
-  Keep formatting an explicit developer or CI step rather than a build side
-  effect.
-  Code: `nexus-client/build.rs`.
-  Verification: building leaves tracked source unchanged and still generates
-  the required icons and platform resources correctly.
+Deferred items from the code audit.
 
 ### Investigation
 
