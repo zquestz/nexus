@@ -181,6 +181,11 @@ Chat messages are rate-limited to prevent flooding. This applies to both channel
 | ---------------------------------------------- | ------------ |
 | `Ctrl+Tab` (or `Cmd+Tab` on macOS)             | Next tab     |
 | `Ctrl+Shift+Tab` (or `Cmd+Shift+Tab` on macOS) | Previous tab |
+| `Ctrl+W` (or `Cmd+W` on macOS)                 | Close tab    |
+
+`Ctrl+W` does the same thing as the tab's **×** button, so it leaves a
+channel or hides a user message tab. The Console tab cannot be closed,
+and the shortcut does nothing while a dialog covers the tabs.
 
 ### Window Commands
 

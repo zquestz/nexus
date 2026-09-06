@@ -113,6 +113,7 @@ Open multiple browser tabs to work with different locations:
 - Click **×** on a tab to close it
 - `Ctrl+Tab` / `Cmd+Tab` — Next tab
 - `Ctrl+Shift+Tab` / `Cmd+Shift+Tab` — Previous tab
+- `Ctrl+W` / `Cmd+W` closes the current tab (the last tab stays open)
 
 Each tab maintains its own location and history.
 
@@ -348,6 +349,7 @@ Set limits to 0 for unlimited concurrent transfers.
 | ------------------------------------------- | ----------------------------------------------- |
 | `Ctrl+Tab` (`Cmd+Tab` on macOS)             | Next browser tab                                |
 | `Ctrl+Shift+Tab` (`Cmd+Shift+Tab` on macOS) | Previous browser tab                            |
+| `Ctrl+W` (`Cmd+W` on macOS)                 | Close current browser tab                       |
 | `Escape`                                    | Cancel cut/copy, exit search mode, close dialog |
 | `Enter`                                     | Confirm dialog, submit search                   |
 

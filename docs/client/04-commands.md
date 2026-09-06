@@ -546,6 +546,7 @@ These shortcuts work without typing a command:
 | ------------------------------------------- | ----------------------------------------- |
 | `Ctrl+Tab` (`Cmd+Tab` on macOS)             | Next chat tab                             |
 | `Ctrl+Shift+Tab` (`Cmd+Shift+Tab` on macOS) | Previous chat tab                         |
+| `Ctrl+W` (`Cmd+W` on macOS)                 | Close current chat or file browser tab    |
 | `Tab`                                       | Complete commands, channels, or nicknames |
 | `Escape`                                    | Close current panel                       |
 

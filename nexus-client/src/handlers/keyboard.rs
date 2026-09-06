@@ -211,6 +211,30 @@ impl NexusApp {
             return self.update(Message::NextChatTab);
         }
 
+        // Handle Cmd/Ctrl+W to close the active tab.
+        //
+        // Matched through `to_latin`, the same mapping Iced's own
+        // copy/paste shortcuts use: the binding follows the key's label
+        // on Latin layouts (so AZERTY closes on its own W) and the key's
+        // position on non-Latin ones (so a Cyrillic layout still closes
+        // on the physical W). Key repeat is ignored, since holding the
+        // key on a channel tab would queue redundant leave attempts.
+        if let Event::Keyboard(keyboard::Event::KeyPressed {
+            key,
+            physical_key,
+            modifiers,
+            repeat,
+            ..
+        }) = &event
+            && modifiers.command()
+            && !modifiers.shift()
+            && !modifiers.alt()
+            && !repeat
+            && matches!(key.to_latin(*physical_key), Some('w' | 'W'))
+        {
+            return self.update(Message::CloseCurrentTab);
+        }
+
         // Handle plain Tab key for field cycling
         if let Event::Keyboard(keyboard::Event::KeyPressed {
             key: keyboard::Key::Named(key::Named::Tab),
@@ -832,6 +856,70 @@ impl NexusApp {
         self.update(Message::SwitchChatTab(prev_tab))
     }
 
+    /// Close the active tab for whatever is currently visible.
+    ///
+    /// Mirrors the context rule used by next/prev tab navigation: file
+    /// browser tabs while the Files panel is open, chat tabs while chat
+    /// is visible, and nothing anywhere else. Escape remains the key
+    /// that closes panels and dialogs.
+    ///
+    /// Closing is silently skipped where the UI offers no close button:
+    /// the Console tab, and the last remaining file browser tab (refused
+    /// downstream by `close_tab_by_id`). The Console case deliberately
+    /// stays quiet rather than reusing the `/window close` error, so a
+    /// stray keypress doesn't write to chat.
+    ///
+    /// A dialog or summoned form covering the tabs also suppresses the
+    /// close: the tab is no longer in the foreground, and the layout
+    /// hides its close button. Escape is what dismisses those.
+    pub fn handle_close_current_tab(&mut self) -> Task<Message> {
+        // A fingerprint dialog replaces the whole view in `NexusApp::view`,
+        // and the two summonable forms replace the panel content in
+        // `views::layout`. In every case the tabs are not on screen.
+        if !self.fingerprint_mismatch_queue.is_empty()
+            || !self.fingerprint_interception_queue.is_empty()
+            || self.connection_form.connect_origin.is_some()
+            || self.bookmark_edit.mode != BookmarkEditMode::None
+        {
+            return Task::none();
+        }
+
+        let active_panel = self.active_panel();
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return Task::none();
+        };
+
+        // The disconnect dialog stacks over every panel, chat included.
+        if conn.disconnect_dialog.is_some() {
+            return Task::none();
+        }
+
+        if active_panel == ActivePanel::Files {
+            let tab = conn.files_management.active_tab();
+            if tab.has_open_dialog() {
+                return Task::none();
+            }
+            let tab_id = tab.id;
+            return self.update(Message::FileTabClose(tab_id));
+        }
+
+        // Only close chat tabs when chat is actually visible.
+        if active_panel != ActivePanel::None {
+            return Task::none();
+        }
+
+        match conn.active_chat_tab.clone() {
+            ChatTab::Console => Task::none(),
+            // Same paths the tab's own close button uses: a channel is
+            // left on the server, a user message tab is closed locally.
+            ChatTab::Channel(channel) => self.send_chat_leave_once(conn_id, channel),
+            ChatTab::UserMessage(nickname) => self.update(Message::CloseUserMessageTab(nickname)),
+        }
+    }
+
     /// Handle Tab key navigation across different screens
     pub fn handle_tab_navigation(&mut self) -> Task<Message> {
         if self.connection_form.connect_origin.is_some() {
@@ -1006,10 +1094,14 @@ mod tests {
     use nexus_common::validators::{self, PasswordStrength};
     use tokio::sync::{Mutex, mpsc};
 
+    use uuid::Uuid;
+
     use crate::i18n::t_args;
+    use crate::network::types::FingerprintInterception;
+    use crate::testing::support::test_connection_with_receiver;
     use crate::types::{
-        BookmarkEditMode, ConnectionInfo, DisconnectDialogState, ServerBookmark, ServerConnection,
-        ServerConnectionParams,
+        BookmarkEditMode, ConnectionInfo, DisconnectDialogState, FileTab, FingerprintMismatch,
+        ReconnectAction, ServerBookmark, ServerConnection, ServerConnectionParams,
     };
 
     fn key_press(named: key::Named, code: Code) -> Event {
@@ -1178,5 +1270,347 @@ mod tests {
         assert_eq!(app.active_panel(), ActivePanel::About);
         assert_eq!(app.bookmark_edit.mode, BookmarkEditMode::Add);
         assert!(app.bookmark_edit.error.is_some());
+    }
+
+    fn w_key_event(key: keyboard::Key, modifiers: keyboard::Modifiers, repeat: bool) -> Event {
+        Event::Keyboard(keyboard::Event::KeyPressed {
+            modified_key: key.clone(),
+            key,
+            physical_key: Physical::Code(Code::KeyW),
+            location: keyboard::Location::Standard,
+            modifiers,
+            text: None,
+            repeat,
+        })
+    }
+
+    fn command_w(modifiers: keyboard::Modifiers, repeat: bool) -> Event {
+        w_key_event(keyboard::Key::Character("w".into()), modifiers, repeat)
+    }
+
+    /// A command-modified key press with independent logical and
+    /// physical keys, for layout-dependent matching.
+    fn command_key(logical: &str, physical: Code) -> Event {
+        let key = keyboard::Key::Character(logical.into());
+        Event::Keyboard(keyboard::Event::KeyPressed {
+            modified_key: key.clone(),
+            key,
+            physical_key: Physical::Code(physical),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::COMMAND,
+            text: None,
+            repeat: false,
+        })
+    }
+
+    fn connection_params() -> crate::network::types::ConnectionParams {
+        crate::network::types::ConnectionParams {
+            server_address: "b.example".to_string(),
+            port: 7500,
+            username: "me".to_string(),
+            password: String::new(),
+            nickname: None,
+            locale: "en".to_string(),
+            avatar: None,
+            connection_id: 2,
+            proxy: None,
+            expected_fingerprint: None,
+        }
+    }
+
+    fn chat_app(
+        configure: impl FnOnce(&mut ServerConnection),
+    ) -> (
+        NexusApp,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (mut conn, rx) = test_connection_with_receiver(1);
+        configure(&mut conn);
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        app.connections.insert(1, conn);
+        (app, rx)
+    }
+
+    fn joined_channel_app() -> (
+        NexusApp,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        chat_app(|conn| {
+            conn.channel_tabs.push("#general".to_string());
+            conn.active_chat_tab = ChatTab::Channel("#general".to_string());
+        })
+    }
+
+    fn files_app(
+        tab_count: usize,
+    ) -> (
+        NexusApp,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (mut app, rx) = chat_app(|_| {});
+        let files = &mut app
+            .connections
+            .get_mut(&1)
+            .expect("test connection should exist")
+            .files_management;
+        while files.tabs.len() < tab_count {
+            files.tabs.push(FileTab::default());
+        }
+        files.active_tab = files.tabs.len() - 1;
+        app.set_active_panel(ActivePanel::Files);
+        (app, rx)
+    }
+
+    #[test]
+    fn command_w_closes_the_active_file_tab() {
+        let (mut app, _rx) = files_app(3);
+        let closed = app.connections[&1].files_management.active_tab_id();
+
+        let _ = app.handle_keyboard_event(command_w(keyboard::Modifiers::COMMAND, false));
+
+        let files = &app.connections[&1].files_management;
+        assert_eq!(files.tabs.len(), 2);
+        assert!(files.tab_by_id(closed).is_none());
+    }
+
+    #[test]
+    fn command_w_keeps_the_last_file_tab_and_its_pending_request() {
+        let (mut app, _rx) = files_app(1);
+        let tab_id = app.connections[&1].files_management.active_tab_id();
+        let message_id = MessageId::new();
+        app.connections
+            .get_mut(&1)
+            .expect("test connection should exist")
+            .pending_requests
+            .track(
+                message_id,
+                ResponseRouting::PopulateFileList {
+                    tab_id,
+                    uri_target: None,
+                },
+            );
+
+        let _ = app.handle_keyboard_event(command_w(keyboard::Modifiers::COMMAND, false));
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.files_management.tabs.len(), 1);
+        assert!(
+            conn.pending_requests.contains_key(&message_id),
+            "a tab that survives must keep its in-flight listing"
+        );
+    }
+
+    #[test]
+    fn command_w_leaves_the_active_channel() {
+        let (mut app, mut rx) = joined_channel_app();
+
+        let _ = app.handle_keyboard_event(command_w(keyboard::Modifiers::COMMAND, false));
+
+        let (_, message) = rx.try_recv().expect("channel leave request");
+        assert!(matches!(message, ClientMessage::ChatLeave { channel } if channel == "#general"));
+    }
+
+    #[test]
+    fn command_w_follows_the_physical_key_on_non_latin_layouts() {
+        let (mut app, mut rx) = joined_channel_app();
+
+        // A Cyrillic layout reports "ц" for the physical W key.
+        let _ = app.handle_keyboard_event(w_key_event(
+            keyboard::Key::Character("ц".into()),
+            keyboard::Modifiers::COMMAND,
+            false,
+        ));
+
+        let (_, message) = rx.try_recv().expect("channel leave request");
+        assert!(matches!(message, ClientMessage::ChatLeave { channel } if channel == "#general"));
+    }
+
+    #[test]
+    fn command_w_matches_the_label_not_the_position_on_latin_layouts() {
+        // AZERTY swaps W and Z. The key labelled W reports logical "w"
+        // from physical KeyZ and must close; the key labelled Z reports
+        // logical "z" from physical KeyW and must not.
+        let (mut app, mut rx) = joined_channel_app();
+        let _ = app.handle_keyboard_event(command_key("z", Code::KeyW));
+        assert!(rx.try_recv().is_err(), "another letter must not close");
+
+        let _ = app.handle_keyboard_event(command_key("w", Code::KeyZ));
+        let (_, message) = rx.try_recv().expect("channel leave request");
+        assert!(matches!(message, ClientMessage::ChatLeave { channel } if channel == "#general"));
+    }
+
+    #[test]
+    fn command_w_closes_the_active_user_message_tab() {
+        let (mut app, _rx) = chat_app(|conn| {
+            conn.user_message_tabs.push("alice".to_string());
+            conn.active_chat_tab = ChatTab::UserMessage("alice".to_string());
+        });
+
+        let _ = app.handle_keyboard_event(command_w(keyboard::Modifiers::COMMAND, false));
+
+        let conn = &app.connections[&1];
+        assert!(conn.user_message_tabs.is_empty());
+        assert_eq!(conn.active_chat_tab, ChatTab::Console);
+    }
+
+    #[test]
+    fn command_w_leaves_the_console_tab_alone() {
+        let (mut app, mut rx) = chat_app(|conn| {
+            conn.channel_tabs.push("#general".to_string());
+        });
+
+        let _ = app.handle_keyboard_event(command_w(keyboard::Modifiers::COMMAND, false));
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_chat_tab, ChatTab::Console);
+        assert_eq!(conn.channel_tabs, ["#general"]);
+        assert!(
+            rx.try_recv().is_err(),
+            "closing the console must not leave a channel"
+        );
+        assert!(
+            conn.console_messages.is_empty(),
+            "a stray keypress must not write to the console"
+        );
+    }
+
+    #[test]
+    fn command_w_ignores_a_dialog_covering_the_file_tabs() {
+        let dialogs: [fn(&mut FileTab); 5] = [
+            |tab| tab.creating_directory = true,
+            |tab| tab.pending_delete = Some("docs/file.txt".to_string()),
+            |tab| tab.pending_rename = Some("docs/file.txt".to_string()),
+            |tab| {
+                tab.pending_info = Some(nexus_common::protocol::FileInfoDetails {
+                    name: "file.txt".to_string(),
+                    size: 1,
+                    created: None,
+                    modified: 0,
+                    is_directory: false,
+                    is_symlink: false,
+                    mime_type: None,
+                    item_count: None,
+                });
+            },
+            |tab| {
+                tab.pending_overwrite = Some(crate::types::PendingOverwrite {
+                    source_path: "a/file.txt".to_string(),
+                    destination_dir: "b".to_string(),
+                    name: "file.txt".to_string(),
+                    is_move: false,
+                    source_root: false,
+                    destination_root: false,
+                });
+            },
+        ];
+
+        for open_dialog in dialogs {
+            let (mut app, _rx) = files_app(2);
+            let tab_id = app.connections[&1].files_management.active_tab_id();
+            open_dialog(
+                app.connections
+                    .get_mut(&1)
+                    .expect("test connection should exist")
+                    .files_management
+                    .active_tab_mut(),
+            );
+
+            let _ = app.handle_keyboard_event(command_w(keyboard::Modifiers::COMMAND, false));
+
+            let files = &app.connections[&1].files_management;
+            assert_eq!(files.tabs.len(), 2, "a covered tab must stay open");
+            assert!(files.tab_by_id(tab_id).is_some());
+        }
+    }
+
+    #[test]
+    fn command_w_ignores_overlays_covering_the_chat_tabs() {
+        let overlays: [fn(&mut NexusApp); 5] = [
+            // Both fingerprint dialogs replace the entire view, so the
+            // tabs behind them belong to a different, hidden connection.
+            |app| {
+                app.fingerprint_mismatch_queue
+                    .push_back(FingerprintMismatch {
+                        bookmark_id: Uuid::new_v4(),
+                        expected: "AA:BB".to_string(),
+                        received: "CC:DD".to_string(),
+                        bookmark_name: "Server B".to_string(),
+                        server_address: "b.example".to_string(),
+                        server_port: 7500,
+                        retry_action: ReconnectAction::Bookmark {
+                            params: connection_params(),
+                            bookmark_id: Uuid::new_v4(),
+                            display_name: "Server B".to_string(),
+                        },
+                    });
+            },
+            |app| {
+                app.fingerprint_interception_queue
+                    .push_back(FingerprintInterception {
+                        server_name: "Server B".to_string(),
+                        server_address: "b.example".to_string(),
+                        server_port: 7500,
+                        tls_fingerprint: "AA:BB".to_string(),
+                        server_fingerprint: "CC:DD".to_string(),
+                    });
+            },
+            |app| {
+                app.connections
+                    .get_mut(&1)
+                    .expect("test connection should exist")
+                    .disconnect_dialog = Some(DisconnectDialogState::new("Bob".to_string()));
+            },
+            |app| app.connection_form.connect_origin = Some(ActivePanel::None),
+            |app| app.bookmark_edit.mode = BookmarkEditMode::Add,
+        ];
+
+        for summon_overlay in overlays {
+            let (mut app, mut rx) = joined_channel_app();
+            summon_overlay(&mut app);
+
+            let _ = app.handle_keyboard_event(command_w(keyboard::Modifiers::COMMAND, false));
+
+            assert!(rx.try_recv().is_err(), "a covered channel must not be left");
+            assert_eq!(
+                app.connections[&1].active_chat_tab,
+                ChatTab::Channel("#general".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn command_w_ignores_repeats_other_panels_and_other_chords() {
+        for (panel, modifiers, repeat) in [
+            // Held key: one press, one close.
+            (ActivePanel::None, keyboard::Modifiers::COMMAND, true),
+            // Escape, not Cmd+W, closes panels.
+            (ActivePanel::News, keyboard::Modifiers::COMMAND, false),
+            // Bare "w" belongs to whatever has focus.
+            (ActivePanel::None, keyboard::Modifiers::default(), false),
+            (
+                ActivePanel::None,
+                keyboard::Modifiers::COMMAND | keyboard::Modifiers::SHIFT,
+                false,
+            ),
+            (
+                ActivePanel::None,
+                keyboard::Modifiers::COMMAND | keyboard::Modifiers::ALT,
+                false,
+            ),
+        ] {
+            let (mut app, mut rx) = joined_channel_app();
+            app.set_active_panel(panel);
+
+            let _ = app.handle_keyboard_event(command_w(modifiers, repeat));
+
+            assert!(rx.try_recv().is_err(), "{panel:?} {modifiers:?} {repeat}");
+            assert_eq!(
+                app.connections[&1].active_chat_tab,
+                ChatTab::Channel("#general".to_string())
+            );
+        }
     }
 }

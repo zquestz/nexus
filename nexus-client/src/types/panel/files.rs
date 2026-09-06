@@ -341,6 +341,19 @@ impl FileTab {
         self.search_query.is_some()
     }
 
+    /// Whether a dialog is covering this tab's listing.
+    ///
+    /// Mirrors the early returns in `views::files::files_view`, which
+    /// render a dialog in place of the tab bar and the listing. Keep the
+    /// two in sync when adding a dialog.
+    pub fn has_open_dialog(&self) -> bool {
+        self.pending_overwrite.is_some()
+            || self.pending_rename.is_some()
+            || self.pending_info.is_some()
+            || self.pending_delete.is_some()
+            || self.creating_directory
+    }
+
     /// Clear search state and return to normal browsing
     pub fn clear_search(&mut self) {
         if self.is_searching() {

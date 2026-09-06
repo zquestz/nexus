@@ -710,6 +710,7 @@ impl NexusApp {
             Message::Event(event) => self.handle_keyboard_event(event),
             Message::NextChatTab => self.handle_next_chat_tab(),
             Message::PrevChatTab => self.handle_prev_chat_tab(),
+            Message::CloseCurrentTab => self.handle_close_current_tab(),
             Message::TabPressed => self.handle_tab_navigation(),
             Message::WindowCloseRequested(id) => {
                 // Check if we should minimize to tray instead of closing (Windows/Linux only)

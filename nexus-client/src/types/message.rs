@@ -148,6 +148,10 @@ pub enum Message {
     ChatScrolled(iced::widget::scrollable::Viewport),
     /// Close a channel tab (sends ChatLeave to server)
     CloseChannelTab(String),
+    /// Close the active tab for the current context (Ctrl/Cmd+W).
+    /// Resolves to a file browser tab, a channel, or a user message tab
+    /// depending on which is visible.
+    CloseCurrentTab,
     /// Close a user message tab
     CloseUserMessageTab(String),
     /// Connection form: Connect button pressed
