@@ -360,8 +360,8 @@ Carries the sender's BLAKE3 hash of the complete file. Sent after `FileData` (no
 - The receiver compares its own computed hash against the sender's `FileHash`
 - If the computed full-file hash differs from `FileHash.blake3`, the file must not be accepted as complete.
 - For zero-byte files, the hash is the BLAKE3 of empty input (`af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262`)
-- For uploads, `FileHash` without `FileData` is valid only when `FileStartResponse.size == FileStart.size`. If these sizes differ, respond with `TransferComplete { success: false, error_kind: "protocol_error" }`, regardless of the supplied hash.
-- When these sizes match, an incorrect hash, including for a zero-byte upload, requires `TransferComplete { success: false, error_kind: "hash_mismatch" }`. Either rejection leaves the prior resume state unchanged and must not complete the file.
+- In either direction, `FileHash` without `FileData` is valid only when `FileStartResponse.size == FileStart.size`. If these sizes differ, terminate the transfer as a protocol error without accepting the file as complete, regardless of the supplied hash.
+- For uploads, this size mismatch requires `TransferComplete { success: false, error_kind: "protocol_error" }`. When the sizes match, an incorrect hash, including for a zero-byte upload, requires `TransferComplete { success: false, error_kind: "hash_mismatch" }`. Either rejection leaves the prior resume state unchanged and must not complete the file.
 
 **Per-file frame dispatch after `FileStartResponse`:**
 

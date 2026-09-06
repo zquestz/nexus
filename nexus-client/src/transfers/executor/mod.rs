@@ -388,7 +388,7 @@ where
         // Check for existing partial/complete file and create StreamingHasher
         // The hasher is pre-fed with existing file content for single-pass hashing.
         // Sends FileHashing keepalives to server while hashing large existing files.
-        let (mut local_size, mut hasher, local_part_path) = if let Ok(metadata) =
+        let (mut local_size, mut hasher, mut local_part_path) = if let Ok(metadata) =
             tokio::fs::metadata(&local_file_path).await
             && metadata.is_file()
             && metadata.len() > 0
@@ -437,7 +437,7 @@ where
         };
 
         if local_size > file_size {
-            if let Some(path) = local_part_path {
+            if let Some(path) = local_part_path.take() {
                 let _ = tokio::fs::remove_file(path).await;
             }
             local_size = 0;
@@ -485,17 +485,14 @@ where
             ServerFileFrame::FileHash {
                 blake3: server_hash,
             } => {
-                // Server says: file is already complete or zero-byte — no FileData
-                if file_size == 0 {
-                    // Zero-byte file — create it
-                    if let Some(parent) = local_file_path.parent() {
-                        tokio::fs::create_dir_all(parent)
-                            .await
-                            .map_err(|_| TransferError::IoError)?;
-                    }
-                    File::create(&local_file_path)
-                        .await
-                        .map_err(|_| TransferError::IoError)?;
+                // Without FileData, the verified local bytes must cover the entire file.
+                if local_size != file_size {
+                    return Err(send_failed_event(
+                        event_tx,
+                        id,
+                        TransferError::ProtocolError,
+                        None,
+                    ));
                 }
 
                 // Independent verification: compare our hash against server's FileHash
@@ -509,6 +506,25 @@ where
                         TransferError::HashMismatch,
                         None,
                     ));
+                }
+
+                // Only promote the .part that supplied the verified bytes. A completed
+                // destination may have an unrelated .part beside it that must stay untouched.
+                if let Some(path) = local_part_path {
+                    tokio::fs::rename(&path, &local_file_path)
+                        .await
+                        .map_err(|_| {
+                            send_failed_event(event_tx, id, TransferError::IoError, None)
+                        })?;
+                } else if file_size == 0 {
+                    if let Some(parent) = local_file_path.parent() {
+                        tokio::fs::create_dir_all(parent).await.map_err(|_| {
+                            send_failed_event(event_tx, id, TransferError::IoError, None)
+                        })?;
+                    }
+                    File::create(&local_file_path).await.map_err(|_| {
+                        send_failed_event(event_tx, id, TransferError::IoError, None)
+                    })?;
                 }
 
                 // Account for the full file size in progress
@@ -1436,7 +1452,9 @@ mod tests {
     async fn execute_download_with_file(
         transfer: &Transfer,
         file_path: &str,
-        payload: &[u8],
+        file_size: u64,
+        payload: Option<&[u8]>,
+        server_hash: String,
     ) -> (Result<(), TransferError>, Vec<TransferEvent>, Vec<u8>) {
         let mut server = FrameWriter::new(Vec::new());
         for message in [
@@ -1444,21 +1462,23 @@ mod tests {
                 success: true,
                 error: None,
                 error_kind: None,
-                size: Some(payload.len() as u64),
+                size: Some(file_size),
                 file_count: Some(1),
-                transfer_id: Some("filename-test".into()),
+                transfer_id: Some("test-download".into()),
             },
             ServerMessage::FileStart {
                 path: file_path.into(),
-                size: payload.len() as u64,
+                size: file_size,
             },
         ] {
             send_server_message(&mut server, &message).await.unwrap();
         }
-        send_file_data(&mut server, payload).await.unwrap();
+        if let Some(payload) = payload {
+            send_file_data(&mut server, payload).await.unwrap();
+        }
         for message in [
             ServerMessage::FileHash {
-                blake3: hash_bytes(payload),
+                blake3: server_hash,
             },
             ServerMessage::TransferComplete {
                 success: true,
@@ -1483,6 +1503,312 @@ mod tests {
             events.push(event);
         }
         (result, events, writer.get_ref().clone())
+    }
+
+    async fn assert_download_resume_response(
+        outgoing: &[u8],
+        expected_size: u64,
+        expected_hash: Option<String>,
+    ) {
+        let mut sent = FrameReader::new(outgoing);
+        assert!(matches!(
+            read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message,
+            ClientMessage::FileDownload { .. }
+        ));
+        assert!(matches!(
+            read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message,
+            ClientMessage::FileStartResponse { size, blake3 }
+                if size == expected_size && blake3 == expected_hash
+        ));
+        assert!(sent.get_ref().is_empty());
+    }
+
+    fn assert_download_failed(
+        result: Result<(), TransferError>,
+        events: &[TransferEvent],
+        expected: TransferError,
+    ) {
+        assert_eq!(result, Err(expected.clone()));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    TransferEvent::Failed { error_kind: Some(error), .. } if *error == expected
+                ))
+                .count(),
+            1
+        );
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            TransferEvent::Completed { .. }
+                | TransferEvent::Progress {
+                    files_completed: 1..,
+                    ..
+                }
+        )));
+    }
+
+    #[tokio::test]
+    async fn hash_only_download_promotes_verified_part() {
+        let payload = b"verified track";
+        for is_directory in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let local_path = temp
+                .path()
+                .join(if is_directory { "artist" } else { "saved.mp3" });
+            let file_path = if is_directory {
+                "album/track.mp3"
+            } else {
+                "track.mp3"
+            };
+            let destination = if is_directory {
+                local_path.join(file_path)
+            } else {
+                local_path.clone()
+            };
+            let part = destination.with_extension("mp3.part");
+            tokio::fs::create_dir_all(part.parent().unwrap())
+                .await
+                .unwrap();
+            tokio::fs::write(&part, payload).await.unwrap();
+            let transfer = Transfer::new_download(
+                test_connection_info(),
+                "remote".into(),
+                false,
+                is_directory,
+                local_path,
+                None,
+                0,
+            );
+
+            let (result, events, outgoing) = execute_download_with_file(
+                &transfer,
+                file_path,
+                payload.len() as u64,
+                None,
+                hash_bytes(payload),
+            )
+            .await;
+
+            assert_eq!(result, Ok(()));
+            assert_eq!(tokio::fs::read(&destination).await.unwrap(), payload);
+            assert!(!part.exists(), "verified part must become the final file");
+            assert_download_resume_response(
+                &outgoing,
+                payload.len() as u64,
+                Some(hash_bytes(payload)),
+            )
+            .await;
+            assert!(events.iter().any(|event| matches!(
+                event,
+                TransferEvent::Progress { transferred_bytes, files_completed: 1, .. }
+                    if *transferred_bytes == payload.len() as u64
+            )));
+            assert!(matches!(
+                events.last(),
+                Some(TransferEvent::Completed { .. })
+            ));
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, TransferEvent::Failed { .. }))
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn hash_only_download_rejects_incomplete_local_state() {
+        for partial in [b"abc".as_slice(), b""] {
+            for matching_hash in [true, false] {
+                let temp = tempfile::tempdir().unwrap();
+                let destination = temp.path().join("file.bin");
+                let part = destination.with_extension("bin.part");
+                if !partial.is_empty() {
+                    tokio::fs::write(&part, partial).await.unwrap();
+                }
+                let transfer = Transfer::new_download(
+                    test_connection_info(),
+                    "file.bin".into(),
+                    false,
+                    false,
+                    destination.clone(),
+                    None,
+                    0,
+                );
+                let server_hash = hash_bytes(if matching_hash { partial } else { b"abcdef" });
+
+                let (result, events, outgoing) =
+                    execute_download_with_file(&transfer, "file.bin", 6, None, server_hash).await;
+
+                assert_download_failed(result, &events, TransferError::ProtocolError);
+                assert!(!destination.exists());
+                if partial.is_empty() {
+                    assert!(!part.exists());
+                } else {
+                    assert_eq!(tokio::fs::read(&part).await.unwrap(), partial);
+                }
+                assert_download_resume_response(
+                    &outgoing,
+                    partial.len() as u64,
+                    (!partial.is_empty()).then(|| hash_bytes(partial)),
+                )
+                .await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn hash_only_download_hash_mismatch_preserves_part() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("file.bin");
+        let part = destination.with_extension("bin.part");
+        let payload = b"existing progress";
+        tokio::fs::write(&part, payload).await.unwrap();
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "file.bin".into(),
+            false,
+            false,
+            destination.clone(),
+            None,
+            0,
+        );
+
+        let (result, events, _) = execute_download_with_file(
+            &transfer,
+            "file.bin",
+            payload.len() as u64,
+            None,
+            hash_bytes(b"different content"),
+        )
+        .await;
+
+        assert_download_failed(result, &events, TransferError::HashMismatch);
+        assert_eq!(tokio::fs::read(&part).await.unwrap(), payload);
+        assert!(!destination.exists());
+    }
+
+    #[tokio::test]
+    async fn hash_only_download_promotion_failure_preserves_part() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("file.bin");
+        let part = destination.with_extension("bin.part");
+        let payload = b"verified progress";
+        // A directory blocks the rename on every platform, even when tests run as root.
+        tokio::fs::create_dir(&destination).await.unwrap();
+        let sentinel = destination.join("keep.txt");
+        tokio::fs::write(&sentinel, b"unchanged").await.unwrap();
+        tokio::fs::write(&part, payload).await.unwrap();
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "file.bin".into(),
+            false,
+            false,
+            destination.clone(),
+            None,
+            0,
+        );
+
+        let (result, events, _) = execute_download_with_file(
+            &transfer,
+            "file.bin",
+            payload.len() as u64,
+            None,
+            hash_bytes(payload),
+        )
+        .await;
+
+        assert_download_failed(result, &events, TransferError::IoError);
+        assert_eq!(tokio::fs::read(&part).await.unwrap(), payload);
+        assert_eq!(tokio::fs::read(&sentinel).await.unwrap(), b"unchanged");
+        assert!(destination.is_dir());
+    }
+
+    #[tokio::test]
+    async fn hash_only_download_keeps_completed_file_and_unrelated_part() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("file.bin");
+        let part = destination.with_extension("bin.part");
+        let payload = b"complete";
+        let unrelated = b"unrelated progress";
+        tokio::fs::write(&destination, payload).await.unwrap();
+        tokio::fs::write(&part, unrelated).await.unwrap();
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "file.bin".into(),
+            false,
+            false,
+            destination.clone(),
+            None,
+            0,
+        );
+
+        let (result, events, outgoing) = execute_download_with_file(
+            &transfer,
+            "file.bin",
+            payload.len() as u64,
+            None,
+            hash_bytes(payload),
+        )
+        .await;
+
+        assert_eq!(result, Ok(()));
+        assert_eq!(tokio::fs::read(&destination).await.unwrap(), payload);
+        assert_eq!(tokio::fs::read(&part).await.unwrap(), unrelated);
+        assert_download_resume_response(&outgoing, payload.len() as u64, Some(hash_bytes(payload)))
+            .await;
+        assert!(matches!(
+            events.last(),
+            Some(TransferEvent::Completed { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn hash_only_zero_byte_download_validates_hash_before_creation() {
+        for matching_hash in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let parent = temp.path().join("not-created");
+            let destination = parent.join("empty.bin");
+            let transfer = Transfer::new_download(
+                test_connection_info(),
+                "empty.bin".into(),
+                false,
+                false,
+                destination.clone(),
+                None,
+                0,
+            );
+            let hash = hash_bytes(if matching_hash { b"" } else { b"wrong" });
+
+            let (result, events, outgoing) =
+                execute_download_with_file(&transfer, "empty.bin", 0, None, hash).await;
+
+            assert_download_resume_response(&outgoing, 0, None).await;
+            if matching_hash {
+                assert_eq!(result, Ok(()));
+                assert_eq!(tokio::fs::read(&destination).await.unwrap(), b"");
+                assert!(matches!(
+                    events.last(),
+                    Some(TransferEvent::Completed { .. })
+                ));
+            } else {
+                assert_download_failed(result, &events, TransferError::HashMismatch);
+                assert!(
+                    !parent.exists(),
+                    "invalid hash must not create an empty file"
+                );
+            }
+            assert!(!destination.with_extension("bin.part").exists());
+        }
     }
 
     #[cfg(unix)]
@@ -1527,8 +1853,14 @@ mod tests {
                     0,
                 );
 
-                let (result, events, outgoing) =
-                    execute_download_with_file(&transfer, &file_path, payload).await;
+                let (result, events, outgoing) = execute_download_with_file(
+                    &transfer,
+                    &file_path,
+                    payload.len() as u64,
+                    Some(payload),
+                    hash_bytes(payload),
+                )
+                .await;
                 assert_eq!(result, Ok(()), "{file_path:?}");
                 assert_eq!(tokio::fs::read(&destination).await.unwrap(), payload);
                 let part = PathBuf::from(format!("{}{}", destination.display(), PART_SUFFIX));
@@ -1600,8 +1932,15 @@ mod tests {
             "album/track\0.mp3",
             absolute_path,
         ] {
-            let (result, events, outgoing) =
-                execute_download_with_file(&transfer, path, b"downloaded track").await;
+            let payload = b"downloaded track";
+            let (result, events, outgoing) = execute_download_with_file(
+                &transfer,
+                path,
+                payload.len() as u64,
+                Some(payload),
+                hash_bytes(payload),
+            )
+            .await;
             assert_eq!(result, Err(TransferError::Invalid), "{path:?}");
             assert!(events.iter().any(|event| matches!(
                 event,
