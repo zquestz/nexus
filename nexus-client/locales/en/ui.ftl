@@ -1313,6 +1313,7 @@ toast-link-copied = Link copied
 toast-copied = Copied
 toast-download-started = Downloading { $filename }
 toast-download-queued = Download queued: { $filename }
+toast-download-invalid-name = Cannot download: invalid file or folder name.
 toast-upload-started = Uploading { $filename }
 toast-upload-queued = Upload queued: { $filename }
 toast-uploads-started = Uploading { $count } { $count ->

@@ -1199,6 +1199,7 @@ toast-link-copied = 링크를 복사했습니다
 toast-copied = 복사했습니다
 toast-download-started = { $filename } 다운로드 중
 toast-download-queued = 다운로드 대기: { $filename }
+toast-download-invalid-name = 다운로드할 수 없습니다: 파일 또는 폴더 이름이 잘못되었습니다.
 toast-upload-started = { $filename } 업로드 중
 toast-upload-queued = 업로드 대기: { $filename }
 toast-uploads-started = { $count }개 파일 업로드 중

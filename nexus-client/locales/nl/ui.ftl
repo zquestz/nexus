@@ -1271,6 +1271,7 @@ toast-link-copied = Link gekopieerd
 toast-copied = Gekopieerd
 toast-download-started = { $filename } downloaden
 toast-download-queued = Download in wachtrij: { $filename }
+toast-download-invalid-name = Kan niet downloaden: ongeldige bestands- of mapnaam.
 toast-upload-started = { $filename } uploaden
 toast-upload-queued = Upload in wachtrij: { $filename }
 toast-uploads-started = { $count } { $count ->

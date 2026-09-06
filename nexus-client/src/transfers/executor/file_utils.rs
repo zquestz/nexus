@@ -22,6 +22,7 @@ use nexus_common::{FALLBACK_FILE_NAME, HASH_BUFFER_SIZE, KEEPALIVE_INTERVAL};
 
 use super::streaming::send_transfer_control_message;
 use super::{PART_SUFFIX, TransferError};
+use crate::transfers::is_safe_download_name;
 
 // =============================================================================
 // Local File Info (for uploads)
@@ -263,94 +264,18 @@ pub fn is_cancelled(cancel_flag: &Option<Arc<AtomicBool>>) -> bool {
         .is_some_and(|flag| flag.load(Ordering::SeqCst))
 }
 
-/// Validate that a path from the server is safe
-///
-/// Rejects absolute paths, paths with "..", and other dangerous patterns
+/// Validate a relative FileStart path using native filename rules.
 pub fn is_safe_path(path: &str) -> bool {
-    // Reject empty paths
-    if path.is_empty() {
+    if path.is_empty() || path.starts_with('/') {
         return false;
     }
 
-    // Reject null bytes (defense-in-depth - server also validates)
-    if path.contains('\0') {
-        return false;
-    }
-
-    // Reject control characters (0x00-0x1F and 0x7F)
-    if path.chars().any(|c| c.is_ascii_control()) {
-        return false;
-    }
-
-    // Reject absolute paths (Unix or Windows style)
-    if path.starts_with('/') || path.starts_with('\\') {
-        return false;
-    }
-
-    // Check for Windows drive letters (e.g., "C:")
-    if path.len() >= 2 && path.chars().nth(1) == Some(':') {
-        return false;
-    }
-
-    // Check each component
-    for component in path.split(['/', '\\']) {
-        // Reject empty components (double slashes)
-        if component.is_empty() {
-            continue; // Allow trailing/leading slashes that result in empty components
-        }
-
-        // Reject parent directory references
-        if component == ".." {
-            return false;
-        }
-
-        // Reject current directory references anywhere (e.g., "./foo", "foo/./bar")
-        // These serve no purpose and could be used to confuse path matching/logging
-        if component == "." {
-            return false;
-        }
-
-        if is_windows_reserved_name(component) {
-            return false;
-        }
-    }
-
-    true
-}
-
-fn is_windows_reserved_name(component: &str) -> bool {
-    let normalized_component = component.trim_end_matches([' ', '.']);
-    let basename = normalized_component
-        .split('.')
-        .next()
-        .unwrap_or(normalized_component)
-        .trim_end_matches([' ', '.']);
-    let upper = basename.to_ascii_uppercase();
-    matches!(
-        upper.as_str(),
-        "CON"
-            | "PRN"
-            | "AUX"
-            | "NUL"
-            | "COM1"
-            | "COM2"
-            | "COM3"
-            | "COM4"
-            | "COM5"
-            | "COM6"
-            | "COM7"
-            | "COM8"
-            | "COM9"
-            | "LPT1"
-            | "LPT2"
-            | "LPT3"
-            | "LPT4"
-            | "LPT5"
-            | "LPT6"
-            | "LPT7"
-            | "LPT8"
-            | "LPT9"
-    )
+    // Protocol paths use '/'. A backslash is a literal filename character on Unix,
+    // and is rejected by the component validator on Windows. Preserve tolerance
+    // for repeated/trailing separators without normalizing away '.' or '..'.
+    path.split('/')
+        .filter(|component| !component.is_empty())
+        .all(is_safe_download_name)
 }
 
 // =============================================================================
@@ -459,15 +384,16 @@ mod tests {
         assert!(is_safe_path("dir/subdir/file.txt"));
         assert!(is_safe_path("Games/app.zip"));
         assert!(is_safe_path("Documents/report.pdf"));
+        assert!(is_safe_path("dir//file.txt"));
+        assert!(is_safe_path("dir/file.txt/"));
+        assert!(is_safe_path("file\x7f.txt"));
     }
 
     #[test]
     fn test_is_safe_path_rejects_absolute() {
         assert!(!is_safe_path("/etc/passwd"));
         assert!(!is_safe_path("/home/user/file.txt"));
-        assert!(!is_safe_path("\\Windows\\System32"));
-        assert!(!is_safe_path("C:\\Windows\\System32"));
-        assert!(!is_safe_path("D:file.txt"));
+        assert!(!is_safe_path("//server/share"));
     }
 
     #[test]
@@ -476,7 +402,6 @@ mod tests {
         assert!(!is_safe_path("../file.txt"));
         assert!(!is_safe_path("dir/../file.txt"));
         assert!(!is_safe_path("dir/subdir/../../file.txt"));
-        assert!(!is_safe_path("dir\\..\\file.txt"));
     }
 
     #[test]
@@ -492,13 +417,29 @@ mod tests {
     }
 
     #[test]
-    fn test_is_safe_path_rejects_control_chars() {
-        assert!(!is_safe_path("foo\x01bar"));
-        assert!(!is_safe_path("dir\x1f/file.txt"));
-        assert!(!is_safe_path("file\x7f.txt"));
-        assert!(!is_safe_path("\t"));
-        assert!(!is_safe_path("\n"));
-        assert!(!is_safe_path("\r"));
+    fn test_is_safe_path_windows_filename_rules_only_apply_on_windows() {
+        for path in [
+            "\\Windows\\System32",
+            "C:\\Windows\\System32",
+            "D:file.txt",
+            "dir/C:track.mp3",
+            "dir\\..\\file.txt",
+            ".\\file.txt",
+            "dir/\\rooted/file.txt",
+            "dir/file:stream",
+            "dir/.. /file.txt",
+            "dir/.../file.txt",
+            "dir/file.",
+            "dir/file ",
+            "dir/file?name",
+            "foo\x01bar",
+            "dir\x1f/file.txt",
+            "\t",
+            "\n",
+            "\r",
+        ] {
+            assert_eq!(is_safe_path(path), !cfg!(windows), "{path:?}");
+        }
     }
 
     #[test]
@@ -512,35 +453,62 @@ mod tests {
     fn test_is_safe_path_rejects_dot_components() {
         // Reject "." anywhere in path - serves no purpose and could confuse logging
         assert!(!is_safe_path("./file.txt"));
-        assert!(!is_safe_path(".\\file.txt"));
         assert!(!is_safe_path("foo/./bar"));
         assert!(!is_safe_path("dir/./subdir/file.txt"));
         assert!(!is_safe_path("."));
     }
 
     #[test]
-    fn test_is_safe_path_rejects_windows_reserved_names() {
-        assert!(!is_safe_path("CON"));
-        assert!(!is_safe_path("CON "));
-        assert!(!is_safe_path("CON."));
-        assert!(!is_safe_path("con"));
-        assert!(!is_safe_path("NUL"));
-        assert!(!is_safe_path("NUL "));
-        assert!(!is_safe_path("COM1"));
-        assert!(!is_safe_path("COM1 "));
-        assert!(!is_safe_path("COM9"));
-        assert!(!is_safe_path("LPT1"));
-        assert!(!is_safe_path("LPT9"));
+    fn test_is_safe_path_windows_reserved_names_are_platform_specific() {
+        for path in [
+            "CON", "CON ", "CON.", "con", "PRN", "AUX", "NUL", "NUL ", "COM1", "COM1 ", "COM9",
+            "LPT1", "LPT9",
+        ] {
+            assert_eq!(is_safe_path(path), !cfg!(windows), "{path:?}");
+        }
     }
 
     #[test]
-    fn test_is_safe_path_rejects_windows_reserved_names_with_extensions() {
-        assert!(!is_safe_path("CON.txt"));
-        assert!(!is_safe_path("dir/NUL.log"));
-        assert!(!is_safe_path("dir/subdir/LPT1.tar.gz"));
-        assert!(!is_safe_path("com1.backup"));
-        assert!(!is_safe_path("COM1 .txt"));
-        assert!(!is_safe_path("dir/NUL .log"));
+    fn test_is_safe_path_windows_reserved_extensions_are_platform_specific() {
+        for path in [
+            "CON.txt",
+            "dir/NUL.log",
+            "dir/subdir/LPT1.tar.gz",
+            "com1.backup",
+            "COM1 .txt",
+            "dir/NUL .log",
+        ] {
+            assert_eq!(is_safe_path(path), !cfg!(windows), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn test_is_safe_path_checks_reserved_names_at_every_depth() {
+        for name in [
+            "CON",
+            "NUL",
+            "PRN",
+            "AUX",
+            "COM1",
+            "LPT9",
+            "COM\u{b9}",
+            "COM\u{b2}",
+            "COM\u{b3}",
+            "LPT\u{b9}",
+            "LPT\u{b2}",
+            "LPT\u{b3}",
+        ] {
+            for path in [
+                name.to_string(),
+                format!("artist/album/{name}.txt"),
+                format!("artist/{name}/track.mp3"),
+                format!("artist/{name} .ext/track.mp3"),
+                format!("artist\\{name}\\track.mp3"),
+            ] {
+                assert_eq!(is_safe_path(&path), !cfg!(windows), "{path:?}");
+            }
+        }
+        assert!(is_safe_path("artist/album/track.mp3"));
     }
 
     #[test]

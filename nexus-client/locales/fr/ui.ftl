@@ -1270,6 +1270,7 @@ toast-link-copied = Lien copié
 toast-copied = Copié
 toast-download-started = Téléchargement de { $filename }
 toast-download-queued = Téléchargement en file d'attente : { $filename }
+toast-download-invalid-name = Téléchargement impossible : nom de fichier ou de dossier invalide.
 toast-upload-started = Envoi de { $filename }
 toast-upload-queued = Envoi en file d'attente : { $filename }
 toast-uploads-started = Envoi de { $count } { $count ->

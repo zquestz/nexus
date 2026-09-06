@@ -1199,6 +1199,7 @@ toast-link-copied = リンクをコピーしました
 toast-copied = コピーしました
 toast-download-started = { $filename } をダウンロード中
 toast-download-queued = ダウンロード待ち: { $filename }
+toast-download-invalid-name = ダウンロードできません：ファイル名またはフォルダー名が無効です。
 toast-upload-started = { $filename } をアップロード中
 toast-upload-queued = アップロード待ち: { $filename }
 toast-uploads-started = { $count } 個のファイルをアップロード中

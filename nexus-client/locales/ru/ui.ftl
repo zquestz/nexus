@@ -1299,6 +1299,7 @@ toast-link-copied = Ссылка скопирована
 toast-copied = Скопировано
 toast-download-started = Скачивание { $filename }
 toast-download-queued = Загрузка в очереди: { $filename }
+toast-download-invalid-name = Невозможно скачать: недопустимое имя файла или папки.
 toast-upload-started = Отправка { $filename }
 toast-upload-queued = Отправка в очереди: { $filename }
 toast-uploads-started = Отправка { $count } { $count ->

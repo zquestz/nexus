@@ -1433,6 +1433,210 @@ mod tests {
             .map_err(Into::into)
     }
 
+    async fn execute_download_with_file(
+        transfer: &Transfer,
+        file_path: &str,
+        payload: &[u8],
+    ) -> (Result<(), TransferError>, Vec<TransferEvent>, Vec<u8>) {
+        let mut server = FrameWriter::new(Vec::new());
+        for message in [
+            ServerMessage::FileDownloadResponse {
+                success: true,
+                error: None,
+                error_kind: None,
+                size: Some(payload.len() as u64),
+                file_count: Some(1),
+                transfer_id: Some("filename-test".into()),
+            },
+            ServerMessage::FileStart {
+                path: file_path.into(),
+                size: payload.len() as u64,
+            },
+        ] {
+            send_server_message(&mut server, &message).await.unwrap();
+        }
+        send_file_data(&mut server, payload).await.unwrap();
+        for message in [
+            ServerMessage::FileHash {
+                blake3: hash_bytes(payload),
+            },
+            ServerMessage::TransferComplete {
+                success: true,
+                error: None,
+                error_kind: None,
+            },
+        ] {
+            send_server_message(&mut server, &message).await.unwrap();
+        }
+
+        let mut reader = FrameReader::new(BufReader::new(server.get_ref().as_slice()));
+        let mut writer = FrameWriter::new(Vec::new());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            execute_download(transfer, &mut reader, &mut writer, &tx, &None),
+        )
+        .await
+        .expect("buffered file exchange must finish");
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+        (result, events, writer.get_ref().clone())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_execute_download_preserves_unix_filenames_on_disk() {
+        let payload = b"downloaded track";
+        for name in [
+            "C:track.mp3",
+            "\\track.mp3",
+            "notes\\..\\track.mp3",
+            "track\n01.mp3",
+            "track\t01.mp3",
+            "track\x7f.mp3",
+            "track?.mp3",
+            "track.mp3.",
+            "track.mp3 ",
+            "CON.txt",
+            "COM\u{b9}.txt",
+            "文件.txt",
+        ] {
+            for is_directory in [false, true] {
+                let temp = tempfile::tempdir().unwrap();
+                let remote_path = if is_directory { "artist" } else { name };
+                let local_path = temp.path().join(remote_path);
+                let file_path = if is_directory {
+                    format!("album:live\\set/{name}")
+                } else {
+                    name.to_string()
+                };
+                let destination = if is_directory {
+                    local_path.join(&file_path)
+                } else {
+                    local_path.clone()
+                };
+                let transfer = Transfer::new_download(
+                    test_connection_info(),
+                    remote_path.into(),
+                    false,
+                    is_directory,
+                    local_path,
+                    None,
+                    0,
+                );
+
+                let (result, events, outgoing) =
+                    execute_download_with_file(&transfer, &file_path, payload).await;
+                assert_eq!(result, Ok(()), "{file_path:?}");
+                assert_eq!(tokio::fs::read(&destination).await.unwrap(), payload);
+                let part = PathBuf::from(format!("{}{}", destination.display(), PART_SUFFIX));
+                assert!(!part.exists(), "verified download must be promoted");
+                assert_eq!(
+                    events
+                        .iter()
+                        .filter(|event| matches!(event, TransferEvent::Completed { .. }))
+                        .count(),
+                    1
+                );
+                assert!(
+                    !events
+                        .iter()
+                        .any(|event| matches!(event, TransferEvent::Failed { .. }))
+                );
+
+                let mut sent = FrameReader::new(outgoing.as_slice());
+                assert!(matches!(
+                    read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .message,
+                    ClientMessage::FileDownload { path, root: false } if path == remote_path
+                ));
+                assert!(matches!(
+                    read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .message,
+                    ClientMessage::FileStartResponse {
+                        size: 0,
+                        blake3: None
+                    }
+                ));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_download_rejects_unsafe_paths_before_file_io() {
+        let temp = tempfile::tempdir().unwrap();
+        let local_path = temp.path().join("sandbox/downloads");
+        let outside = temp.path().join("outside.txt");
+        tokio::fs::write(&outside, b"unchanged").await.unwrap();
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "artist".into(),
+            false,
+            true,
+            local_path.clone(),
+            None,
+            0,
+        );
+        let absolute_path = outside.to_str().unwrap();
+        // Even if a guard regresses, these paths resolve only within the temp directory.
+        for path in [
+            "",
+            ".",
+            "..",
+            "./track.mp3",
+            "album/./track.mp3",
+            "../outside.txt",
+            "../../outside.txt",
+            "album/../../outside.txt",
+            "album/../track.mp3",
+            "album/track\0.mp3",
+            absolute_path,
+        ] {
+            let (result, events, outgoing) =
+                execute_download_with_file(&transfer, path, b"downloaded track").await;
+            assert_eq!(result, Err(TransferError::Invalid), "{path:?}");
+            assert!(events.iter().any(|event| matches!(
+                event,
+                TransferEvent::Failed {
+                    error_kind: Some(TransferError::Invalid),
+                    ..
+                }
+            )));
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, TransferEvent::Completed { .. }))
+            );
+            assert!(!local_path.exists());
+            assert_eq!(tokio::fs::read(&outside).await.unwrap(), b"unchanged");
+
+            let mut sent = FrameReader::new(outgoing.as_slice());
+            assert!(matches!(
+                read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message,
+                ClientMessage::FileDownload { .. }
+            ));
+            assert!(
+                read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                    .await
+                    .unwrap()
+                    .is_none(),
+                "invalid path must be rejected before FileStartResponse"
+            );
+        }
+    }
+
     #[tokio::test(start_paused = true)]
     async fn test_execute_download_directory_sends_file_start_response() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");

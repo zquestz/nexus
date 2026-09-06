@@ -1199,6 +1199,7 @@ toast-link-copied = 連結已複製
 toast-copied = 已複製
 toast-download-started = 正在下載 { $filename }
 toast-download-queued = 下載已排隊: { $filename }
+toast-download-invalid-name = 無法下載：檔案或資料夾名稱無效。
 toast-upload-started = 正在上傳 { $filename }
 toast-upload-queued = 上傳已排隊: { $filename }
 toast-uploads-started = 正在上傳 { $count } 個檔案

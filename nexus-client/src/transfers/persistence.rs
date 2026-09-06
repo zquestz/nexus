@@ -37,6 +37,10 @@ pub struct TransferManager {
 
     /// Whether there are unsaved changes
     dirty: bool,
+
+    /// Keep handler tests that save queues independent of parallel tests.
+    #[cfg(test)]
+    test_path: Option<PathBuf>,
 }
 
 impl TransferManager {
@@ -45,6 +49,16 @@ impl TransferManager {
         Self {
             transfers: HashMap::new(),
             dirty: false,
+            #[cfg(test)]
+            test_path: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(path: PathBuf) -> Self {
+        Self {
+            test_path: Some(path),
+            ..Self::new()
         }
     }
 
@@ -86,7 +100,12 @@ impl TransferManager {
                 .values()
                 .any(|t| t.status == TransferStatus::Queued);
 
-            return Self { transfers, dirty };
+            return Self {
+                transfers,
+                dirty,
+                #[cfg(test)]
+                test_path: None,
+            };
         }
 
         Self::new()
@@ -104,7 +123,10 @@ impl TransferManager {
             return Ok(());
         }
 
-        let path = Self::transfers_path().ok_or_else(|| t("transfer-save-no-config-dir"))?;
+        let path = Self::transfers_path();
+        #[cfg(test)]
+        let path = self.test_path.clone().or(path);
+        let path = path.ok_or_else(|| t("transfer-save-no-config-dir"))?;
 
         // Create parent directory (owner-only) if it doesn't exist
         if let Some(parent) = path.parent() {

@@ -171,10 +171,6 @@ pub const ERR_AUDIO_MIXER_STREAM_BUILD: &str = "Failed to build mixer stream";
 /// Error prefix: building the stereo (upmixed) mixer output stream failed.
 pub const ERR_AUDIO_STEREO_MIXER_STREAM_BUILD: &str = "Failed to build stereo mixer stream";
 
-/// Panic message: a file-transfer code path expected a non-empty path
-/// after construction. Programmer-error.
-pub const ERR_PATH_EMPTY: &str = "non-empty path";
-
 /// Panic message: our own `PROTOCOL_VERSION` constant failed semver parsing.
 /// Programmer-error caught at the first handshake in any run.
 pub const ERR_PROTOCOL_VERSION_UNPARSEABLE: &str =

@@ -1200,6 +1200,7 @@ toast-link-copied = 链接已复制
 toast-copied = 已复制
 toast-download-started = 正在下载 { $filename }
 toast-download-queued = 下载已排队: { $filename }
+toast-download-invalid-name = 无法下载：文件或文件夹名称无效。
 toast-upload-started = 正在上传 { $filename }
 toast-upload-queued = 上传已排队: { $filename }
 toast-uploads-started = 正在上传 { $count } 个文件

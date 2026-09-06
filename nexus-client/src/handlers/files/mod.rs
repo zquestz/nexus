@@ -22,6 +22,7 @@ use nexus_common::validators::{self, DirNameError};
 
 use crate::NexusApp;
 use crate::i18n::t;
+use crate::transfers::is_windows_reserved_name;
 use crate::types::{FileSortColumn, Message, PendingRequests, ResponseRouting, TabId};
 
 pub(crate) use navigation::FilesOpenIntent;
@@ -230,62 +231,37 @@ impl NexusApp {
     }
 }
 
+fn is_invalid_filename_character(c: char) -> bool {
+    c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+}
+
+/// Root downloads derive a local label from the server name, then its address.
+/// Both candidates are untrusted; an unusable fallback must not bypass sanitizing.
 fn sanitize_filename(name: &str, fallback: &str) -> String {
-    let sanitized: String = name
-        .chars()
-        .map(|c| match c {
-            // Invalid on Windows and/or problematic on Unix
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            // Control characters
-            c if c.is_control() => '_',
-            c => c,
-        })
-        .collect();
+    for candidate in [name, fallback] {
+        let sanitized: String = candidate
+            .chars()
+            .map(|c| {
+                if is_invalid_filename_character(c) {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let trimmed = sanitized.trim().trim_end_matches([' ', '.']);
+        if trimmed.is_empty() {
+            continue;
+        }
 
-    // Trim whitespace and dots from ends (Windows doesn't like trailing dots/spaces)
-    let trimmed = sanitized.trim().trim_end_matches('.');
-
-    // If empty after sanitization, use the fallback (typically server address)
-    if trimmed.is_empty() {
-        return fallback.to_string();
+        return if is_windows_reserved_name(trimmed) {
+            format!("_{trimmed}")
+        } else {
+            trimmed.to_string()
+        };
     }
 
-    // Check for Windows reserved names (case-insensitive). The reservation
-    // applies to the stem before the first dot, so "CON.txt" is reserved too.
-    let stem = trimmed.split('.').next().unwrap_or(trimmed);
-    let upper = stem.to_uppercase();
-    let is_reserved = matches!(
-        upper.as_str(),
-        "CON"
-            | "PRN"
-            | "AUX"
-            | "NUL"
-            | "COM1"
-            | "COM2"
-            | "COM3"
-            | "COM4"
-            | "COM5"
-            | "COM6"
-            | "COM7"
-            | "COM8"
-            | "COM9"
-            | "LPT1"
-            | "LPT2"
-            | "LPT3"
-            | "LPT4"
-            | "LPT5"
-            | "LPT6"
-            | "LPT7"
-            | "LPT8"
-            | "LPT9"
-    );
-
-    if is_reserved {
-        // Prefix with underscore to make it safe
-        format!("_{trimmed}")
-    } else {
-        trimmed.to_string()
-    }
+    "server".to_string()
 }
 
 // =============================================================================
@@ -295,6 +271,7 @@ fn sanitize_filename(name: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transfers::is_safe_download_name;
 
     #[test]
     fn test_sanitize_filename_normal() {
@@ -332,6 +309,7 @@ mod tests {
         assert_eq!(sanitize_filename("test ", "fallback"), "test");
         assert_eq!(sanitize_filename(" test ", "fallback"), "test");
         assert_eq!(sanitize_filename("test. ", "fallback"), "test");
+        assert_eq!(sanitize_filename("test . . ", "fallback"), "test");
     }
 
     #[test]
@@ -341,6 +319,27 @@ mod tests {
         assert_eq!(sanitize_filename("...", "fallback"), "fallback");
         // Note: "///" becomes "___" (slashes replaced), not fallback
         assert_eq!(sanitize_filename("///", "192.168.1.1"), "___");
+    }
+
+    #[test]
+    fn test_sanitize_filename_validates_the_fallback_too() {
+        for (name, fallback, expected) in [
+            ("", "", "server"),
+            ("..", "...", "server"),
+            (" . . ", "  ", "server"),
+            ("", "2001:db8::1", "2001_db8__1"),
+            ("", "../../outside", ".._.._outside"),
+            ("", "\\\\server\\share", "__server_share"),
+            ("", "NUL.txt", "_NUL.txt"),
+            ("", "COM1 .txt", "_COM1 .txt"),
+            ("", "COM\u{b9}.txt", "_COM\u{b9}.txt"),
+            ("", "file\0name", "file_name"),
+            ("", "host . . ", "host"),
+        ] {
+            let sanitized = sanitize_filename(name, fallback);
+            assert_eq!(sanitized, expected, "{name:?} / {fallback:?}");
+            assert!(is_safe_download_name(&sanitized), "{sanitized:?}");
+        }
     }
 
     #[test]
