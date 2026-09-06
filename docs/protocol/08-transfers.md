@@ -438,6 +438,8 @@ Both sides use a `StreamingHasher` whose `partial_hash()` returns the current di
 8. Client sends `FileHash { blake3: hasher.finalize() }` — full file hash (0..end)
 9. If the computed full-file hash differs from `FileHash.blake3`, reject the upload with `TransferComplete { success: false, error_kind: "hash_mismatch" }`. A failed resumed attempt leaves the prior resume size and hash available for a retry; the rejected content is not accepted as a completed file. If an I/O failure prevents recovery, the response uses `error_kind: "io_error"` instead.
 
+If an I/O error prevents determining the existing upload size or hash, respond with `TransferComplete { success: false, error_kind: "io_error" }` instead of `FileStartResponse`. An unknown resume state must not be advertised as an empty state. If an I/O error prevents completing the file after `FileHash`, respond with the same failure rather than reporting success.
+
 ### Partial Files
 
 - Downloads use `.part` suffix until complete

@@ -4,6 +4,7 @@
 //! fed with existing .part content + received FileData chunks.
 
 use std::collections::HashSet;
+use std::fs::Metadata;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -624,6 +625,17 @@ async fn ensure_upload_has_available_space(
     Ok(())
 }
 
+async fn upload_metadata_if_exists(
+    path: &Path,
+    locale: &str,
+) -> Result<Option<Metadata>, TransferError> {
+    match tokio::fs::metadata(path).await {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(TransferError::io_error(err_upload_write_failed(locale))),
+    }
+}
+
 /// Sends FileHashing keepalives while hashing large existing files to prevent
 /// client timeout.
 async fn check_upload_conflicts_and_get_state<W>(
@@ -637,9 +649,8 @@ where
     W: AsyncWriteExt + Unpin,
 {
     // A completed destination takes precedence over any leftover .part.
-    if tokio::fs::try_exists(target_path).await.unwrap_or(false) {
-        let existing_metadata = tokio::fs::metadata(target_path).await.ok();
-        let existing_len = existing_metadata.map(|m| m.len()).unwrap_or(0);
+    if let Some(metadata) = upload_metadata_if_exists(target_path, locale).await? {
+        let existing_len = metadata.len();
 
         if existing_len == 0 && file_size == 0 {
             return Ok((0, None, StreamingHasher::new(), true));
@@ -662,10 +673,7 @@ where
         return Ok((file_size, Some(hash), hasher, true));
     }
 
-    if tokio::fs::try_exists(part_path).await.unwrap_or(false) {
-        let metadata = tokio::fs::metadata(part_path)
-            .await
-            .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
+    if let Some(metadata) = upload_metadata_if_exists(part_path, locale).await? {
         let part_size = metadata.len();
         if part_size > file_size {
             return Err(TransferError::conflict(err_upload_conflict(locale)));
@@ -676,15 +684,11 @@ where
             .and_then(|n| n.to_str())
             .unwrap_or(FALLBACK_PART_FILE_NAME)
             .to_string();
-        match hash_file_with_keepalives(part_path, part_size, &file_name, frame_writer).await {
-            Ok(hasher) => {
-                let hash = hasher.partial_hash();
-                return Ok((part_size, Some(hash), hasher, false));
-            }
-            Err(_) => {
-                return Ok((0, None, StreamingHasher::new(), false));
-            }
-        }
+        let hasher = hash_file_with_keepalives(part_path, part_size, &file_name, frame_writer)
+            .await
+            .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
+        let hash = hasher.partial_hash();
+        return Ok((part_size, Some(hash), hasher, false));
     }
 
     Ok((0, None, StreamingHasher::new(), false))
@@ -869,7 +873,10 @@ async fn finalize_part_file_if_exists(
     target_path: &Path,
     locale: &str,
 ) -> Result<(), TransferError> {
-    if tokio::fs::try_exists(part_path).await.unwrap_or(false) {
+    if upload_metadata_if_exists(part_path, locale)
+        .await?
+        .is_some()
+    {
         tokio::fs::rename(part_path, target_path)
             .await
             .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
@@ -977,7 +984,7 @@ mod tests {
     };
     use nexus_common::{
         ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH,
-        ERROR_KIND_INVALID,
+        ERROR_KIND_INVALID, ERROR_KIND_IO_ERROR,
     };
     use tempfile::TempDir;
     use tokio::fs;
@@ -1370,6 +1377,95 @@ mod tests {
         assert_eq!(result.completion, Ok(()));
         assert_eq!(result.target.as_deref(), Some(b"".as_slice()));
         assert!(result.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_partial_hash_failure_reports_io_error_before_start() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        let target = destination.join("file.txt");
+        let part = destination.join("file.txt.part");
+        // Metadata succeeds, but hashing a directory fails without relying on permissions.
+        fs::create_dir_all(&part).await.unwrap();
+        let preserved = part.join("existing-data");
+        fs::write(&preserved, b"preserve me").await.unwrap();
+        let file_size = fs::metadata(&part).await.unwrap().len();
+        assert!(
+            hash_file_with_keepalives(&part, file_size, "file.txt.part", &mut mock_writer())
+                .await
+                .is_err(),
+            "fixture must fail during hashing, not metadata lookup"
+        );
+
+        let file_index = Arc::new(FileIndex::new(&file_root, &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::FileStart {
+                path: "file.txt".to_string(),
+                size: file_size,
+            },
+        )
+        .await
+        .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            handle_upload(
+                &mut transfer,
+                UploadParams {
+                    destination: "uploads [NEXUS-UL]".to_string(),
+                    file_count: 1,
+                    total_size: file_size,
+                    root: false,
+                },
+            ),
+        )
+        .await
+        .expect("upload must fail without waiting for file data")
+        .unwrap();
+
+        let initial = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        assert!(matches!(
+            initial,
+            ServerMessage::FileUploadResponse { success: true, .. }
+        ));
+        let response = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        assert!(matches!(
+            response,
+            ServerMessage::TransferComplete {
+                success: false,
+                error: Some(_),
+                error_kind: Some(kind),
+            } if kind == ERROR_KIND_IO_ERROR
+        ));
+        assert!(!fs::try_exists(&target).await.unwrap());
+        assert_eq!(fs::read(&preserved).await.unwrap(), b"preserve me");
     }
 
     #[tokio::test]
@@ -2448,6 +2544,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_conflicts_target_metadata_error_does_not_fall_back_to_part() {
+        let temp_dir = TempDir::new().unwrap();
+        // An embedded NUL causes an error even when tests run with elevated privileges.
+        let target = temp_dir.path().join("invalid\0.txt");
+        let part = temp_dir.path().join("existing.txt.part");
+        fs::write(&part, b"partial data").await.unwrap();
+        let mut writer = mock_writer();
+
+        for file_size in [0, 100] {
+            let err = check_upload_conflicts_and_get_state(
+                &mut writer,
+                &target,
+                &part,
+                file_size,
+                TEST_LOCALE,
+            )
+            .await
+            .unwrap_err();
+
+            assert_eq!(err.kind, ERROR_KIND_IO_ERROR);
+        }
+        assert_eq!(fs::read(&part).await.unwrap(), b"partial data");
+        assert!(writer.get_mut().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_conflicts_part_metadata_error_does_not_report_empty_state() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("newfile.txt");
+        let part = temp_dir.path().join("invalid\0.part");
+        let mut writer = mock_writer();
+
+        for file_size in [0, 100] {
+            let err = check_upload_conflicts_and_get_state(
+                &mut writer,
+                &target,
+                &part,
+                file_size,
+                TEST_LOCALE,
+            )
+            .await
+            .unwrap_err();
+
+            assert_eq!(err.kind, ERROR_KIND_IO_ERROR);
+        }
+        assert!(!fs::try_exists(&target).await.unwrap());
+        assert!(writer.get_mut().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_conflicts_completed_file_does_not_inspect_leftover_part() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("existing.txt");
+        let part = temp_dir.path().join("invalid\0.part");
+        let content = b"completed data";
+        fs::write(&target, content).await.unwrap();
+        let mut writer = mock_writer();
+
+        let (size, hash, hasher, complete_exists) = check_upload_conflicts_and_get_state(
+            &mut writer,
+            &target,
+            &part,
+            content.len() as u64,
+            TEST_LOCALE,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(size, content.len() as u64);
+        assert_eq!(hash, Some(hash_bytes(content)));
+        assert_eq!(hasher.finalize(), hash_bytes(content));
+        assert!(complete_exists);
+    }
+
+    #[tokio::test]
     async fn test_conflicts_existing_complete_file_same_content() {
         let temp_dir = TempDir::new().unwrap();
         let target = temp_dir.path().join("existing.txt");
@@ -2547,6 +2718,37 @@ mod tests {
         let result = finalize_part_file_if_exists(&part, &target, TEST_LOCALE).await;
         assert!(result.is_ok());
         assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn test_finalize_part_file_metadata_error_does_not_report_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("final.txt");
+        let part = temp_dir.path().join("invalid\0.part");
+
+        let err = finalize_part_file_if_exists(&part, &target, TEST_LOCALE)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind, ERROR_KIND_IO_ERROR);
+        assert!(!fs::try_exists(&target).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_finalize_part_file_rename_error_preserves_partial_data() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("final.txt");
+        let part = temp_dir.path().join("final.txt.part");
+        fs::create_dir(&target).await.unwrap();
+        fs::write(&part, b"complete content").await.unwrap();
+
+        let err = finalize_part_file_if_exists(&part, &target, TEST_LOCALE)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind, ERROR_KIND_IO_ERROR);
+        assert!(fs::metadata(&target).await.unwrap().is_dir());
+        assert_eq!(fs::read(&part).await.unwrap(), b"complete content");
     }
 
     #[tokio::test]
