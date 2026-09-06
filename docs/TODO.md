@@ -18,16 +18,6 @@ tracked separately below.
 
 ### Confirmed Fixes
 
-- [ ] **Correct last-admin protection for disabled admins.** With one enabled
-  admin and another disabled admin, an unrelated edit to the disabled account
-  can be rejected. Apply enabled-admin protection only to updates that would
-  remove an enabled administrator, retaining atomic authorization and last-admin
-  safeguards.
-  Code: `nexus-server/src/db/sql.rs` (`SQL_UPDATE_USER`) and
-  `nexus-server/src/db/users.rs`.
-  Verification: password and name changes to the disabled admin succeed, while
-  disabling or demoting the last enabled admin remains blocked.
-
 - [ ] **Try alternate DNS addresses for direct connections.** BBS and transfer
   connections currently select only the first resolved address. Try the resolved
   alternatives under a bounded overall connection deadline.

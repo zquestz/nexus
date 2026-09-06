@@ -109,15 +109,16 @@ pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, username_lower, 
 /// `is_shared` is not updated — it is immutable once set at creation.
 ///
 /// **Atomic protection (TOCTOU prevention):** all checks happen in a single
-/// statement so concurrent updates can't leave zero enabled admins or zero
-/// admins, and a concurrent promotion can't let a non-admin's in-flight edit
-/// land on a now-admin row. Returns 0 rows affected if blocked.
+/// statement. Disables cannot remove the last enabled admin, demotions cannot
+/// remove the last admin, and a concurrent promotion cannot let a non-admin's
+/// in-flight edit land on a now-admin row. Returns 0 rows affected if blocked.
 pub const SQL_UPDATE_USER: &str = "UPDATE users
     SET username = ?, username_lower = ?, password_hash = ?, is_admin = ?, enabled = ?, bandwidth_weight = ?
     WHERE id = ?
     AND (
-        -- Enabled protection: allow enabling, allow non-admin disable, allow if multiple enabled admins
+        -- Enabled protection applies only when disabling a currently enabled admin.
         ? = 1
+        OR enabled = 0
         OR is_admin = 0
         OR (SELECT COUNT(*) FROM users WHERE is_admin = 1 AND enabled = 1) > 1
     )

@@ -5903,6 +5903,124 @@ mod tests {
         }
     }
 
+    async fn disabled_admin_update_context() -> (TestContext, u32, db::UserAccount) {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let target = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "disabled_admin",
+                hashed_password: &get_cached_password_hash("oldpassword"),
+                is_admin: true,
+                is_shared: false,
+                enabled: false,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        (test_ctx, session_id, target)
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_disabled_admin_password_change() {
+        let (mut test_ctx, session_id, target) = disabled_admin_update_context().await;
+        let request = UserUpdateRequest {
+            password: Some("newpassword".to_string()),
+            ..empty_user_update_request(target.id, Some(session_id))
+        };
+
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(success, "disabled admin password change failed: {error:?}");
+                assert!(error.is_none());
+                assert_eq!(id, Some(target.id));
+                assert_eq!(username.as_deref(), Some("disabled_admin"));
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+
+        let after = test_ctx
+            .db
+            .users
+            .get_user_by_id(target.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.username, target.username);
+        assert!(after.is_admin);
+        assert!(!after.enabled);
+        assert!(
+            verify_password_async("newpassword".to_string(), after.hashed_password.clone())
+                .await
+                .unwrap()
+        );
+        assert!(
+            !verify_password_async("oldpassword".to_string(), after.hashed_password)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_disabled_admin_username_change() {
+        let (mut test_ctx, session_id, target) = disabled_admin_update_context().await;
+        let request = UserUpdateRequest {
+            username: Some("renamed_admin".to_string()),
+            ..empty_user_update_request(target.id, Some(session_id))
+        };
+
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(success, "disabled admin rename failed: {error:?}");
+                assert!(error.is_none());
+                assert_eq!(id, Some(target.id));
+                assert_eq!(username.as_deref(), Some("renamed_admin"));
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("disabled_admin")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let after = test_ctx
+            .db
+            .users
+            .get_user_by_username("renamed_admin")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.id, target.id);
+        assert_eq!(after.hashed_password, target.hashed_password);
+        assert!(after.is_admin);
+        assert!(!after.enabled);
+    }
+
     #[tokio::test]
     async fn test_userupdate_cannot_disable_last_admin() {
         let mut test_ctx = create_test_context().await;

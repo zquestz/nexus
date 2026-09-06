@@ -777,6 +777,7 @@ impl UserDb {
     /// WHERE id = ?
     /// AND (
     ///     ? = 1                                -- Allow if enabling (final_enabled = true)
+    ///     OR enabled = 0                      -- Allow if target is already disabled
     ///     OR is_admin = 0                      -- Allow if target is not admin
     ///     OR (COUNT enabled admins) > 1        -- Allow if multiple enabled admins exist
     /// )
@@ -787,8 +788,10 @@ impl UserDb {
     /// )
     /// ```
     ///
-    /// This prevents TOCTOU (Time-Of-Check-To-Time-Of-Use) vulnerabilities where two admins
-    /// could simultaneously disable or demote each other, leaving zero enabled/any admins.
+    /// The disable guard applies only to currently enabled admins. Already-disabled
+    /// admins still pass through the separate demotion and requester-authorization guards.
+    /// Concurrent disables cannot remove every enabled admin, and concurrent demotions
+    /// cannot remove every admin; the checks are atomic with the write.
     ///
     /// # Return Value
     ///
@@ -4128,6 +4131,213 @@ mod tests {
             returned_permissions.permissions.is_empty(),
             "admins must return an empty permission set because admin bypass lives in session auth"
         );
+    }
+
+    #[tokio::test]
+    async fn test_update_user_disabled_admin_edits_preserve_status() {
+        for enabled in [None, Some(false)] {
+            let pool = create_test_db().await;
+            let db = UserDb::new(pool);
+            let permissions = Permissions::new();
+            let active_admin = db
+                .create_user(CreateUserParams {
+                    is_admin: true,
+                    ..create_user_params("active_admin", "active_hash", &permissions, None, None)
+                })
+                .await
+                .unwrap();
+            let disabled_admin = db
+                .create_user(CreateUserParams {
+                    is_admin: true,
+                    enabled: false,
+                    ..create_user_params("disabled_admin", "old_hash", &permissions, None, None)
+                })
+                .await
+                .unwrap();
+
+            let result = db
+                .update_user(UpdateUserParams {
+                    username: "disabled_admin",
+                    new_username: Some("renamed_admin"),
+                    new_password_hash: Some("new_hash"),
+                    is_admin: None,
+                    enabled,
+                    permissions: None,
+                    revokes: None,
+                    remove_group: false,
+                    group_id: None,
+                    bandwidth_weight: Some(42),
+                    inherit_bandwidth_weight: false,
+                    requester_is_admin: true,
+                    permission_write_scope: PermissionWriteScope::ReplaceAll,
+                    requester_bandwidth_max: None,
+                })
+                .await
+                .unwrap();
+
+            assert!(
+                matches!(result, UpdateUserResult::Updated { .. }),
+                "editing an already-disabled admin must succeed with enabled={enabled:?}"
+            );
+            assert!(
+                db.get_user_by_username("disabled_admin")
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            let updated = db
+                .get_user_by_username("renamed_admin")
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(updated.id, disabled_admin.id);
+            assert_eq!(updated.hashed_password, "new_hash");
+            assert_eq!(updated.bandwidth_weight, Some(42));
+            assert!(updated.is_admin);
+            assert!(!updated.enabled);
+            let active_after = db.get_user_by_id(active_admin.id).await.unwrap().unwrap();
+            assert!(active_after.is_admin);
+            assert!(active_after.enabled);
+            assert_eq!(active_after.hashed_password, "active_hash");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_user_admin_transition_guards() {
+        struct Case {
+            name: &'static str,
+            enabled: bool,
+            other_admin_enabled: Option<bool>,
+            new_is_admin: Option<bool>,
+            new_enabled: Option<bool>,
+            requester_is_admin: bool,
+            allowed: bool,
+        }
+
+        let disable_last_enabled = Case {
+            name: "cannot disable the last enabled admin when a disabled admin remains",
+            enabled: true,
+            other_admin_enabled: Some(false),
+            new_is_admin: None,
+            new_enabled: Some(false),
+            requester_is_admin: true,
+            allowed: false,
+        };
+        let cases = [
+            Case {
+                name: "can disable an admin when another enabled admin remains",
+                other_admin_enabled: Some(true),
+                allowed: true,
+                ..disable_last_enabled
+            },
+            Case {
+                name: "cannot demote the sole enabled admin account",
+                other_admin_enabled: None,
+                new_is_admin: Some(false),
+                new_enabled: None,
+                ..disable_last_enabled
+            },
+            Case {
+                name: "cannot demote the sole disabled admin account",
+                enabled: false,
+                other_admin_enabled: None,
+                new_is_admin: Some(false),
+                new_enabled: None,
+                ..disable_last_enabled
+            },
+            Case {
+                name: "non-admin cannot edit a disabled admin",
+                enabled: false,
+                other_admin_enabled: Some(true),
+                new_enabled: None,
+                requester_is_admin: false,
+                ..disable_last_enabled
+            },
+            Case {
+                name: "can re-enable the sole disabled admin account",
+                enabled: false,
+                other_admin_enabled: None,
+                new_enabled: Some(true),
+                allowed: true,
+                ..disable_last_enabled
+            },
+            disable_last_enabled,
+        ];
+
+        for case in cases {
+            let pool = create_test_db().await;
+            let db = UserDb::new(pool);
+            let permissions = Permissions::new();
+            let target = db
+                .create_user(CreateUserParams {
+                    is_admin: true,
+                    enabled: case.enabled,
+                    ..create_user_params("target_admin", "old_hash", &permissions, None, None)
+                })
+                .await
+                .unwrap();
+            if let Some(enabled) = case.other_admin_enabled {
+                db.create_user(CreateUserParams {
+                    is_admin: true,
+                    enabled,
+                    ..create_user_params("other_admin", "other_hash", &permissions, None, None)
+                })
+                .await
+                .unwrap();
+            }
+
+            let result = db
+                .update_user(UpdateUserParams {
+                    username: "target_admin",
+                    new_username: None,
+                    new_password_hash: Some("new_hash"),
+                    is_admin: case.new_is_admin,
+                    enabled: case.new_enabled,
+                    permissions: None,
+                    revokes: None,
+                    remove_group: false,
+                    group_id: None,
+                    bandwidth_weight: None,
+                    inherit_bandwidth_weight: false,
+                    requester_is_admin: case.requester_is_admin,
+                    permission_write_scope: if case.requester_is_admin {
+                        PermissionWriteScope::ReplaceAll
+                    } else {
+                        PermissionWriteScope::OwnedSubset(&[])
+                    },
+                    requester_bandwidth_max: (!case.requester_is_admin)
+                        .then_some(DEFAULT_BANDWIDTH_WEIGHT),
+                })
+                .await
+                .unwrap();
+
+            let after = db.get_user_by_id(target.id).await.unwrap().unwrap();
+            if case.allowed {
+                assert!(
+                    matches!(result, UpdateUserResult::Updated { .. }),
+                    "{}",
+                    case.name
+                );
+                assert_eq!(
+                    after.enabled,
+                    case.new_enabled.unwrap_or(case.enabled),
+                    "{}",
+                    case.name
+                );
+                assert_eq!(
+                    after.is_admin,
+                    case.new_is_admin.unwrap_or(true),
+                    "{}",
+                    case.name
+                );
+                assert_eq!(after.hashed_password, "new_hash", "{}", case.name);
+            } else {
+                assert!(matches!(result, UpdateUserResult::Blocked), "{}", case.name);
+                assert_eq!(after.enabled, case.enabled, "{}", case.name);
+                assert!(after.is_admin, "{}", case.name);
+                assert_eq!(after.hashed_password, "old_hash", "{}", case.name);
+            }
+        }
     }
 
     /// Atomic guard: a non-admin requester must not be able to update an
