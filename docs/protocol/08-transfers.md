@@ -358,7 +358,7 @@ Carries the sender's BLAKE3 hash of the complete file. Sent after `FileData` (no
 
 - Both sides independently compute the hash during streaming (single-pass)
 - The receiver compares its own computed hash against the sender's `FileHash`
-- A mismatch rejects the file. After streamed uploads, preserve the original resume prefix and discard only appended bytes; delete the `.part` if the upload started fresh. Streamed downloads delete their `.part`.
+- If the computed full-file hash differs from `FileHash.blake3`, the file must not be accepted as complete.
 - For zero-byte files, the hash is the BLAKE3 of empty input (`af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262`)
 
 **Per-file frame dispatch after `FileStartResponse`:**
@@ -436,13 +436,14 @@ Both sides use a `StreamingHasher` whose `partial_hash()` returns the current di
    - `size: 0` → send entire file (fresh hasher)
 7. Client streams `FileData` from offset, feeding bytes to hasher
 8. Client sends `FileHash { blake3: hasher.finalize() }` — full file hash (0..end)
-9. Server compares its independently computed hash against client's `FileHash`. On mismatch, truncate `.part` back to offset N for a resumed upload, or delete it for a fresh upload, then return `hash_mismatch`. If cleanup fails, return `io_error` instead.
+9. If the computed full-file hash differs from `FileHash.blake3`, reject the upload with `TransferComplete { success: false, error_kind: "hash_mismatch" }`. A failed resumed attempt leaves the prior resume size and hash available for a retry; the rejected content is not accepted as a completed file. If an I/O failure prevents recovery, the response uses `error_kind: "io_error"` instead.
 
 ### Partial Files
 
 - Downloads use `.part` suffix until complete
 - Uploads use `.part` suffix on server until verified
 - After successful BLAKE3 verification via `FileHash`, `.part` is renamed to final name
+- For an upload, if no completed file exists at the requested destination and the available partial data exceeds `FileStart.size`, reject the transfer with `TransferComplete { success: false, error_kind: "conflict" }` instead of sending `FileStartResponse`. This includes zero-byte uploads when partial data is non-empty. The rejection preserves the existing resume state and does not complete the file.
 
 ## Error Kinds
 
@@ -536,7 +537,8 @@ but keep the nickname supplied at transfer login.
 ### Zero-Byte Files
 
 - `FileStart` sent with `size: 0`
-- `FileStartResponse` sent as normal
+- If an upload has non-empty partial data at its destination and no completed file, respond with `TransferComplete { success: false, error_kind: "conflict" }` instead of `FileStartResponse`.
+- Otherwise, the normal acceptance checks apply before `FileStartResponse`.
 - No `FileData` message (nothing to transfer)
 - `FileHash` sent with BLAKE3 of empty input
 - Proceed to next file

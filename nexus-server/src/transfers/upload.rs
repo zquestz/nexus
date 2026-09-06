@@ -667,6 +667,10 @@ where
             .await
             .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
         let part_size = metadata.len();
+        if part_size > file_size {
+            return Err(TransferError::conflict(err_upload_conflict(locale)));
+        }
+
         let file_name = part_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -1366,6 +1370,52 @@ mod tests {
         assert_eq!(result.completion, Ok(()));
         assert_eq!(result.target.as_deref(), Some(b"".as_slice()));
         assert!(result.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_smaller_than_partial_file_rejects_and_allows_retry() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let destination = file_root.join("shared/uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+        let data = b"original upload content";
+        let prefix = &data[..9];
+        fs::write(destination.join("file.txt.part"), prefix)
+            .await
+            .unwrap();
+
+        for file_size in [0, prefix.len() - 1] {
+            // Even echoing the partial file's hash cannot complete a smaller upload.
+            let rejected =
+                upload_to_test_directory(&file_root, &data[..file_size], None, hash_bytes(prefix))
+                    .await;
+
+            assert!(rejected.start_state.is_none());
+            assert_eq!(rejected.completion, Err(ERROR_KIND_CONFLICT.to_string()));
+            assert!(rejected.target.is_none());
+            assert_eq!(rejected.part.as_deref(), Some(prefix));
+        }
+
+        let retried =
+            upload_to_test_directory(&file_root, data, Some(prefix.len()), hash_bytes(data)).await;
+
+        assert_eq!(
+            retried.start_state,
+            Some((prefix.len() as u64, Some(hash_bytes(prefix))))
+        );
+        assert_eq!(retried.completion, Ok(()));
+        assert_eq!(retried.target.as_deref(), Some(data.as_slice()));
+        assert!(retried.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_empty_file_with_empty_part_succeeds() {
+        let result = upload_with_existing_files(None, Some(b""), b"", None).await;
+
+        assert_eq!(result.start_state, Some((0, Some(hash_bytes(b"")))));
+        assert_eq!(result.completion, Ok(()));
+        assert_eq!(result.target.as_deref(), Some(b"".as_slice()));
+        assert_eq!(result.part.as_deref(), Some(b"".as_slice()));
     }
 
     #[tokio::test]
