@@ -307,19 +307,25 @@ where
         ClientFileFrame::FileHash {
             blake3: client_hash,
         } => {
-            // Client says: zero-byte or already complete — no FileData coming.
+            // Without FileData, all declared bytes must already be available.
+            if existing_size != file_size {
+                return Err(ReceiveFileError::Transfer(TransferError::protocol_error(
+                    err_upload_protocol_error(locale),
+                )));
+            }
+            let server_hash = hasher.finalize();
+            if server_hash != client_hash {
+                return Err(ReceiveFileError::Transfer(TransferError::hash_mismatch(
+                    err_upload_hash_mismatch(locale),
+                )));
+            }
+
             if file_size == 0 {
                 if !complete_file_exists {
                     create_empty_file(&target_path, locale).await?;
                 }
                 debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_EMPTY_FILE);
             } else {
-                let server_hash = hasher.finalize();
-                if server_hash != client_hash {
-                    return Err(ReceiveFileError::Transfer(TransferError::hash_mismatch(
-                        err_upload_hash_mismatch(locale),
-                    )));
-                }
                 // Never replace a verified completed file with an unrelated leftover .part.
                 if !complete_file_exists {
                     finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
@@ -984,7 +990,7 @@ mod tests {
     };
     use nexus_common::{
         ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH,
-        ERROR_KIND_INVALID, ERROR_KIND_IO_ERROR,
+        ERROR_KIND_INVALID, ERROR_KIND_IO_ERROR, ERROR_KIND_PROTOCOL_ERROR,
     };
     use tempfile::TempDir;
     use tokio::fs;
@@ -1367,6 +1373,161 @@ mod tests {
         assert_eq!(result.completion, Ok(()));
         assert_eq!(result.target.as_deref(), Some(data.as_slice()));
         assert!(result.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_hash_only_incomplete_part_rejects_and_allows_resume() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let destination = file_root.join("shared/uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+        let data = b"original prefix and remaining content";
+        let prefix = &data[..15];
+        fs::write(destination.join("file.txt.part"), prefix)
+            .await
+            .unwrap();
+
+        // Missing data is a protocol error regardless of whether the hash matches the prefix.
+        for client_hash in [hash_bytes(prefix), hash_bytes(data)] {
+            let rejected = upload_to_test_directory(&file_root, data, None, client_hash).await;
+
+            assert_eq!(
+                rejected.start_state,
+                Some((prefix.len() as u64, Some(hash_bytes(prefix))))
+            );
+            assert_eq!(
+                rejected.completion,
+                Err(ERROR_KIND_PROTOCOL_ERROR.to_string())
+            );
+            assert!(rejected.target.is_none());
+            assert_eq!(rejected.part.as_deref(), Some(prefix));
+        }
+
+        let retried =
+            upload_to_test_directory(&file_root, data, Some(prefix.len()), hash_bytes(data)).await;
+
+        assert_eq!(
+            retried.start_state,
+            Some((prefix.len() as u64, Some(hash_bytes(prefix))))
+        );
+        assert_eq!(retried.completion, Ok(()));
+        assert_eq!(retried.target.as_deref(), Some(data.as_slice()));
+        assert!(retried.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_hash_only_nonempty_file_rejects_missing_or_empty_part() {
+        for existing_part in [None, Some(b"".as_slice())] {
+            let temp_dir = TempDir::new().unwrap();
+            let file_root = temp_dir.path().canonicalize().unwrap();
+            let destination = file_root.join("shared/uploads [NEXUS-UL]");
+            fs::create_dir_all(&destination).await.unwrap();
+            if let Some(part) = existing_part {
+                fs::write(destination.join("file.txt.part"), part)
+                    .await
+                    .unwrap();
+            }
+
+            let rejected =
+                upload_to_test_directory(&file_root, b"declared content", None, hash_bytes(b""))
+                    .await;
+
+            assert_eq!(
+                rejected.start_state,
+                Some((0, existing_part.map(hash_bytes)))
+            );
+            assert_eq!(
+                rejected.completion,
+                Err(ERROR_KIND_PROTOCOL_ERROR.to_string())
+            );
+            assert!(rejected.target.is_none());
+            assert_eq!(rejected.part.as_deref(), existing_part);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_hash_only_complete_part_hash_mismatch_allows_retry() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let destination = file_root.join("shared/uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+        let data = b"completed partial file";
+        fs::write(destination.join("file.txt.part"), data)
+            .await
+            .unwrap();
+
+        let rejected =
+            upload_to_test_directory(&file_root, data, None, hash_bytes(b"different content"))
+                .await;
+
+        assert_eq!(
+            rejected.start_state,
+            Some((data.len() as u64, Some(hash_bytes(data))))
+        );
+        assert_eq!(
+            rejected.completion,
+            Err(ERROR_KIND_HASH_MISMATCH.to_string())
+        );
+        assert!(rejected.target.is_none());
+        assert_eq!(rejected.part.as_deref(), Some(data.as_slice()));
+
+        let retried = upload_to_test_directory(&file_root, data, None, hash_bytes(data)).await;
+
+        assert_eq!(retried.start_state, rejected.start_state);
+        assert_eq!(retried.completion, Ok(()));
+        assert_eq!(retried.target.as_deref(), Some(data.as_slice()));
+        assert!(retried.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_hash_only_empty_hash_mismatch_preserves_state_and_allows_retry() {
+        let empty = b"".as_slice();
+        for (existing_target, existing_part) in [
+            (None, None),
+            (None, Some(empty)),
+            (Some(empty), None),
+            (Some(empty), Some(b"leftover".as_slice())),
+        ] {
+            let temp_dir = TempDir::new().unwrap();
+            let file_root = temp_dir.path().canonicalize().unwrap();
+            let destination = file_root.join("shared/uploads [NEXUS-UL]");
+            fs::create_dir_all(&destination).await.unwrap();
+            if let Some(target) = existing_target {
+                fs::write(destination.join("file.txt"), target)
+                    .await
+                    .unwrap();
+            }
+            if let Some(part) = existing_part {
+                fs::write(destination.join("file.txt.part"), part)
+                    .await
+                    .unwrap();
+            }
+            let expected_hash = if existing_target.is_some() {
+                None
+            } else {
+                existing_part.map(hash_bytes)
+            };
+
+            let rejected =
+                upload_to_test_directory(&file_root, empty, None, hash_bytes(b"nonempty content"))
+                    .await;
+
+            assert_eq!(rejected.start_state, Some((0, expected_hash)));
+            assert_eq!(
+                rejected.completion,
+                Err(ERROR_KIND_HASH_MISMATCH.to_string())
+            );
+            assert_eq!(rejected.target.as_deref(), existing_target);
+            assert_eq!(rejected.part.as_deref(), existing_part);
+
+            let retried =
+                upload_to_test_directory(&file_root, empty, None, hash_bytes(empty)).await;
+
+            assert_eq!(retried.start_state, rejected.start_state);
+            assert_eq!(retried.completion, Ok(()));
+            assert_eq!(retried.target.as_deref(), Some(empty));
+            assert_eq!(retried.part.as_deref(), existing_part);
+        }
     }
 
     #[tokio::test]
@@ -2196,7 +2357,7 @@ mod tests {
         send_client_message(
             &mut client_writer,
             &ClientMessage::FileHash {
-                blake3: String::new(),
+                blake3: hash_bytes(b""),
             },
         )
         .await
@@ -2500,8 +2661,6 @@ mod tests {
 
     #[test]
     fn test_resume_conflict_offset_mismatch() {
-        use nexus_common::ERROR_KIND_PROTOCOL_ERROR;
-
         // Resume with mismatched offset - client claims offset 1000 but .part is 500 bytes
         // This could be malicious attempt to corrupt the file
         let result = check_resume_conflict(1000, 500, TEST_LOCALE);
