@@ -146,7 +146,7 @@ use nexus_common::protocol::{ChannelJoinInfo, ServerMessage};
 use nexus_common::validators::{self, NewsImageError, ServerImageError};
 
 use crate::channels::{ChannelManager, JoinResult};
-use crate::connection_io::send_server_message_with_write_timeout;
+use crate::connection_io::send_server_message_with_progress_timeout;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{Database, Permission};
 use crate::egress::task::EgressHandle;
@@ -240,7 +240,7 @@ impl<W: AsyncWrite + Unpin> DirectWriter<'_, W> {
     ) -> io::Result<()> {
         match &mut self.target {
             DirectWriterTarget::Frame(frame_writer) => {
-                send_server_message_with_write_timeout(frame_writer, message, message_id).await
+                send_server_message_with_progress_timeout(frame_writer, message, message_id).await
             }
             DirectWriterTarget::Egress {
                 egress,

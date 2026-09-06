@@ -12,6 +12,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
+use nexus_common::TRANSFER_IO_PROGRESS_TIMEOUT;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::server_message_to_frame_bytes;
 use nexus_common::protocol::ServerMessage;
@@ -19,7 +20,7 @@ use nexus_common::protocol::ServerMessage;
 use crate::constants::{
     ERR_TRANSFER_EGRESS_ENQUEUE_FAILED, ERR_TRANSFER_EGRESS_TASK_FAILED,
     ERR_TRANSFER_MISSING_FRAME_TERMINATOR, ERR_TRANSFER_READ_TIMEOUT,
-    ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT, TRANSFER_WRITE_PROGRESS_TIMEOUT,
+    ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT,
 };
 use crate::egress;
 use crate::egress::EgressEnqueueError;
@@ -38,6 +39,7 @@ use super::types::AuthenticatedUser;
 #[derive(Debug)]
 pub enum StreamError {
     Io(io::Error),
+    /// An outgoing frame may be incomplete. Close without sending another frame.
     FrameStarted(io::Error),
     /// Connection terminated due to IP ban
     Banned,
@@ -226,7 +228,7 @@ where
     }
 
     async fn write_all_interruptible(&mut self, buf: &[u8]) -> Result<(), TransferWriteError> {
-        self.write_all_interruptible_with_timeout(buf, TRANSFER_WRITE_PROGRESS_TIMEOUT)
+        self.write_all_interruptible_with_timeout(buf, TRANSFER_IO_PROGRESS_TIMEOUT)
             .await
     }
 
@@ -282,7 +284,7 @@ where
     }
 
     async fn flush_interruptible(&mut self) -> Result<(), TransferWriteError> {
-        self.flush_interruptible_with_timeout(TRANSFER_WRITE_PROGRESS_TIMEOUT)
+        self.flush_interruptible_with_timeout(TRANSFER_IO_PROGRESS_TIMEOUT)
             .await
     }
 
@@ -370,10 +372,10 @@ where
         let frame = server_message_to_frame_bytes(msg, msg_id).map_err(StreamError::Io)?;
         self.write_all_interruptible(&frame)
             .await
-            .map_err(|err| err.into_stream_error(false))?;
+            .map_err(|err| err.into_stream_error(true))?;
         self.flush_interruptible()
             .await
-            .map_err(|err| err.into_stream_error(false))
+            .map_err(|err| err.into_stream_error(true))
     }
 
     pub async fn send_with_id(
@@ -388,10 +390,10 @@ where
 
         self.write_all_interruptible(&frame)
             .await
-            .map_err(|err| err.into_stream_error(false))?;
+            .map_err(|err| err.into_stream_error(true))?;
         self.flush_interruptible()
             .await
-            .map_err(|err| err.into_stream_error(false))
+            .map_err(|err| err.into_stream_error(true))
     }
 
     /// Stream a file to the client, checking for a ban between chunks.
@@ -721,10 +723,10 @@ where
         let Some(connection_id) = self.egress.as_ref().map(|egress| egress.connection_id) else {
             self.write_all_interruptible(&frame)
                 .await
-                .map_err(|err| err.into_stream_error(false))?;
+                .map_err(|err| err.into_stream_error(true))?;
             self.flush_interruptible()
                 .await
-                .map_err(|err| err.into_stream_error(false))?;
+                .map_err(|err| err.into_stream_error(true))?;
             return Ok(());
         };
 
@@ -747,9 +749,11 @@ where
             let Some(dispatch) = self
                 .recv_egress_dispatch_interruptible()
                 .await
-                .map_err(|err| err.into_stream_error(false))?
+                .map_err(|err| err.into_stream_error(true))?
             else {
-                return Err(StreamError::ConnectionClosed);
+                return Err(StreamError::FrameStarted(io::Error::other(
+                    "egress dispatch closed during frame",
+                )));
             };
 
             if dispatch.connection_id != connection_id {
@@ -767,22 +771,22 @@ where
                 if let Some(egress) = self.egress.as_ref() {
                     let _ = egress.handle.write_failed(connection_id).await;
                 }
-                return Err(err.into_stream_error(false));
+                return Err(err.into_stream_error(true));
             }
             if let Err(err) = self.flush_interruptible().await {
                 if let Some(egress) = self.egress.as_ref() {
                     let _ = egress.handle.write_failed(connection_id).await;
                 }
-                return Err(err.into_stream_error(false));
+                return Err(err.into_stream_error(true));
             }
 
             let Some(egress) = self.egress.as_ref() else {
-                return Err(StreamError::Io(io::Error::other(
+                return Err(StreamError::FrameStarted(io::Error::other(
                     "egress is not registered",
                 )));
             };
             if let Err(err) = egress.handle.ack(connection_id).await {
-                return Err(StreamError::Io(egress_task_io_error(err)));
+                return Err(StreamError::FrameStarted(egress_task_io_error(err)));
             }
 
             if is_final_frame_chunk {
@@ -953,6 +957,7 @@ mod tests {
     use crate::files::{FileActivityMap, FileIndex};
     use crate::scheduler::{ConnectionClass, ConnectionId};
     use crate::transfers::registry::{TransferDirection, TransferRegistry};
+    use crate::transfers::test_helpers::{FailingWriter, PausedFlushWriter, WriteFailure};
     use nexus_common::io::read_transfer_server_message as read_server_message;
     use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -1199,6 +1204,183 @@ mod tests {
                 assert_eq!(err.to_string(), ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT);
             }
             other => panic!("expected write timeout, got {other:?}"),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn control_write_failures_are_connection_fatal() {
+        for mode in ["direct", "bypass", "egress"] {
+            for failure in [
+                WriteFailure::Error,
+                WriteFailure::Zero,
+                WriteFailure::Stall,
+                WriteFailure::FlushError,
+                WriteFailure::FlushStall,
+            ] {
+                let registry = TransferRegistry::new();
+                let (info, ban_rx) = registry.register(TransferRegistration {
+                    user_id: 1,
+                    peer_addr: make_test_addr(),
+                    nickname: "tester".into(),
+                    username: "tester".into(),
+                    is_admin: false,
+                    is_shared: false,
+                    direction: TransferDirection::Download,
+                    path: "file.txt".into(),
+                    total_size: 0,
+                });
+                let temp_dir = TempDir::new().unwrap();
+                let file_index = make_test_file_index(&temp_dir);
+                let file_activity = Arc::new(FileActivityMap::new());
+                let (transfer_egress, egress_task) = if mode == "egress" {
+                    let (transfer_egress, handle, task, id) = registered_transfer_egress(4).await;
+                    (Some(transfer_egress), Some((handle, task, id)))
+                } else {
+                    (None, None)
+                };
+                let mut transfer = Transfer::new(
+                    FrameReader::new(tokio::io::empty()),
+                    FrameWriter::new(FailingWriter::new(Vec::new(), 0, 8, failure)),
+                    ban_rx,
+                    info,
+                    TransferContext {
+                        user: make_test_user(),
+                        locale: "en".into(),
+                        file_root: temp_dir.path(),
+                        file_index: &file_index,
+                        file_activity: &file_activity,
+                        user_area_root: None,
+                        registry: &registry,
+                        egress: transfer_egress,
+                    },
+                );
+                let message = ServerMessage::FileHash {
+                    blake3: "abc123".into(),
+                };
+                let result = timeout(TRANSFER_IO_PROGRESS_TIMEOUT * 2, async {
+                    if mode == "direct" {
+                        transfer
+                            .send_direct_with_id(&message, MessageId::new())
+                            .await
+                    } else {
+                        transfer.send(&message).await
+                    }
+                })
+                .await
+                .expect("control writes must terminate on a stalled socket");
+                assert!(
+                    matches!(result, Err(StreamError::FrameStarted(_))),
+                    "{mode}, {failure:?}: {result:?}"
+                );
+                assert!(!transfer.writer().get_ref().inner.is_empty());
+                if matches!(
+                    failure,
+                    WriteFailure::Error | WriteFailure::Zero | WriteFailure::Stall
+                ) {
+                    assert_eq!(transfer.writer().get_ref().inner.len(), 8);
+                }
+                drop(transfer);
+                if let Some((handle, task, id)) = egress_task {
+                    stop_egress_task(handle, task, id).await;
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn egress_channel_failures_after_first_chunk_are_frame_started() {
+        for streaming in [false, true] {
+            for fail_ack in [false, true] {
+                let registry = TransferRegistry::new();
+                let (info, ban_rx) = registry.register(TransferRegistration {
+                    user_id: 1,
+                    peer_addr: make_test_addr(),
+                    nickname: "tester".into(),
+                    username: "tester".into(),
+                    is_admin: false,
+                    is_shared: false,
+                    direction: TransferDirection::Download,
+                    path: "file.txt".into(),
+                    total_size: 0,
+                });
+                let temp_dir = TempDir::new().unwrap();
+                let file_index = make_test_file_index(&temp_dir);
+                let file_activity = Arc::new(FileActivityMap::new());
+                let (transfer_egress, handle, mut task, id) = registered_transfer_egress(4).await;
+                let (writer, flushed_rx, resume_tx) = PausedFlushWriter::new(Vec::new());
+                let mut transfer = Transfer::new(
+                    FrameReader::new(tokio::io::empty()),
+                    FrameWriter::new(writer),
+                    ban_rx,
+                    info,
+                    TransferContext {
+                        user: make_test_user(),
+                        locale: "en".into(),
+                        file_root: temp_dir.path(),
+                        file_index: &file_index,
+                        file_activity: &file_activity,
+                        user_area_root: None,
+                        registry: &registry,
+                        egress: Some(transfer_egress),
+                    },
+                );
+                let send = async {
+                    if streaming {
+                        transfer
+                            .stream_file_to_client("FileData", &mut &b"content"[..], 7)
+                            .await
+                            .map(|_| ())
+                    } else {
+                        transfer
+                            .send(&ServerMessage::FileHash {
+                                blake3: "abc123".into(),
+                            })
+                            .await
+                    }
+                };
+                let interrupt = async {
+                    flushed_rx.await.unwrap();
+                    if fail_ack {
+                        task.abort();
+                        assert!((&mut task).await.unwrap_err().is_cancelled());
+                    } else {
+                        handle.unregister(id).await.unwrap();
+                        // A request/reply round trip proves unregister was processed
+                        // and the dispatch sender was dropped before the ack resumes.
+                        assert_eq!(
+                            handle
+                                .stage_frame(id, Arc::from(&b"unused"[..]))
+                                .await
+                                .unwrap(),
+                            Err(EgressEnqueueError::UnknownConnection)
+                        );
+                    }
+                    resume_tx.send(()).unwrap();
+                };
+                let (result, ()) = timeout(Duration::from_secs(5), async {
+                    tokio::join!(send, interrupt)
+                })
+                .await
+                .expect("egress closure must terminate the incomplete frame");
+                let Err(StreamError::FrameStarted(error)) = result else {
+                    panic!(
+                        "expected FrameStarted, streaming={streaming}, fail_ack={fail_ack}: {result:?}"
+                    );
+                };
+                if fail_ack {
+                    assert_eq!(
+                        error.to_string(),
+                        egress_task_io_error(EgressTaskError::Closed).to_string()
+                    );
+                } else {
+                    assert!(error.to_string().contains("dispatch"));
+                }
+                assert_eq!(transfer.writer().get_ref().inner, b"NX|8");
+                drop(transfer);
+                if !fail_ack {
+                    stop_egress_task(handle, task, id).await;
+                }
+            }
         }
     }
 

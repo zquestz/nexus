@@ -10,10 +10,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
 
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
+use tokio::time::Instant;
 
 use nexus_common::framing::FrameWriter;
 use nexus_common::hash::StreamingHasher;
@@ -98,9 +98,23 @@ pub async fn hash_file_with_keepalives<W>(
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    let mut hasher = StreamingHasher::new();
     let file = File::open(path).await.map_err(|_| TransferError::IoError)?;
     let mut reader = tokio::io::BufReader::new(file);
+    hash_reader_with_keepalives(&mut reader, byte_count, file_name, writer, cancel_flag).await
+}
+
+async fn hash_reader_with_keepalives<R, W>(
+    reader: &mut R,
+    byte_count: u64,
+    file_name: String,
+    writer: &mut FrameWriter<W>,
+    cancel_flag: &Option<Arc<AtomicBool>>,
+) -> Result<StreamingHasher, TransferError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let mut hasher = StreamingHasher::new();
     let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
     let mut remaining = byte_count;
     let mut last_keepalive = Instant::now();
@@ -123,15 +137,11 @@ where
         remaining -= bytes_read as u64;
 
         // Send keepalive periodically to prevent server timeout.
-        // Send failures here are silently dropped — the keepalive is
-        // best-effort, and the actual transfer body's error path
-        // surfaces any real connection problem to the user via the
-        // transfer status.
         if last_keepalive.elapsed() >= KEEPALIVE_INTERVAL {
             let msg = ClientMessage::FileHashing {
                 file: file_name.clone(),
             };
-            let _ = send_transfer_control_message(writer, &msg).await;
+            send_transfer_control_message(writer, &msg).await?;
             last_keepalive = Instant::now();
         }
     }
@@ -351,10 +361,96 @@ fn is_windows_reserved_name(component: &str) -> bool {
 mod tests {
     use super::*;
     use nexus_common::framing::FrameWriter;
-    use std::io::Cursor;
+    use std::future::Future;
+    use std::io::{self, Cursor};
+    use std::pin::Pin;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
-    use tokio::io::AsyncReadExt;
+    use std::task::{Context, Poll, ready};
+    use std::time::Duration;
+    use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+    use tokio::time::{Sleep, sleep, timeout};
+
+    use super::super::test_helpers::{FailingWriter, WriteFailure};
+
+    struct SlowHashReader {
+        delay: Pin<Box<Sleep>>,
+        reads: usize,
+        is_failed: bool,
+    }
+
+    impl SlowHashReader {
+        fn new(is_failed: bool) -> Self {
+            Self {
+                delay: Box::pin(sleep(KEEPALIVE_INTERVAL + Duration::from_secs(1))),
+                reads: 0,
+                is_failed,
+            }
+        }
+    }
+
+    impl AsyncRead for SlowHashReader {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            let this = self.get_mut();
+            ready!(this.delay.as_mut().poll(cx));
+            this.reads += 1;
+            if this.is_failed {
+                return Poll::Ready(Err(io::Error::other("injected file read failure")));
+            }
+            buf.put_slice(b"x");
+            this.delay = Box::pin(sleep(KEEPALIVE_INTERVAL + Duration::from_secs(1)));
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_hashing_stops_after_failed_keepalive() {
+        for failure in [
+            WriteFailure::Error,
+            WriteFailure::Zero,
+            WriteFailure::Stall,
+            WriteFailure::FlushError,
+            WriteFailure::FlushStall,
+        ] {
+            let mut reader = SlowHashReader::new(false);
+            let mut writer = FrameWriter::new(FailingWriter::new(0, 8, failure));
+            let result = timeout(
+                nexus_common::TRANSFER_IO_PROGRESS_TIMEOUT * 2,
+                hash_reader_with_keepalives(&mut reader, 3, "test.txt".into(), &mut writer, &None),
+            )
+            .await
+            .unwrap();
+            assert!(
+                matches!(result, Err(TransferError::ConnectionError)),
+                "{failure:?}"
+            );
+            assert_eq!(
+                reader.reads, 1,
+                "must stop reading file bytes after {failure:?}"
+            );
+            if matches!(
+                failure,
+                WriteFailure::Error | WriteFailure::Zero | WriteFailure::Stall
+            ) {
+                assert_eq!(writer.get_ref().bytes.len(), 8);
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_hashing_preserves_file_error_classification() {
+        let mut reader = SlowHashReader::new(true);
+        let mut writer = FrameWriter::new(Vec::new());
+        let result =
+            hash_reader_with_keepalives(&mut reader, 3, "test.txt".into(), &mut writer, &None)
+                .await;
+        assert!(matches!(result, Err(TransferError::IoError)));
+        assert!(writer.get_ref().is_empty());
+    }
 
     #[test]
     fn test_is_safe_path_valid() {

@@ -7,13 +7,11 @@ use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures_util::FutureExt;
 use tokio::io::{AsyncRead, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-use tokio::time;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, warn};
 
@@ -28,7 +26,9 @@ use nexus_common::rate_limiter::RateLimiter;
 use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::channels::ChannelManager;
-use crate::connection_io::send_server_message_with_write_timeout;
+use crate::connection_io::{
+    send_server_message_with_progress_timeout, write_frame_bytes_with_progress_timeout,
+};
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
@@ -384,41 +384,6 @@ async fn stage_egress_frame(
     }
 }
 
-async fn write_frame_bytes_with_timeout<W>(
-    writer: &mut FrameWriter<W>,
-    mut bytes: &[u8],
-    flush: bool,
-    timeout: Duration,
-    timeout_error: &'static str,
-) -> io::Result<()>
-where
-    W: tokio::io::AsyncWrite + Unpin,
-{
-    // These bytes are already complete frame bytes. They intentionally
-    // bypass FrameWriter framing and are only safe while the loop enforces
-    // frame-boundary writes for every other path.
-    let inner = writer.get_mut();
-    while !bytes.is_empty() {
-        match time::timeout(timeout, inner.write(bytes)).await {
-            Ok(Ok(0)) => {
-                return Err(io::Error::new(io::ErrorKind::WriteZero, ERR_BBS_WRITE_ZERO));
-            }
-            Ok(Ok(written)) => bytes = &bytes[written..],
-            Ok(Err(e)) => return Err(e),
-            Err(_) => return Err(io::Error::new(io::ErrorKind::TimedOut, timeout_error)),
-        }
-    }
-
-    if flush {
-        match time::timeout(timeout, inner.flush()).await {
-            Ok(result) => result,
-            Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, timeout_error)),
-        }
-    } else {
-        Ok(())
-    }
-}
-
 async fn handle_connection_inner_registered<S>(
     socket: S,
     params: ConnectionParams,
@@ -515,11 +480,10 @@ where
                 }
 
                 let is_final_frame_chunk = dispatch.chunk.is_final_frame_chunk();
-                if write_frame_bytes_with_timeout(
+                if write_frame_bytes_with_progress_timeout(
                     &mut frame_writer,
                     dispatch.chunk.as_bytes(),
                     is_final_frame_chunk,
-                    BBS_CHUNK_WRITE_TIMEOUT,
                     ERR_BBS_CHUNK_WRITE_TIMEOUT,
                 )
                 .await
@@ -705,7 +669,7 @@ where
                                 }
                             }
                         } else {
-                            let _ = send_server_message_with_write_timeout(
+                            let _ = send_server_message_with_progress_timeout(
                                 &mut frame_writer,
                                 &error_msg,
                                 MessageId::new(),
@@ -735,7 +699,7 @@ where
                             {
                                 break;
                             }
-                        } else if send_server_message_with_write_timeout(&mut frame_writer, &msg, id).await.is_err() {
+                        } else if send_server_message_with_progress_timeout(&mut frame_writer, &msg, id).await.is_err() {
                             break;
                         }
                     }
@@ -753,11 +717,10 @@ where
                             {
                                 break;
                             }
-                        } else if write_frame_bytes_with_timeout(
+                        } else if write_frame_bytes_with_progress_timeout(
                             &mut frame_writer,
                             frame.as_ref(),
                             true,
-                            BBS_DIRECT_WRITE_TIMEOUT,
                             ERR_BBS_WRITE_TIMEOUT,
                         )
                         .await
@@ -782,7 +745,7 @@ where
                             command: None,
                             disconnect: true,
                         };
-                        let _ = send_server_message_with_write_timeout(
+                        let _ = send_server_message_with_progress_timeout(
                             &mut frame_writer,
                             &error_msg,
                             MessageId::new(),
@@ -798,7 +761,8 @@ where
         }
     }
 
-    let _ = frame_writer.get_mut().shutdown().await;
+    // A stalled transport shutdown must not prevent session cleanup.
+    let _ = tokio::time::timeout(BBS_SHUTDOWN_TIMEOUT, frame_writer.get_mut().shutdown()).await;
 
     // Disconnect teardown. Remove from the map first so the map is the single
     // serialization point: if a forced path (kick/ban/delete) already removed this
@@ -1266,9 +1230,7 @@ fn frame_error_command(err: &FrameError) -> Option<String> {
 mod tests {
     use super::*;
     use std::num::NonZeroUsize;
-    use std::pin::Pin;
     use std::sync::Arc;
-    use std::task::{Context, Poll};
     use std::time::Duration;
 
     /// Harness guard for every awaited test step. Only a true hang should
@@ -1284,8 +1246,12 @@ mod tests {
     };
     use nexus_common::protocol::{ChatAction, ServerMessage};
     use nexus_common::validators::{DEFAULT_CHANNEL, MAX_MESSAGE_LENGTH};
-    use tokio::io::{AsyncWrite, AsyncWriteExt, DuplexStream, ReadHalf, WriteHalf};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+    use tokio::time;
 
+    use crate::connection_io::test_helpers::{
+        BoxedTestIo, ShutdownBehavior, TestTransport, TestTransportPair, WriteFailure, WriteState,
+    };
     use crate::egress::EgressManager;
     use crate::egress::task::{
         DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressCommand, EgressHandle, EgressSettingsCommand,
@@ -1293,103 +1259,8 @@ mod tests {
     };
     use crate::handlers::testing::{TEST_FINGERPRINT, TestContext, create_test_context};
 
-    type TestReader = FrameReader<BufReader<ReadHalf<DuplexStream>>>;
-    type TestWriter = FrameWriter<WriteHalf<DuplexStream>>;
-
-    struct PendingWriter;
-
-    impl AsyncWrite for PendingWriter {
-        fn poll_write(
-            self: Pin<&mut Self>,
-            _cx: &mut Context<'_>,
-            _buf: &[u8],
-        ) -> Poll<io::Result<usize>> {
-            Poll::Pending
-        }
-
-        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-            Poll::Ready(Ok(()))
-        }
-
-        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-            Poll::Ready(Ok(()))
-        }
-    }
-
-    struct ProgressThenPendingWriter {
-        writes_before_pending: usize,
-        bytes: Vec<u8>,
-    }
-
-    impl ProgressThenPendingWriter {
-        fn new(writes_before_pending: usize) -> Self {
-            Self {
-                writes_before_pending,
-                bytes: Vec::new(),
-            }
-        }
-    }
-
-    impl AsyncWrite for ProgressThenPendingWriter {
-        fn poll_write(
-            mut self: Pin<&mut Self>,
-            _cx: &mut Context<'_>,
-            buf: &[u8],
-        ) -> Poll<io::Result<usize>> {
-            if self.writes_before_pending == 0 {
-                return Poll::Pending;
-            }
-
-            self.writes_before_pending -= 1;
-            let written = buf.len().min(2);
-            self.bytes.extend_from_slice(&buf[..written]);
-            Poll::Ready(Ok(written))
-        }
-
-        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-            Poll::Ready(Ok(()))
-        }
-
-        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-            Poll::Ready(Ok(()))
-        }
-    }
-
-    #[tokio::test]
-    async fn frame_byte_write_uses_supplied_timeout_error() {
-        let mut writer = FrameWriter::new(PendingWriter);
-
-        let err = write_frame_bytes_with_timeout(
-            &mut writer,
-            b"chunk",
-            false,
-            Duration::from_millis(1),
-            ERR_BBS_CHUNK_WRITE_TIMEOUT,
-        )
-        .await
-        .expect_err("pending chunk write should time out");
-
-        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-        assert_eq!(err.to_string(), ERR_BBS_CHUNK_WRITE_TIMEOUT);
-    }
-
-    #[tokio::test]
-    async fn frame_byte_write_timeout_resets_after_progress() {
-        let mut writer = FrameWriter::new(ProgressThenPendingWriter::new(2));
-
-        let err = write_frame_bytes_with_timeout(
-            &mut writer,
-            b"payload",
-            false,
-            Duration::from_millis(1),
-            ERR_BBS_CHUNK_WRITE_TIMEOUT,
-        )
-        .await
-        .expect_err("writer should time out only after progress stops");
-
-        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-        assert_eq!(writer.get_ref().bytes, b"payl");
-    }
+    type TestReader = FrameReader<BufReader<ReadHalf<BoxedTestIo>>>;
+    type TestWriter = FrameWriter<WriteHalf<BoxedTestIo>>;
 
     struct TestConnection {
         reader: TestReader,
@@ -1399,6 +1270,7 @@ mod tests {
         egress_connection_id: ConnectionId,
         server_task: tokio::task::JoinHandle<io::Result<()>>,
         egress_task: tokio::task::JoinHandle<()>,
+        write_state: Arc<std::sync::Mutex<WriteState>>,
         _test_ctx: TestContext,
     }
 
@@ -1476,8 +1348,36 @@ mod tests {
         stream_capacity: usize,
         bytes_per_second: u64,
     ) -> TestConnection {
+        start_test_connection_with_options(manager, stream_capacity, bytes_per_second, false).await
+    }
+
+    async fn start_test_connection_with_options(
+        manager: EgressManager,
+        stream_capacity: usize,
+        bytes_per_second: u64,
+        lan_egress_bypass_enabled: bool,
+    ) -> TestConnection {
+        start_test_connection_with_transport(
+            manager,
+            bytes_per_second,
+            lan_egress_bypass_enabled,
+            TestTransport::Plain.pair(stream_capacity).await,
+        )
+        .await
+    }
+
+    async fn start_test_connection_with_transport(
+        manager: EgressManager,
+        bytes_per_second: u64,
+        lan_egress_bypass_enabled: bool,
+        transport: TestTransportPair,
+    ) -> TestConnection {
         let test_ctx = create_test_context().await;
-        let (client, server) = tokio::io::duplex(stream_capacity);
+        let TestTransportPair {
+            client,
+            server,
+            state: write_state,
+        } = transport;
         let (client_read, client_write) = tokio::io::split(client);
         let reader = FrameReader::new(BufReader::new(client_read));
         let writer = FrameWriter::new(client_write);
@@ -1523,7 +1423,7 @@ mod tests {
             flood_config: test_ctx.flood_config.clone(),
             egress: egress.clone(),
             egress_connection_id,
-            lan_egress_bypass_enabled: false,
+            lan_egress_bypass_enabled,
         };
 
         let server_task = tokio::spawn(handle_connection_inner(server, params));
@@ -1536,6 +1436,7 @@ mod tests {
             egress_connection_id,
             server_task,
             egress_task,
+            write_state,
             _test_ctx: test_ctx,
         }
     }
@@ -1660,6 +1561,401 @@ mod tests {
             action: ChatAction::Normal,
             channel: DEFAULT_CHANNEL.to_string(),
             timestamp: 1234,
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum BbsWritePath {
+        Handler,
+        QueuedMessage,
+        QueuedFrame,
+    }
+
+    impl BbsWritePath {
+        async fn send(self, connection: &mut TestConnection, tx: &ConnectionWriter, id: MessageId) {
+            match self {
+                Self::Handler => {
+                    send_client_message_with_id(&mut connection.writer, &ClientMessage::Ping, id)
+                        .await
+                        .unwrap();
+                }
+                Self::QueuedMessage => tx.send_message(ServerMessage::Pong, Some(id)).unwrap(),
+                Self::QueuedFrame => tx
+                    .send_frame(server_message_to_frame_bytes(&ServerMessage::Pong, id).unwrap())
+                    .unwrap(),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn encrypted_bbs_shutdown_deadline_releases_transport_sessions_and_egress() {
+        for transport in [TestTransport::Tls, TestTransport::WebSocket] {
+            for bypass in [true, false] {
+                let mut connection = start_test_connection_with_transport(
+                    EgressManager::new(nonzero(4096)),
+                    0,
+                    bypass,
+                    transport.pair(8192).await,
+                )
+                .await;
+                let session_id = login_test_connection(&mut connection).await;
+                let session = connection
+                    .user_manager
+                    .get_user_by_session_id(session_id)
+                    .await
+                    .unwrap();
+                // Stall writes beneath TLS, including close_notify or the WebSocket Close frame.
+                *connection.write_state.lock().unwrap() =
+                    WriteState::failing(WriteFailure::Stall, 0);
+                time::pause();
+                let started = time::Instant::now();
+                session.tx.disconnect().unwrap();
+                let TestConnection {
+                    reader,
+                    writer,
+                    user_manager,
+                    egress,
+                    egress_connection_id,
+                    server_task,
+                    egress_task,
+                    write_state,
+                    _test_ctx,
+                } = connection;
+                time::timeout(Duration::from_secs(120), server_task)
+                    .await
+                    .expect("encrypted shutdown must be bounded")
+                    .unwrap()
+                    .unwrap();
+                assert!(
+                    started.elapsed() >= Duration::from_secs(30),
+                    "{transport:?}"
+                );
+                assert!(started.elapsed() < Duration::from_secs(31), "{transport:?}");
+                {
+                    let state = write_state.lock().unwrap();
+                    assert!(
+                        state.failure_at.is_some(),
+                        "close must reach the stalled transport"
+                    );
+                    assert!(state.bytes.is_empty());
+                    assert!(
+                        state.dropped,
+                        "both server halves must release the transport"
+                    );
+                }
+                time::resume();
+                assert!(
+                    user_manager
+                        .get_user_by_session_id(session_id)
+                        .await
+                        .is_none()
+                );
+                assert!(
+                    _test_ctx
+                        .channel_manager
+                        .channels_with_member(session_id)
+                        .await
+                        .is_empty()
+                );
+                let frame =
+                    server_message_to_frame_bytes(&ServerMessage::Pong, MessageId::new()).unwrap();
+                assert!(matches!(
+                    time::timeout(
+                        TEST_STEP_TIMEOUT,
+                        egress.stage_frame(egress_connection_id, frame)
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                    Err(EgressEnqueueError::UnknownConnection)
+                ));
+                drop(reader);
+                drop(writer);
+                drop(session);
+                drop(egress);
+                time::timeout(TEST_STEP_TIMEOUT, egress_task)
+                    .await
+                    .unwrap()
+                    .unwrap();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn bbs_shutdown_is_bounded_and_still_cleans_up_sessions_and_egress() {
+        for bypass in [true, false] {
+            for (behavior, elapsed) in [
+                (ShutdownBehavior::Immediate, Duration::ZERO),
+                (ShutdownBehavior::Error, Duration::ZERO),
+                (
+                    ShutdownBehavior::Delayed(Duration::from_secs(10)),
+                    Duration::from_secs(10),
+                ),
+                (
+                    ShutdownBehavior::Delayed(Duration::from_secs(45)),
+                    Duration::from_secs(30),
+                ),
+                (ShutdownBehavior::Stall, Duration::from_secs(30)),
+            ] {
+                let mut connection = start_test_connection_with_options(
+                    EgressManager::new(nonzero(4096)),
+                    8192,
+                    0,
+                    bypass,
+                )
+                .await;
+                let session_id = login_test_connection(&mut connection).await;
+                assert!(
+                    connection
+                        .user_manager
+                        .get_user_by_session_id(session_id)
+                        .await
+                        .is_some()
+                );
+                connection.write_state.lock().unwrap().shutdown_behavior = behavior;
+                let TestConnection {
+                    reader,
+                    mut writer,
+                    user_manager,
+                    egress,
+                    egress_connection_id,
+                    server_task,
+                    egress_task,
+                    write_state,
+                    _test_ctx,
+                } = connection;
+
+                // Keep database setup and login on the real clock; pause only teardown.
+                time::pause();
+                writer.get_mut().shutdown().await.unwrap();
+                time::timeout(Duration::from_secs(120), server_task)
+                    .await
+                    .expect("stalled shutdown must not strand the connection task")
+                    .unwrap()
+                    .unwrap();
+                {
+                    let state = write_state.lock().unwrap();
+                    // Allow timer tick rounding after switching from real to paused time.
+                    let actual = state.shutdown_started.unwrap().elapsed();
+                    assert!(
+                        actual >= elapsed,
+                        "{behavior:?} / bypass={bypass}: {actual:?}"
+                    );
+                    assert!(
+                        actual < elapsed + Duration::from_secs(1),
+                        "{behavior:?} / bypass={bypass}: {actual:?}"
+                    );
+                    assert!(state.shutdowns > 0);
+                    if matches!(
+                        behavior,
+                        ShutdownBehavior::Immediate | ShutdownBehavior::Error
+                    ) {
+                        assert_eq!(state.shutdowns, 1, "completed shutdown must not be retried");
+                    }
+                }
+                time::resume();
+
+                assert!(
+                    user_manager
+                        .get_user_by_session_id(session_id)
+                        .await
+                        .is_none()
+                );
+                assert!(
+                    _test_ctx
+                        .channel_manager
+                        .channels_with_member(session_id)
+                        .await
+                        .is_empty()
+                );
+                let frame =
+                    server_message_to_frame_bytes(&ServerMessage::Pong, MessageId::new()).unwrap();
+                assert!(matches!(
+                    time::timeout(
+                        TEST_STEP_TIMEOUT,
+                        egress.stage_frame(egress_connection_id, frame)
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                    Err(EgressEnqueueError::UnknownConnection)
+                ));
+                drop(reader);
+                drop(writer);
+                drop(egress);
+                time::timeout(TEST_STEP_TIMEOUT, egress_task)
+                    .await
+                    .unwrap()
+                    .unwrap();
+            }
+        }
+    }
+
+    async fn assert_bbs_write_failure_closes_connection(failure: WriteFailure) {
+        for bypass in [true, false] {
+            for path in [
+                BbsWritePath::Handler,
+                BbsWritePath::QueuedMessage,
+                BbsWritePath::QueuedFrame,
+            ] {
+                // Database setup and Argon2 login use real time; only the socket
+                // failure window below uses the paused clock.
+                let mut connection = start_test_connection_with_options(
+                    EgressManager::new(nonzero(4)),
+                    8192,
+                    0,
+                    bypass,
+                )
+                .await;
+                let session_id = login_test_connection(&mut connection).await;
+                let session = connection
+                    .user_manager
+                    .get_user_by_session_id(session_id)
+                    .await
+                    .unwrap();
+                let first_id = message_id(b"000000000401");
+                let second_id = message_id(b"000000000402");
+                let expected =
+                    server_message_to_frame_bytes(&ServerMessage::Pong, first_id).unwrap();
+                let prefix_len = 6;
+                *connection.write_state.lock().unwrap() = WriteState::failing(failure, prefix_len);
+
+                time::pause();
+                let start = time::Instant::now();
+                path.send(&mut connection, &session.tx, first_id).await;
+                path.send(&mut connection, &session.tx, second_id).await;
+
+                let mut received = Vec::new();
+                time::timeout(
+                    Duration::from_secs(120),
+                    connection.reader.get_mut().read_to_end(&mut received),
+                )
+                .await
+                .expect("failed BBS write must close within its progress deadline")
+                .unwrap();
+                if matches!(failure, WriteFailure::Stall | WriteFailure::FlushStall) {
+                    assert!(start.elapsed() >= Duration::from_secs(60));
+                    assert!(start.elapsed() < Duration::from_secs(61));
+                }
+                time::resume();
+
+                let expected_len =
+                    if matches!(failure, WriteFailure::FlushError | WriteFailure::FlushStall) {
+                        expected.len()
+                    } else {
+                        prefix_len
+                    };
+                assert_eq!(
+                    received,
+                    expected[..expected_len],
+                    "{path:?} / {failure:?} / bypass={bypass}: no later frame may be sent"
+                );
+                let write_state = Arc::clone(&connection.write_state);
+                let user_manager = connection.user_manager.clone();
+                connection.shutdown().await;
+                {
+                    let state = write_state.lock().unwrap();
+                    assert!(state.failure_at.is_some());
+                    assert_eq!(state.bytes, received);
+                    assert_eq!(state.shutdowns, 1);
+                }
+                assert!(
+                    user_manager
+                        .get_user_by_session_id(session_id)
+                        .await
+                        .is_none()
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn bbs_write_stall_closes_direct_and_scheduled_connections() {
+        assert_bbs_write_failure_closes_connection(WriteFailure::Stall).await;
+    }
+
+    #[tokio::test]
+    async fn bbs_flush_stall_closes_direct_and_scheduled_connections() {
+        assert_bbs_write_failure_closes_connection(WriteFailure::FlushStall).await;
+    }
+
+    #[tokio::test]
+    async fn bbs_write_error_closes_direct_and_scheduled_connections() {
+        assert_bbs_write_failure_closes_connection(WriteFailure::Error).await;
+    }
+
+    #[tokio::test]
+    async fn bbs_write_zero_closes_direct_and_scheduled_connections() {
+        assert_bbs_write_failure_closes_connection(WriteFailure::Zero).await;
+    }
+
+    #[tokio::test]
+    async fn bbs_flush_error_closes_direct_and_scheduled_connections() {
+        assert_bbs_write_failure_closes_connection(WriteFailure::FlushError).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn authenticated_bbs_read_allows_unlimited_idle() {
+        let (client, server) = tokio::io::duplex(8192);
+        let mut writer = FrameWriter::new(client);
+        let mut read = start_client_read(
+            FrameReader::new(BufReader::new(server)),
+            ClientReadPhase::Authenticated,
+        );
+        assert!(
+            time::timeout(Duration::from_secs(600), &mut read)
+                .await
+                .is_err()
+        );
+
+        let id = MessageId::new();
+        send_client_message_with_id(&mut writer, &ClientMessage::Ping, id)
+            .await
+            .unwrap();
+        let (_, result) = read.await;
+        let received = result.unwrap().unwrap();
+        assert_eq!(received.message_id, id);
+        assert!(matches!(received.message, ClientMessage::Ping));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn bbs_incoming_frame_deadline_does_not_renew_on_progress() {
+        for phase in [
+            ClientReadPhase::Handshake,
+            ClientReadPhase::Login,
+            ClientReadPhase::Authenticated,
+        ] {
+            let (mut client, server) = tokio::io::duplex(8192);
+            client.write_all(b"N").await.unwrap();
+            let read = start_client_read(FrameReader::new(BufReader::new(server)), phase);
+            let start = time::Instant::now();
+            // join! retains the sender after its second byte, so EOF cannot satisfy the read.
+            let (_client, (_, result)) = time::timeout(Duration::from_secs(120), async {
+                tokio::join!(
+                    async {
+                        time::sleep(Duration::from_secs(45)).await;
+                        client.write_all(b"X").await.unwrap();
+                        client
+                    },
+                    read,
+                )
+            })
+            .await
+            .expect("incomplete request must time out");
+            assert!(matches!(result, Err(FrameError::FrameTimeout)));
+            assert_eq!(start.elapsed(), Duration::from_secs(60));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unauthenticated_bbs_read_retains_thirty_second_idle_deadline() {
+        for phase in [ClientReadPhase::Handshake, ClientReadPhase::Login] {
+            let (_client, server) = tokio::io::duplex(8192);
+            let start = time::Instant::now();
+            let (_, result) =
+                start_client_read(FrameReader::new(BufReader::new(server)), phase).await;
+            assert!(matches!(result, Err(FrameError::IdleTimeout)));
+            assert_eq!(start.elapsed(), Duration::from_secs(30));
         }
     }
 

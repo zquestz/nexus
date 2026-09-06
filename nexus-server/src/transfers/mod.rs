@@ -52,7 +52,7 @@ use auth::{
 };
 use download::handle_download;
 use helpers::{
-    login_error_response, send_error_and_close, send_transfer_server_message_with_id,
+    login_error_response, send_error_and_close, send_transfer_server_message,
     shutdown_transfer_writer,
 };
 use registry::{ActiveTransfer, TransferDirection, TransferRegistration};
@@ -239,8 +239,7 @@ where
         Ok(success) => success,
         Err((message_id, error)) => {
             let response = login_error_response(error);
-            let _ = send_transfer_server_message_with_id(&mut frame_writer, &response, message_id)
-                .await;
+            let _ = send_transfer_server_message(&mut frame_writer, &response, message_id).await;
             let _ = shutdown_transfer_writer(&mut frame_writer).await;
             return Ok(());
         }
@@ -571,16 +570,19 @@ async fn current_transfer_permissions(
 mod tests {
     use std::collections::HashSet;
     use std::net::SocketAddr;
+    use std::path::Path;
     use std::sync::Arc;
 
     use tokio::io::BufReader;
     use tokio::time::{self, Duration};
 
     use nexus_common::io::{
-        read_server_handshake_response, read_server_login_response, send_client_message,
+        read_server_handshake_response, read_server_login_response, read_transfer_server_message,
+        send_client_message,
     };
     use nexus_common::protocol::{ClientMessage, ServerMessage};
 
+    use crate::connection_io::test_helpers::{ShutdownBehavior, TestStream};
     use crate::db::testing::create_test_db;
     use crate::db::{
         CreateUserParams, Database, Permission, PermissionWriteScope, Permissions,
@@ -1182,6 +1184,114 @@ mod tests {
 
         assert_eq!(success.bandwidth_weight, 7);
         assert!(settings_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn rejected_transfer_request_shuts_down_once_and_unregisters_egress() {
+        for (behavior, elapsed) in [
+            (ShutdownBehavior::Immediate, Duration::ZERO),
+            (ShutdownBehavior::Error, Duration::ZERO),
+            (ShutdownBehavior::Stall, Duration::from_secs(30)),
+        ] {
+            let pool = create_test_db().await;
+            let db = Database::new(pool);
+            create_transfer_user_with_weight(
+                &db,
+                "alice",
+                7,
+                &Permissions::from(&[Permission::FileDownload]),
+            )
+            .await;
+            let (egress, mut command_rx, _settings_rx) = egress_handle_for_test();
+            let connection_id = ConnectionId::new(9_107);
+            let mut harness = transfer_harness(db, UserManager::new(), egress, connection_id).await;
+            // No filesystem access occurs: the request is rejected before path handling.
+            harness.params.file_root = Some(Path::new("unused-transfer-root"));
+            let (client, server) = tokio::io::duplex(8192);
+            let (server, state) = TestStream::new(server);
+            state.lock().unwrap().shutdown_behavior = behavior;
+            let (client_read, client_write) = tokio::io::split(client);
+            let mut reader = FrameReader::new(BufReader::new(client_read));
+            let mut writer = FrameWriter::new(client_write);
+            let task = tokio::spawn(handle_transfer_connection_inner(server, harness.params));
+            let register = time::timeout(Duration::from_secs(30), command_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            match register {
+                EgressCommand::RegisterAnon {
+                    connection_id: id,
+                    reply_tx,
+                    ..
+                } => {
+                    assert_eq!(id, connection_id);
+                    reply_tx.send(true).unwrap();
+                }
+                _ => panic!("expected RegisterAnon"),
+            }
+            let login = time::timeout(
+                Duration::from_secs(30),
+                send_transfer_handshake_and_login(&mut writer, &mut reader, "alice", "password"),
+            )
+            .await
+            .unwrap();
+            assert!(matches!(
+                login,
+                ServerMessage::LoginResponse { success: true, .. }
+            ));
+
+            time::pause();
+            send_client_message(
+                &mut writer,
+                &ClientMessage::FileHashing {
+                    file: "test.bin".into(),
+                },
+            )
+            .await
+            .unwrap();
+            time::timeout(Duration::from_secs(120), task)
+                .await
+                .expect("rejected request must not remain in shutdown")
+                .unwrap()
+                .unwrap();
+            {
+                let state = state.lock().unwrap();
+                // Allow timer tick rounding after switching from real to paused time.
+                let actual = state.shutdown_started.unwrap().elapsed();
+                assert!(actual >= elapsed, "{behavior:?}: {actual:?}");
+                assert!(
+                    actual < elapsed + Duration::from_secs(1),
+                    "{behavior:?}: {actual:?}"
+                );
+                if !matches!(behavior, ShutdownBehavior::Stall) {
+                    assert_eq!(state.shutdowns, 1, "shutdown must have one owner");
+                }
+            }
+            time::resume();
+
+            let error = read_transfer_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                error.message,
+                ServerMessage::Error {
+                    disconnect: true,
+                    ..
+                }
+            ));
+            assert!(
+                read_transfer_server_message(&mut reader)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(matches!(
+                command_rx.try_recv().unwrap(),
+                EgressCommand::Unregister { connection_id: id } if id == connection_id
+            ));
+            assert!(command_rx.try_recv().is_err());
+        }
     }
 
     #[tokio::test]

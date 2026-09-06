@@ -10,7 +10,6 @@ use tracing::warn;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{
     read_client_handshake_message_with_full_timeout, read_client_login_message_with_full_timeout,
-    read_transfer_client_message_with_full_timeout,
 };
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -40,7 +39,8 @@ use crate::handlers::{
 };
 
 use super::helpers::{
-    login_error_response, send_error_and_close, send_transfer_server_message_with_id,
+    login_error_response, read_transfer_control_message, send_transfer_server_message,
+    send_transfer_server_message_with_progress_timeout,
 };
 use super::types::{AuthenticatedUser, DownloadParams, TransferRequest, UploadParams};
 
@@ -89,8 +89,7 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: Some(err_handshake_required(locale)),
             };
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other(ERR_TRANSFER_HANDSHAKE_EXPECTED));
         }
     };
@@ -111,8 +110,7 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: Some(error_msg),
             };
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other(ERR_TRANSFER_VERSION_INVALID));
         }
     };
@@ -125,8 +123,7 @@ where
                 fingerprint: fingerprint.to_string(),
                 error: None,
             };
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             Ok(())
         }
         CompatibilityResult::MajorMismatch {
@@ -143,8 +140,7 @@ where
                     client_major,
                 )),
             };
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             Err(io::Error::other(ERR_TRANSFER_VERSION_MAJOR_MISMATCH))
         }
         CompatibilityResult::MinorMismatch {
@@ -161,8 +157,7 @@ where
                     &version,
                 )),
             };
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             Err(io::Error::other(format!(
                 "{}{}",
                 ERR_TRANSFER_VERSION_MINOR_MISMATCH, server_minor
@@ -182,8 +177,7 @@ where
                     &version,
                 )),
             };
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             Err(io::Error::other(format!(
                 "{}{}",
                 ERR_TRANSFER_VERSION_CLIENT_TOO_NEW, server_minor
@@ -229,8 +223,7 @@ where
         } => (username, password, req_locale, nickname),
         _ => {
             let response = login_error_response(err_not_logged_in(locale));
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other(ERR_TRANSFER_LOGIN_EXPECTED));
         }
     };
@@ -245,7 +238,7 @@ where
     if !login_ip_trusted && login_limiter.check_only(login_ip) == RateCheck::Limited {
         warn!(ip = %login_ip, "{}", LOG_LOGIN_RATE_LIMITED);
         let response = login_error_response(err_login_rate_limited(locale));
-        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_LOGIN_RATE_LIMITED));
     }
 
@@ -261,14 +254,14 @@ where
         && let Err(_) = validators::validate_username(&username)
     {
         let response = login_error_response(err_invalid_credentials(locale));
-        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_USERNAME_INVALID));
     }
 
     // validate_password_input allows empty for guest accounts.
     if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
         let response = login_error_response(err_invalid_credentials(locale));
-        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_PASSWORD_INVALID));
     }
 
@@ -284,14 +277,12 @@ where
                 login_limiter.record_failure(login_ip);
             }
             let response = login_error_response(err_invalid_credentials(locale));
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other(ERR_TRANSFER_USER_NOT_FOUND));
         }
         Err(e) => {
             let response = login_error_response(err_database(locale));
-            send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                .await?;
+            send_transfer_server_message(frame_writer, &response, received.message_id).await?;
             return Err(io::Error::other(format!("{}{}", ERR_TRANSFER_DB_ERROR, e)));
         }
     };
@@ -304,8 +295,7 @@ where
             Ok(valid) => valid,
             Err(e) => {
                 let response = login_error_response(err_authentication(locale));
-                send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                    .await?;
+                send_transfer_server_message(frame_writer, &response, received.message_id).await?;
                 return Err(io::Error::other(format!(
                     "{}{}",
                     ERR_TRANSFER_PASSWORD_VERIFY_ERROR, e
@@ -319,7 +309,7 @@ where
             login_limiter.record_failure(login_ip);
         }
         let response = login_error_response(err_invalid_credentials(locale));
-        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_INVALID_CREDENTIALS));
     }
 
@@ -333,7 +323,7 @@ where
             err_account_disabled(locale, &username)
         };
         let response = login_error_response(error_msg);
-        send_transfer_server_message_with_id(frame_writer, &response, received.message_id).await?;
+        send_transfer_server_message(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_ACCOUNT_DISABLED));
     }
 
@@ -344,8 +334,7 @@ where
             Ok(perms) => perms.permissions,
             Err(e) => {
                 let response = login_error_response(err_database(locale));
-                send_transfer_server_message_with_id(frame_writer, &response, received.message_id)
-                    .await?;
+                send_transfer_server_message(frame_writer, &response, received.message_id).await?;
                 return Err(io::Error::other(format!("{}{}", ERR_TRANSFER_DB_ERROR, e)));
             }
         }
@@ -393,7 +382,7 @@ where
         group_id: None,
         group_name: None,
     };
-    send_transfer_server_message_with_id(frame_writer, &response, message_id).await
+    send_transfer_server_message(frame_writer, &response, message_id).await
 }
 
 /// Read the initial transfer request (FileDownload or FileUpload).
@@ -406,18 +395,16 @@ where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
 {
-    // Idle timeout enforced — no idle connections allowed on the transfer port.
-    let received =
-        match read_transfer_client_message_with_full_timeout(frame_reader, None, None).await {
-            Ok(Some(msg)) => msg,
-            Ok(None) => return Err(io::Error::other(ERR_TRANSFER_CONNECTION_CLOSED)),
-            Err(e) => {
-                return Err(io::Error::other(format!(
-                    "{}{}",
-                    ERR_TRANSFER_READ_MESSAGE, e
-                )));
-            }
-        };
+    let received = match read_transfer_control_message(frame_reader).await {
+        Ok(Some(msg)) => msg,
+        Ok(None) => return Err(io::Error::other(ERR_TRANSFER_CONNECTION_CLOSED)),
+        Err(e) => {
+            return Err(io::Error::other(format!(
+                "{}{}",
+                ERR_TRANSFER_READ_MESSAGE, e
+            )));
+        }
+    };
 
     match received.message {
         ClientMessage::FileDownload { path, root } => {
@@ -435,7 +422,18 @@ where
             root,
         })),
         _ => {
-            send_error_and_close(frame_writer, &err_message_not_supported(locale)).await?;
+            let response = ServerMessage::Error {
+                message: err_message_not_supported(locale),
+                command: None,
+                disconnect: true,
+            };
+            // The connection handler owns shutdown, including its single deadline.
+            let _ = send_transfer_server_message_with_progress_timeout(
+                frame_writer,
+                &response,
+                MessageId::new(),
+            )
+            .await;
             Err(io::Error::other(
                 "Expected FileDownload or FileUpload message",
             ))
@@ -449,11 +447,81 @@ mod tests {
 
     use tokio::io::BufReader;
     use tokio::net::{TcpListener, TcpStream};
+    use tokio::time::{Instant, sleep, timeout};
 
-    use nexus_common::PROTOCOL_VERSION;
     use nexus_common::io::{read_server_handshake_response, send_client_message};
+    use nexus_common::{PROTOCOL_VERSION, TRANSFER_CONTROL_FRAME_TIMEOUT};
 
     use crate::handlers::testing::{DEFAULT_TEST_LOCALE, TEST_FINGERPRINT};
+
+    #[tokio::test(start_paused = true)]
+    async fn test_transfer_request_waits_beyond_old_idle_limit() {
+        for message in [
+            ClientMessage::FileDownload {
+                path: "test.txt".into(),
+                root: false,
+            },
+            ClientMessage::FileUpload {
+                destination: "uploads".into(),
+                file_count: 1,
+                total_size: 0,
+                root: false,
+            },
+        ] {
+            let (sender, receiver) = tokio::io::duplex(8192);
+            let mut reader = FrameReader::new(BufReader::new(receiver));
+            let mut writer = FrameWriter::new(Vec::new());
+            let read = handle_transfer_request(&mut reader, &mut writer, DEFAULT_TEST_LOCALE);
+            let send = async {
+                let mut sender = FrameWriter::new(sender);
+                sleep(TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4).await;
+                send_client_message(&mut sender, &message).await.unwrap();
+            };
+            let started = Instant::now();
+            let (result, ()) = timeout(TRANSFER_CONTROL_FRAME_TIMEOUT, async {
+                tokio::join!(read, send)
+            })
+            .await
+            .expect("a complete request must be accepted within the shared deadline");
+            assert!(started.elapsed() >= TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4);
+            match (message, result.unwrap()) {
+                (ClientMessage::FileDownload { path, root }, TransferRequest::Download(params)) => {
+                    assert_eq!(params.path, path);
+                    assert_eq!(params.root, root);
+                }
+                (
+                    ClientMessage::FileUpload { destination, .. },
+                    TransferRequest::Upload(params),
+                ) => {
+                    assert_eq!(params.destination, destination);
+                    assert_eq!(params.file_count, 1);
+                }
+                _ => panic!("request must retain its direction and parameters"),
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_handshake_idle_timeout_is_unchanged() {
+        let (_sender, receiver) = tokio::io::duplex(8192);
+        let mut reader = FrameReader::new(BufReader::new(receiver));
+        let mut writer = FrameWriter::new(Vec::new());
+        let started = Instant::now();
+        let result = timeout(
+            TRANSFER_CONTROL_FRAME_TIMEOUT,
+            handle_transfer_handshake(
+                &mut reader,
+                &mut writer,
+                DEFAULT_TEST_LOCALE,
+                TEST_FINGERPRINT,
+            ),
+        )
+        .await
+        .expect("handshake idle timing must not inherit the post-login deadline");
+        assert!(result.is_err());
+        assert!(started.elapsed() >= nexus_common::framing::DEFAULT_IDLE_TIMEOUT);
+        assert!(started.elapsed() < TRANSFER_CONTROL_FRAME_TIMEOUT);
+    }
 
     /// Set up a TCP socket pair and run `handle_transfer_handshake` server-side
     /// while sending `client_handshake_version` from the client side. Returns

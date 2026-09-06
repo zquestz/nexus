@@ -21,9 +21,6 @@ pub const DEFAULT_FRAME_TIMEOUT: Duration = Duration::from_secs(60);
 /// Default idle timeout for transfer connections (waiting for first byte)
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Default progress timeout for streaming transfers (must receive bytes within this time)
-pub const DEFAULT_PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
-
 /// Buffer size for streaming payload reads (64KB)
 const STREAM_BUFFER_SIZE: usize = 64 * 1024;
 
@@ -613,6 +610,8 @@ mod tests {
     use std::pin::Pin;
     use std::task::{Context, Poll};
     use tokio::io::{AsyncRead, AsyncWriteExt, BufReader};
+
+    const TEST_PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
 
     struct OneByteReader {
         bytes: Vec<u8>,
@@ -1420,7 +1419,7 @@ mod tests {
 
         let mut output = Vec::new();
         let bytes_written = reader
-            .stream_payload_to_writer(&header, &mut output, DEFAULT_PROGRESS_TIMEOUT)
+            .stream_payload_to_writer(&header, &mut output, TEST_PROGRESS_TIMEOUT)
             .await
             .unwrap();
 
@@ -1445,7 +1444,7 @@ mod tests {
 
         let mut output = Vec::new();
         let bytes_written = reader
-            .stream_payload_to_writer(&header, &mut output, DEFAULT_PROGRESS_TIMEOUT)
+            .stream_payload_to_writer(&header, &mut output, TEST_PROGRESS_TIMEOUT)
             .await
             .unwrap();
 
@@ -1465,7 +1464,7 @@ mod tests {
 
         let mut output = Vec::new();
         let bytes_written = reader
-            .stream_payload_to_writer(&header, &mut output, DEFAULT_PROGRESS_TIMEOUT)
+            .stream_payload_to_writer(&header, &mut output, TEST_PROGRESS_TIMEOUT)
             .await
             .unwrap();
 
@@ -1546,7 +1545,7 @@ mod tests {
 
         let mut output = Vec::new();
         let result = reader
-            .stream_payload_to_writer(&header, &mut output, DEFAULT_PROGRESS_TIMEOUT)
+            .stream_payload_to_writer(&header, &mut output, TEST_PROGRESS_TIMEOUT)
             .await;
 
         assert!(matches!(result, Err(FrameError::MissingTerminator)));
@@ -1571,7 +1570,7 @@ mod tests {
 
         let mut output = Vec::new();
         let bytes_written = reader
-            .stream_payload_to_writer(&header, &mut output, DEFAULT_PROGRESS_TIMEOUT)
+            .stream_payload_to_writer(&header, &mut output, TEST_PROGRESS_TIMEOUT)
             .await
             .unwrap();
 

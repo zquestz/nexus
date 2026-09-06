@@ -369,7 +369,7 @@ The receiver reads the next frame and dispatches based on type:
 
 | Frame Type         | Meaning                                                   |
 | ------------------ | --------------------------------------------------------- |
-| `FileHashing`      | Keepalive — consume payload, skip, continue reading       |
+| `FileHashing`      | Keepalive — validate payload, continue reading           |
 | `FileData`         | Data transfer — stream to disk, then read `FileHash` next |
 | `FileHash`         | File was skipped (already complete or zero-byte)          |
 | `TransferComplete` | Transfer terminated early (error during resume, etc.)     |
@@ -467,19 +467,37 @@ If an I/O error prevents determining the existing upload size or hash, respond w
 
 ## Timeouts
 
-| Context                 | Timeout    | Type     | Description                                                                   |
-| ----------------------- | ---------- | -------- | ----------------------------------------------------------------------------- |
-| Connection              | 30 seconds | Normal   | TLS handshake must complete                                                   |
-| Download directory scan | 50 seconds | Normal   | Server-side scan before `FileDownloadResponse` must complete                  |
-| Download response wait  | 60 seconds | Normal   | Client wait for initial `FileDownloadResponse`                                |
-| Control-frame idle      | 30 seconds | Idle     | Most control exchanges; upload data/hash waits use the 60-second deadline below |
-| Control-frame read      | 30-60 sec  | Normal   | Small JSON control replies use whole-frame waits; large initial scan gets 60s |
-| Control-frame write     | 30-60 sec  | Progress | Post-login control writes must make socket progress, not finish in one window |
-| `FileData` payload      | 60 seconds | Progress | Raw file bytes must keep flowing; the timeout resets on byte progress         |
+| Context                        | Timeout    | Type     | Description                                                                 |
+| ------------------------------ | ---------- | -------- | --------------------------------------------------------------------------- |
+| Connection                     | 30 seconds | Normal   | TLS handshake must complete                                                 |
+| Handshake/login request idle   | 30 seconds | Idle     | Wait for the first byte of each request                                     |
+| Handshake/login request read   | 60 seconds | Normal   | Complete the request from its first byte through the trailing newline       |
+| Handshake/login request write  | 30 seconds | Normal   | Send the complete request and finish flushing it                            |
+| Handshake/login response read  | 30 seconds | Normal   | Wait for and receive the complete response, including its trailing newline  |
+| Handshake/login response write | 60 seconds | Normal   | Send the complete response and finish flushing it                           |
+| Download directory scan        | 50 seconds | Normal   | Directory scan before `FileDownloadResponse` must complete                  |
+| Download response wait         | 60 seconds | Normal   | Wait for the initial `FileDownloadResponse`                                 |
+| Post-login control read        | 60 seconds | Normal   | Idle wait, header, control payload, and trailing newline share one deadline |
+| Post-login control write       | 60 seconds | Progress | Each write and the final flush receive a fresh progress window              |
+| `FileData` payload             | 60 seconds | Progress | Raw file bytes must keep flowing; the timeout resets on byte progress       |
+
+Handshake/login request receipt has two consecutive windows: 30 seconds to receive the first byte, then 60 seconds to complete the frame. In contrast, receiving a handshake/login response has one 30-second deadline that includes both the idle wait and the complete frame. Request writes have a 30-second total deadline, and response writes have a 60-second total deadline, each including the final flush. Byte progress does not extend any of these handshake/login deadlines.
 
 **Note:** Unlike port 7500, port 7501 does not allow indefinite idle connections.
 
-During an upload, after `FileStartResponse` and after `FileData`, waiting for the next frame and receiving its header share a 60-second deadline. For `FileHash` and `FileHashing`, that same deadline also covers the complete payload and trailing newline; receiving individual bytes does not extend it. On expiry, reject the upload with `TransferComplete { success: false, error_kind: "io_error" }` and close the transfer connection without accepting the file as complete. A complete `FileHashing` keepalive starts a fresh deadline for the next frame, allowing hashing to continue for longer than 60 seconds. `FileData` payloads retain their separate progress timeout rather than a fixed overall deadline.
+During connection teardown, a graceful transport shutdown attempt has a 30-second total deadline, separate from sending the final response. Transport progress does not extend this deadline. If shutdown fails or expires, close the connection without retrying shutdown or sending another protocol frame. Immediate connection closure without graceful shutdown remains permitted.
+
+After successful transfer login, waiting for `FileDownload` or `FileUpload` and receiving the complete request share one 60-second deadline. The same total deadline applies when waiting for `FileStart` during an upload or `FileStartResponse` during a download. It includes the frame header, complete payload, and trailing newline; receiving individual bytes does not extend it. Expiry terminates the transfer rather than continuing with another file or reusing a partially consumed frame.
+
+The same 60-second total deadline applies to post-login responses, including `FileDownloadResponse`, `FileUploadResponse`, `FileStart`, `FileStartResponse`, `FileHash`, and `TransferComplete`. When receiving a download, the deadline covers the next frame's header and, for a control frame, its payload and trailing newline. A `FileData` header switches to the separate payload progress timeout once complete. On expiry, terminate the transfer without accepting an unverified file as complete or attempting another file on that connection.
+
+While waiting for `FileStart` or `FileStartResponse`, each complete, valid `FileHashing` keepalive starts a fresh 60-second deadline. This allows a hashing phase to exceed 60 seconds, but an incomplete keepalive cannot extend the wait. The initial request after login must still be `FileDownload` or `FileUpload`.
+
+While waiting for post-login responses or the next download frame, only a complete, valid `FileHashing` keepalive renews the deadline. Malformed keepalives terminate the transfer instead of extending the wait.
+
+If writing or flushing an outgoing frame fails or times out, close the transfer connection without sending another protocol frame, including `TransferComplete`: the failed frame may be incomplete. This also applies to `FileHashing` keepalives; a failed keepalive send terminates the hashing phase and transfer. A local file I/O error, with no outgoing frame interrupted, can still be reported through a failure response.
+
+During an upload, after `FileStartResponse` and after `FileData`, waiting for the next frame and receiving its header share a 60-second deadline. For `FileHash` and `FileHashing`, that same deadline also covers the complete payload and trailing newline; receiving individual bytes does not extend it. On expiry, reject the upload with `TransferComplete { success: false, error_kind: "io_error" }` and close the transfer connection without accepting the file as complete. A complete, valid `FileHashing` keepalive starts a fresh deadline for the next frame, allowing hashing to continue for longer than 60 seconds. Invalid JSON, missing or incorrectly typed required fields, or a JSON message type that does not match the frame header instead terminate the upload with `TransferComplete { success: false, error_kind: "protocol_error" }`. `FileData` payloads retain their separate progress timeout rather than a fixed overall deadline.
 
 ## Permissions
 

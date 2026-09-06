@@ -24,6 +24,9 @@ mod connection;
 mod file_utils;
 mod streaming;
 
+#[cfg(test)]
+mod test_helpers;
+
 use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,7 +42,9 @@ use uuid::Uuid;
 use nexus_common::framing::FrameError;
 use nexus_common::hash::StreamingHasher;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
-use nexus_common::{FALLBACK_FILE_NAME, PART_SUFFIX};
+use nexus_common::{
+    FALLBACK_FILE_NAME, PART_SUFFIX, TRANSFER_CONTROL_FRAME_TIMEOUT, TRANSFER_IO_PROGRESS_TIMEOUT,
+};
 
 use super::types::{Transfer, TransferDirection, TransferError};
 use crate::i18n::t;
@@ -62,14 +67,11 @@ use streaming::{
 /// Connection timeout for TLS handshake
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Idle timeout waiting for a frame to start
+/// Whole-operation timeout for transfer handshake/login reads.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Whole-operation timeout for transfer handshake/login writes.
 const TRANSFER_SETUP_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Progress timeout for non-payload transfer control writes.
-const TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Error text for a stalled transfer control writer.
 const ERR_TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT: &str =
@@ -78,9 +80,6 @@ const ERR_TRANSFER_CONTROL_WRITE_PROGRESS_TIMEOUT: &str =
 /// Directory downloads may need to scan the tree before the server can report
 /// total size and file count in FileDownloadResponse.
 const DOWNLOAD_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// Progress timeout for FileData (must receive/send some bytes within this time)
-const TRANSFER_FILE_DATA_PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Buffer size for file I/O operations (streaming)
 const BUFFER_SIZE: usize = 64 * 1024; // 64KB
@@ -310,7 +309,7 @@ where
         }
 
         // Read FileStart
-        let file_start = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
+        let file_start = read_message_with_timeout(reader, TRANSFER_CONTROL_FRAME_TIMEOUT).await?;
 
         let (file_path, file_size) = match file_start {
             ServerMessage::FileStart { path, size } => (path, size),
@@ -404,12 +403,8 @@ where
                 .await
             {
                 Ok(h) => (size, h, None),
-                Err(TransferError::Cancelled) => {
-                    return Err(handle_possible_cancellation(
-                        event_tx,
-                        id,
-                        TransferError::Cancelled,
-                    ));
+                Err(e @ (TransferError::Cancelled | TransferError::ConnectionError)) => {
+                    return Err(handle_possible_cancellation(event_tx, id, e));
                 }
                 Err(_) => (0, StreamingHasher::new(), None),
             }
@@ -431,12 +426,8 @@ where
                     .await
                 {
                     Ok(h) => (size, h, Some(part_path.clone())),
-                    Err(TransferError::Cancelled) => {
-                        return Err(handle_possible_cancellation(
-                            event_tx,
-                            id,
-                            TransferError::Cancelled,
-                        ));
+                    Err(e @ (TransferError::Cancelled | TransferError::ConnectionError)) => {
+                        return Err(handle_possible_cancellation(event_tx, id, e));
                     }
                     Err(_) => (0, StreamingHasher::new(), None),
                 }
@@ -580,7 +571,7 @@ where
                     reader,
                     &header,
                     &mut file,
-                    TRANSFER_FILE_DATA_PROGRESS_TIMEOUT,
+                    TRANSFER_IO_PROGRESS_TIMEOUT,
                     cancel_flag,
                     Some(&mut hasher),
                     |bytes_written| {
@@ -683,7 +674,7 @@ where
     }
 
     // Read TransferComplete
-    let complete = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
+    let complete = read_message_with_timeout(reader, TRANSFER_CONTROL_FRAME_TIMEOUT).await?;
     handle_transfer_complete(complete, id, event_tx)
 }
 
@@ -739,7 +730,7 @@ where
     send_transfer_control_message(writer, &upload_request).await?;
 
     // Read FileUploadResponse
-    let response = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
+    let response = read_message_with_timeout(reader, TRANSFER_CONTROL_FRAME_TIMEOUT).await?;
 
     let server_transfer_id = match response {
         ServerMessage::FileUploadResponse {
@@ -812,7 +803,8 @@ where
         send_transfer_control_message(writer, &file_start).await?;
 
         // Read FileStartResponse
-        let start_response = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
+        let start_response =
+            read_message_with_timeout(reader, TRANSFER_CONTROL_FRAME_TIMEOUT).await?;
 
         let (server_size, server_hash) = match start_response {
             ServerMessage::FileStartResponse { size, blake3 } => (size, blake3),
@@ -933,7 +925,7 @@ where
                 writer,
                 &mut file,
                 bytes_to_send,
-                TRANSFER_FILE_DATA_PROGRESS_TIMEOUT,
+                TRANSFER_IO_PROGRESS_TIMEOUT,
                 cancel_flag,
                 Some(&mut hasher),
                 |bytes_written| {
@@ -1002,7 +994,7 @@ where
     }
 
     // Read TransferComplete
-    let complete = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
+    let complete = read_message_with_timeout(reader, TRANSFER_CONTROL_FRAME_TIMEOUT).await?;
     handle_transfer_complete(complete, id, event_tx)
 }
 
@@ -1046,7 +1038,365 @@ mod tests {
     use nexus_common::hash::StreamingHasher;
     use nexus_common::io::{read_transfer_client_message_with_full_timeout, send_server_message};
     use std::sync::atomic::AtomicBool;
-    use tokio::io::{BufReader, duplex};
+    use tokio::io::{AsyncReadExt, BufReader, duplex};
+
+    use super::test_helpers::{FailingWriter, WriteFailure, with_slow_polls};
+
+    #[tokio::test(start_paused = true)]
+    async fn test_download_hash_timeout_preserves_partial_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("file.bin");
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "file.bin".into(),
+            false,
+            false,
+            path.clone(),
+            None,
+            0,
+        );
+        let mut server = FrameWriter::new(Vec::new());
+        send_server_message(
+            &mut server,
+            &ServerMessage::FileDownloadResponse {
+                success: true,
+                error: None,
+                error_kind: None,
+                size: Some(6),
+                file_count: Some(2),
+                transfer_id: Some("test".into()),
+            },
+        )
+        .await
+        .unwrap();
+        send_server_message(
+            &mut server,
+            &ServerMessage::FileStart {
+                path: "file.bin".into(),
+                size: 3,
+            },
+        )
+        .await
+        .unwrap();
+        send_file_data(&mut server, b"abc").await.unwrap();
+        let message = ServerMessage::FileHash {
+            blake3: hash_bytes(b"abc"),
+        };
+        let frame =
+            nexus_common::io::server_message_to_frame_bytes(&message, MessageId::new()).unwrap();
+        server
+            .get_mut()
+            .extend_from_slice(&frame[..frame.len() - 1]);
+        let (_sender, pending) = duplex(8192);
+        let mut reader =
+            FrameReader::new(BufReader::new(server.get_ref().as_slice().chain(pending)));
+        let mut writer = FrameWriter::new(Vec::new());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let result = tokio::time::timeout(
+            TRANSFER_CONTROL_FRAME_TIMEOUT * 2,
+            execute_download(&transfer, &mut reader, &mut writer, &tx, &None),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result, Err(TransferError::ConnectionError));
+        assert!(!path.exists());
+        assert_eq!(
+            tokio::fs::read(path.with_extension("bin.part"))
+                .await
+                .unwrap(),
+            b"abc"
+        );
+        let mut sent = FrameReader::new(writer.get_ref().as_slice());
+        assert!(matches!(
+            read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message,
+            ClientMessage::FileDownload { .. }
+        ));
+        assert!(matches!(
+            read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message,
+            ClientMessage::FileStartResponse { .. }
+        ));
+        assert!(sent.get_ref().is_empty());
+        while let Ok(event) = rx.try_recv() {
+            assert!(!matches!(event, TransferEvent::Completed { .. }));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_download_keepalive_failure_does_not_restart_resume() {
+        for completed_file in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let path = temp.path().join("file.bin");
+            let existing = if completed_file {
+                path.clone()
+            } else {
+                path.with_extension("bin.part")
+            };
+            let data = vec![0x55; nexus_common::HASH_BUFFER_SIZE * 2];
+            tokio::fs::write(&existing, &data).await.unwrap();
+            let transfer = Transfer::new_download(
+                test_connection_info(),
+                "file.bin".into(),
+                false,
+                false,
+                path.clone(),
+                None,
+                0,
+            );
+            let mut server = FrameWriter::new(Vec::new());
+            send_server_message(
+                &mut server,
+                &ServerMessage::FileDownloadResponse {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                    size: Some(data.len() as u64),
+                    file_count: Some(1),
+                    transfer_id: Some("test".into()),
+                },
+            )
+            .await
+            .unwrap();
+            send_server_message(
+                &mut server,
+                &ServerMessage::FileStart {
+                    path: "file.bin".into(),
+                    size: data.len() as u64,
+                },
+            )
+            .await
+            .unwrap();
+            let mut reader = FrameReader::new(BufReader::new(server.get_ref().as_slice()));
+            let mut writer = FrameWriter::new(FailingWriter::new(1, 8, WriteFailure::Error));
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let result = tokio::time::timeout(
+                TRANSFER_CONTROL_FRAME_TIMEOUT * 20,
+                with_slow_polls(execute_download(
+                    &transfer,
+                    &mut reader,
+                    &mut writer,
+                    &tx,
+                    &None,
+                )),
+            )
+            .await
+            .unwrap();
+            assert_eq!(result, Err(TransferError::ConnectionError));
+            let mut sent = FrameReader::new(writer.get_ref().bytes.as_slice());
+            assert!(matches!(
+                read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message,
+                ClientMessage::FileDownload { .. }
+            ));
+            assert_eq!(
+                sent.get_ref().len(),
+                8,
+                "no FileStartResponse after a failed keepalive"
+            );
+            let keepalive = nexus_common::io::client_message_to_frame_bytes(
+                &ClientMessage::FileHashing {
+                    file: existing.file_name().unwrap().to_str().unwrap().into(),
+                },
+                MessageId::new(),
+            )
+            .unwrap();
+            assert_eq!(
+                *sent.get_ref(),
+                &keepalive[..8],
+                "failure must be in FileHashing, not FileStartResponse"
+            );
+            assert_eq!(tokio::fs::read(&existing).await.unwrap(), data);
+            if !completed_file {
+                assert!(!path.exists(), "partial file must not be promoted");
+            }
+            let mut failures = 0;
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    TransferEvent::Failed { error_kind, .. } => {
+                        assert_eq!(error_kind, Some(TransferError::ConnectionError));
+                        failures += 1;
+                    }
+                    TransferEvent::Completed { .. } | TransferEvent::Paused { .. } => {
+                        panic!("failed write must not complete or pause the transfer")
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(failures, 1);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_upload_write_failure_sends_no_file_hash_or_next_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bundle");
+        tokio::fs::create_dir(&path).await.unwrap();
+        tokio::fs::write(path.join("first.bin"), b"original upload")
+            .await
+            .unwrap();
+        tokio::fs::write(path.join("second.bin"), b"second upload")
+            .await
+            .unwrap();
+        let transfer = Transfer::new_upload(
+            test_connection_info(),
+            "uploads".into(),
+            false,
+            true,
+            path.clone(),
+            None,
+            0,
+        );
+        let mut server = FrameWriter::new(Vec::new());
+        send_server_message(
+            &mut server,
+            &ServerMessage::FileUploadResponse {
+                success: true,
+                error: None,
+                error_kind: None,
+                transfer_id: Some("test".into()),
+            },
+        )
+        .await
+        .unwrap();
+        send_server_message(
+            &mut server,
+            &ServerMessage::FileStartResponse {
+                size: 0,
+                blake3: None,
+            },
+        )
+        .await
+        .unwrap();
+        let mut reader = FrameReader::new(BufReader::new(server.get_ref().as_slice()));
+        let mut writer = FrameWriter::new(FailingWriter::new(2, 8, WriteFailure::Error));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let result = execute_upload(&transfer, &mut reader, &mut writer, &tx, &None).await;
+        assert_eq!(result, Err(TransferError::IoError));
+        let mut sent = FrameReader::new(writer.get_ref().bytes.as_slice());
+        assert!(matches!(
+            read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message,
+            ClientMessage::FileUpload { .. }
+        ));
+        assert!(matches!(
+            read_transfer_client_message_with_full_timeout(&mut sent, None, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message,
+            ClientMessage::FileStart { .. }
+        ));
+        assert_eq!(
+            sent.get_ref().len(),
+            8,
+            "no bytes after the failed FileData prefix"
+        );
+        assert_eq!(
+            tokio::fs::read(path.join("first.bin")).await.unwrap(),
+            b"original upload"
+        );
+        assert_eq!(
+            tokio::fs::read(path.join("second.bin")).await.unwrap(),
+            b"second upload"
+        );
+        while let Ok(event) = rx.try_recv() {
+            assert!(!matches!(event, TransferEvent::Completed { .. }));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_upload_accepts_delayed_post_login_responses() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("empty.bin");
+        tokio::fs::write(&path, b"").await.unwrap();
+        let transfer = Transfer::new_upload(
+            test_connection_info(),
+            "uploads".into(),
+            false,
+            false,
+            path,
+            None,
+            0,
+        );
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let mut writer = FrameWriter::new(client_write);
+        let mut server_reader = FrameReader::new(BufReader::new(server_read));
+        let mut server_writer = FrameWriter::new(server_write);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let upload = execute_upload(&transfer, &mut reader, &mut writer, &tx, &None);
+        let server = async {
+            for (step, response) in [
+                ServerMessage::FileUploadResponse {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                    transfer_id: Some("test".into()),
+                },
+                ServerMessage::FileStartResponse {
+                    size: 0,
+                    blake3: None,
+                },
+                ServerMessage::TransferComplete {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                },
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let request =
+                    read_transfer_client_message_with_full_timeout(&mut server_reader, None, None)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .message;
+                assert!(matches!(
+                    (step, request),
+                    (0, ClientMessage::FileUpload { .. })
+                        | (1, ClientMessage::FileStart { .. })
+                        | (2, ClientMessage::FileHash { .. })
+                ));
+                tokio::time::sleep(TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4).await;
+                send_server_message(&mut server_writer, &response)
+                    .await
+                    .unwrap();
+            }
+        };
+        let (result, ()) = tokio::time::timeout(TRANSFER_CONTROL_FRAME_TIMEOUT * 4, async {
+            tokio::join!(upload, server)
+        })
+        .await
+        .unwrap();
+        result.unwrap();
+        let mut completed = 0;
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                TransferEvent::Completed { .. } => completed += 1,
+                TransferEvent::Failed { .. } | TransferEvent::Paused { .. } => {
+                    panic!("delayed responses must succeed")
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(completed, 1);
+    }
 
     fn test_connection_info() -> ConnectionInfo {
         ConnectionInfo {
@@ -1083,7 +1433,7 @@ mod tests {
             .map_err(Into::into)
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn test_execute_download_directory_sends_file_start_response() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let local_base = temp_dir.path().join("bundle");
@@ -1148,6 +1498,7 @@ mod tests {
                 ("first.txt", b"first".as_slice()),
                 ("nested/second.txt", b"second".as_slice()),
             ] {
+                tokio::time::sleep(TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4).await;
                 send_server_message(
                     &mut server_writer,
                     &ServerMessage::FileStart {
@@ -1175,6 +1526,7 @@ mod tests {
                 send_file_data(&mut server_writer, payload)
                     .await
                     .expect("send FileData");
+                tokio::time::sleep(TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4).await;
                 send_server_message(
                     &mut server_writer,
                     &ServerMessage::FileHash {
@@ -1185,6 +1537,7 @@ mod tests {
                 .expect("send FileHash");
             }
 
+            tokio::time::sleep(TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4).await;
             send_server_message(
                 &mut server_writer,
                 &ServerMessage::TransferComplete {

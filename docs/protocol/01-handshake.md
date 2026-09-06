@@ -125,7 +125,7 @@ The server expects the `Handshake` message within 30 seconds of TLS connection. 
 
 Once handshake and login complete, authenticated users can idle indefinitely. The 30-second timeout only applies to unauthenticated connections.
 
-**Timeout behavior:**
+**BBS request timeout behavior (client to server):**
 
 | State        | First Byte Timeout        | Frame Completion Timeout |
 | ------------ | ------------------------- | ------------------------ |
@@ -133,6 +133,16 @@ Once handshake and login complete, authenticated users can idle indefinitely. Th
 | After login  | Indefinite (idle allowed) | 60 seconds               |
 
 This prevents resource exhaustion from unauthenticated connections while allowing legitimate users to idle in chat.
+
+The frame-completion deadline covers the entire request, from its first byte through the payload's trailing newline. Receiving additional bytes does not extend that deadline.
+
+Sending BBS responses and events (including handshake and login responses), and sending post-login requests, use a 60-second write-progress limit. Each successful write starts a fresh window for the next write; the final flush has its own 60-second limit. A large frame may take longer than 60 seconds in total while writes continue making progress. This does not extend the receiving-side request deadline above. A write or flush failure, including a timeout or a zero-byte write with bytes remaining, terminates the connection without sending another protocol frame, because the preceding frame may be incomplete.
+
+Receiving post-login BBS responses and events allows an indefinite wait for the first byte of the next frame. After that first byte, every read must receive more bytes within 60 seconds, including reads of the header, payload, and trailing newline. Byte progress renews this deadline, so a complete response or event may take longer than 60 seconds. If progress stops for the full window, discard the incomplete frame and terminate the connection without delivering it as a message.
+
+Handshake and login request writes, and reads of their responses, retain a 30-second total limit per operation. Response reads include both the wait for the first byte and receipt of the complete frame; individual bytes do not extend this setup deadline.
+
+During connection teardown, a graceful transport shutdown attempt has a 30-second total deadline. Transport progress does not extend this deadline. If shutdown fails or expires, close the connection without retrying shutdown or sending another protocol frame. Immediate connection closure without graceful shutdown remains permitted.
 
 ## Notes
 

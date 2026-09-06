@@ -129,15 +129,13 @@ pub const SESSION_MESSAGE_QUEUE_CAPACITY: usize = 1024;
 /// Control queue is reserved for the slow-client disconnect only.
 pub const SESSION_CONTROL_QUEUE_CAPACITY: usize = 1;
 
-/// Upper bound for one direct BBS protocol message write. This is intentionally
-/// high enough for very slow LAN/private-network peers while still bounding
-/// peers that stop reading.
-pub const BBS_DIRECT_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+/// BBS socket write/flush progress timeout for direct responses, queued frames,
+/// and egress chunks. Each successful write renews the deadline, allowing large
+/// frames on slow links while bounding peers that stop reading.
+pub const BBS_WRITE_PROGRESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Per-egress-chunk write timeout. Egress frames are chunked to 1-64 KiB, so
-/// this remains slow-client friendly while keeping public stalled readers from
-/// pinning a connection for the direct whole-frame timeout per chunk.
-pub const BBS_CHUNK_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Whole-operation deadline for gracefully closing a BBS connection.
+pub const BBS_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// WF2Q+ scheduler chunk size in bytes.
 pub const CONFIG_KEY_SCHEDULER_CHUNK_SIZE: &str = "scheduler_chunk_size";
@@ -350,10 +348,10 @@ pub const ERR_TRANSFER_INVALID_CREDENTIALS: &str = "Invalid credentials";
 pub const ERR_TRANSFER_ACCOUNT_DISABLED: &str = "Account disabled";
 pub const ERR_TRANSFER_CONNECTION_CLOSED: &str = "Connection closed";
 pub const ERR_TRANSFER_READ_TIMEOUT: &str = "Read timeout";
-/// Per-write progress timeout for transfer downloads/control frames. A slow
-/// client is fine as long as socket writes keep completing; a stalled reader
-/// must not pin the transfer task forever.
-pub const TRANSFER_WRITE_PROGRESS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Whole-operation timeout for transfer handshake/login response writes.
+pub const TRANSFER_SETUP_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Whole-operation timeout for gracefully closing a transfer connection.
+pub const TRANSFER_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 pub const ERR_TRANSFER_WRITE_PROGRESS_TIMEOUT: &str = "Write timeout";
 
 pub const ERR_TRANSFER_READ_HANDSHAKE: &str = "Failed to read handshake: ";

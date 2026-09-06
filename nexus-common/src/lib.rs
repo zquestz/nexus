@@ -190,6 +190,21 @@ pub const DEFAULT_TRACKER_WEBSOCKET_PORT: u16 = 7511;
 /// Buffer size for file hashing operations (1MB for fewer syscalls)
 pub const HASH_BUFFER_SIZE: usize = 1024 * 1024;
 
+/// Total deadline for reading a post-login transfer control frame.
+///
+/// Covers waiting for the frame, its header, payload, and trailing newline.
+/// Only a complete `FileHashing` keepalive starts a fresh deadline; partial
+/// byte progress does not extend it. A `FileData` header uses this deadline,
+/// but its streamed payload uses [`TRANSFER_IO_PROGRESS_TIMEOUT`] instead.
+pub const TRANSFER_CONTROL_FRAME_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Progress timeout for post-login transfer writes and streamed `FileData` reads.
+///
+/// Each successful socket read or write starts a fresh window, and flushing
+/// has its own window. This does not cap the total duration of a file transfer
+/// or replace the control-frame deadline in [`TRANSFER_CONTROL_FRAME_TIMEOUT`].
+pub const TRANSFER_IO_PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// How often to send keepalive notifications during transfers.
 ///
 /// This interval (10 seconds) is chosen to be well under the typical idle timeout
@@ -456,6 +471,17 @@ mod tests {
     #[test]
     fn test_default_refresh_interval_matches_protocol_default() {
         assert_eq!(DEFAULT_REFRESH_INTERVAL_SECS, 300);
+    }
+
+    #[test]
+    fn test_transfer_control_frame_timeout() {
+        assert_eq!(TRANSFER_CONTROL_FRAME_TIMEOUT, Duration::from_secs(60));
+        assert!(KEEPALIVE_INTERVAL < TRANSFER_CONTROL_FRAME_TIMEOUT);
+    }
+
+    #[test]
+    fn test_transfer_io_progress_timeout() {
+        assert_eq!(TRANSFER_IO_PROGRESS_TIMEOUT, Duration::from_secs(60));
     }
 
     #[test]

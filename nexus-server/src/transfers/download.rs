@@ -17,7 +17,6 @@ use tracing::{debug, error, info, warn};
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::hash::StreamingHasher;
-use nexus_common::io::read_transfer_client_message_with_full_timeout;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_IO_ERROR};
 
@@ -32,9 +31,9 @@ use crate::handlers::{
 use super::hashing::{FALLBACK_FILE_NAME, HashingReader, hash_file_with_keepalives};
 use super::helpers::{
     TransferError, build_validated_path, check_permission, check_root_permission,
-    generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
-    send_download_error_and_close, send_download_transfer_error, shutdown_transfer_writer,
-    validate_transfer_path,
+    generate_transfer_id, path_error_to_transfer_error, read_transfer_control_message,
+    resolve_area_root, send_download_error_and_close, send_download_transfer_error,
+    shutdown_transfer_writer, validate_transfer_path,
 };
 use super::transfer::{StreamError, Transfer};
 use super::types::{DownloadParams, FileInfo};
@@ -605,14 +604,7 @@ where
     // Returns the resume offset and a hasher pre-fed with 0..offset.
     let (frame_reader, frame_writer) = transfer.reader_writer();
     let (offset, mut hasher) =
-        match read_file_start_response(frame_reader, frame_writer, file_size, canonical_path).await
-        {
-            Ok(result) => result,
-            Err(e) if e.kind() == io::ErrorKind::InvalidData => {
-                return Err(StreamFileError::HashMismatch);
-            }
-            Err(e) => return Err(StreamFileError::Io(e)),
-        };
+        read_file_start_response(frame_reader, frame_writer, file_size, canonical_path).await?;
 
     if offset > 0 {
         debug!(
@@ -694,25 +686,25 @@ async fn read_file_start_response<R, W>(
     frame_writer: &mut FrameWriter<W>,
     server_size: u64,
     file_path: &Path,
-) -> io::Result<(u64, StreamingHasher)>
+) -> Result<(u64, StreamingHasher), StreamFileError>
 where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
 {
     // Loop so we skip any FileHashing keepalives the client sends while hashing.
     let (size, blake3) = loop {
-        let received =
-            match read_transfer_client_message_with_full_timeout(frame_reader, None, None).await {
-                Ok(Some(msg)) => msg,
-                Ok(None) => {
-                    return Err(io::Error::other(ERR_TRANSFER_FILE_START_RESPONSE_CLOSED));
-                }
-                Err(e) => {
-                    return Err(io::Error::other(format!(
-                        "{ERR_TRANSFER_READ_FILE_START_RESPONSE}{e}"
-                    )));
-                }
-            };
+        let received = match read_transfer_control_message(frame_reader).await {
+            Ok(Some(msg)) => msg,
+            Ok(None) => {
+                return Err(io::Error::other(ERR_TRANSFER_FILE_START_RESPONSE_CLOSED).into());
+            }
+            Err(e) => {
+                return Err(io::Error::other(format!(
+                    "{ERR_TRANSFER_READ_FILE_START_RESPONSE}{e}"
+                ))
+                .into());
+            }
+        };
 
         match received.message {
             ClientMessage::FileStartResponse { size, blake3 } => {
@@ -723,7 +715,7 @@ where
                 continue;
             }
             _ => {
-                return Err(io::Error::other(ERR_TRANSFER_FILE_START_RESPONSE_EXPECTED));
+                return Err(io::Error::other(ERR_TRANSFER_FILE_START_RESPONSE_EXPECTED).into());
             }
         }
     };
@@ -756,39 +748,83 @@ where
         Ok((size, hasher))
     } else {
         // Mismatch: client's partial file diverges from ours.
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "resume hash mismatch",
-        ))
+        Err(StreamFileError::HashMismatch)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_helpers::make_authenticated_user;
+    use super::super::test_helpers::{
+        FailingWriter, PausedFlushWriter, WriteFailure, make_authenticated_user, with_slow_polls,
+    };
     use super::*;
     use std::collections::BTreeMap;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::num::NonZeroUsize;
     use std::sync::Arc;
+    use std::sync::atomic::Ordering;
 
-    use nexus_common::ERROR_KIND_CONFLICT;
     use nexus_common::io::{
         read_transfer_server_message as read_server_message, send_client_message,
     };
+    use nexus_common::{ERROR_KIND_CONFLICT, TRANSFER_CONTROL_FRAME_TIMEOUT};
     use tempfile::TempDir;
     use tokio::fs;
-    use tokio::io::{BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
+    use tokio::io::{AsyncReadExt, BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
     use tokio::sync::mpsc;
 
-    use crate::egress::task::{EgressHandle, EgressTask};
-    use crate::egress::{EGRESS_DISPATCH_QUEUE_CAPACITY, EgressManager};
+    use crate::egress::task::{
+        DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressCommand, EgressHandle, EgressTask,
+    };
+    use crate::egress::{EGRESS_DISPATCH_QUEUE_CAPACITY, EgressEnqueueError, EgressManager};
     use crate::files::{FileActivityMap, FileIndex};
     use crate::scheduler::{ConnectionClass, ConnectionId};
     use crate::transfers::registry::{TransferDirection, TransferRegistration, TransferRegistry};
     use crate::transfers::transfer::{TransferContext, TransferEgress};
 
     const TEST_LOCALE: &str = "en";
+
+    #[tokio::test(start_paused = true)]
+    async fn test_file_start_response_keepalives_renew_shared_deadline() {
+        let (sender, receiver) = duplex(8192);
+        let mut reader = FrameReader::new(BufReader::new(receiver));
+        let mut writer = FrameWriter::new(Vec::new());
+        let started = tokio::time::Instant::now();
+        let read = read_file_start_response(&mut reader, &mut writer, 0, Path::new("unused"));
+        let send = async {
+            let mut sender = FrameWriter::new(sender);
+            for _ in 0..3 {
+                tokio::time::sleep(TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4).await;
+                send_client_message(
+                    &mut sender,
+                    &ClientMessage::FileHashing {
+                        file: "test.txt".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            }
+            tokio::time::sleep(TRANSFER_CONTROL_FRAME_TIMEOUT * 3 / 4).await;
+            send_client_message(
+                &mut sender,
+                &ClientMessage::FileStartResponse {
+                    size: 0,
+                    blake3: None,
+                },
+            )
+            .await
+            .unwrap();
+        };
+        let (result, ()) = timeout(TRANSFER_CONTROL_FRAME_TIMEOUT * 5, async {
+            tokio::join!(read, send)
+        })
+        .await
+        .expect("complete keepalives must renew the FileStartResponse deadline");
+        let (offset, hasher) = result.unwrap();
+        assert_eq!(offset, 0);
+        assert_eq!(hasher.finalize(), StreamingHasher::new().finalize());
+        assert!(started.elapsed() > TRANSFER_CONTROL_FRAME_TIMEOUT);
+    }
 
     fn test_addr() -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 7501)
@@ -803,11 +839,11 @@ mod tests {
         egress: Option<TransferEgress>,
     }
 
-    fn make_download_transfer<'a>(
+    fn make_download_transfer<'a, W: AsyncWrite + Unpin>(
         server_read: ReadHalf<DuplexStream>,
-        server_write: WriteHalf<DuplexStream>,
+        server_write: W,
         fixture: DownloadTransferFixture<'a>,
-    ) -> Transfer<'a, BufReader<ReadHalf<DuplexStream>>, WriteHalf<DuplexStream>> {
+    ) -> Transfer<'a, BufReader<ReadHalf<DuplexStream>>, W> {
         let (info, ban_rx) = fixture.registry.register(TransferRegistration {
             user_id: 1,
             peer_addr: test_addr(),
@@ -1572,6 +1608,362 @@ mod tests {
         drop(transfer);
         drop(egress);
         egress_task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_download_hashing_write_failure_releases_reservations_without_completion() {
+        for failure in [
+            WriteFailure::Error,
+            WriteFailure::Zero,
+            WriteFailure::Stall,
+            WriteFailure::FlushError,
+            WriteFailure::FlushStall,
+        ] {
+            let temp_dir = TempDir::new().unwrap();
+            let file_root = temp_dir.path().canonicalize().unwrap();
+            let shared_root = file_root.join("shared");
+            fs::create_dir_all(&shared_root).await.unwrap();
+            let target = shared_root.join("file.txt");
+            fs::write(&target, b"original").await.unwrap();
+            let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+            let file_activity = Arc::new(FileActivityMap::new());
+            let registry = TransferRegistry::new();
+            let (client, server) = duplex(8192);
+            let (server_read, _server_write) = tokio::io::split(server);
+            let mut sender = FrameWriter::new(client);
+            let mut hasher = StreamingHasher::new();
+            hasher.update(b"orig");
+            send_client_message(
+                &mut sender,
+                &ClientMessage::FileStartResponse {
+                    size: 4,
+                    blake3: Some(hasher.finalize()),
+                },
+            )
+            .await
+            .unwrap();
+            let mut transfer = make_download_transfer(
+                server_read,
+                FailingWriter::new(Vec::new(), 2, 8, failure),
+                DownloadTransferFixture {
+                    file_root: &file_root,
+                    shared_root: &shared_root,
+                    file_index: &file_index,
+                    file_activity: &file_activity,
+                    registry: &registry,
+                    egress: None,
+                },
+            );
+            let delay_enabled = Arc::clone(&transfer.writer().get_ref().failure_armed);
+            timeout(
+                nexus_common::TRANSFER_IO_PROGRESS_TIMEOUT * 20,
+                with_slow_polls(
+                    handle_download(
+                        &mut transfer,
+                        DownloadParams {
+                            path: "file.txt".into(),
+                            root: false,
+                        },
+                    ),
+                    delay_enabled,
+                ),
+            )
+            .await
+            .expect("hashing write failure must terminate the handler")
+            .unwrap();
+            let writer = transfer.writer().get_ref();
+            assert!(writer.shutdown, "{failure:?}");
+            let mut output = FrameReader::new(writer.inner.as_slice());
+            assert!(matches!(
+                read_server_message(&mut output)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message,
+                ServerMessage::FileDownloadResponse { success: true, .. }
+            ));
+            assert!(matches!(
+                read_server_message(&mut output).await.unwrap().unwrap().message,
+                ServerMessage::FileStart { path, size: 8 } if path == "file.txt"
+            ));
+            if matches!(failure, WriteFailure::FlushError | WriteFailure::FlushStall) {
+                assert!(matches!(
+                    read_server_message(&mut output).await.unwrap().unwrap().message,
+                    ServerMessage::FileHashing { file } if file == "file.txt"
+                ));
+                assert!(
+                    output.get_ref().is_empty(),
+                    "no frame after failed keepalive"
+                );
+            } else {
+                assert_eq!(*output.get_ref(), b"NX|11|Fi", "{failure:?}");
+            }
+            assert_eq!(fs::read(&target).await.unwrap(), b"original");
+            let _guard = file_activity
+                .try_enter_directory_path(&file_root, &target)
+                .await
+                .unwrap()
+                .unwrap();
+            drop(transfer);
+            assert!(registry.snapshot().is_empty());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_download_control_write_failure_closes_without_completion() {
+        for failure in [
+            WriteFailure::Error,
+            WriteFailure::Zero,
+            WriteFailure::Stall,
+            WriteFailure::FlushError,
+            WriteFailure::FlushStall,
+        ] {
+            let temp_dir = TempDir::new().unwrap();
+            let file_root = temp_dir.path().canonicalize().unwrap();
+            let shared_root = file_root.join("shared");
+            fs::create_dir_all(&shared_root).await.unwrap();
+            let target = shared_root.join("file.txt");
+            fs::write(&target, b"original").await.unwrap();
+            let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+            let file_activity = Arc::new(FileActivityMap::new());
+            let registry = TransferRegistry::new();
+            let (_client, server) = duplex(8192);
+            let (server_read, _server_write) = tokio::io::split(server);
+            let mut transfer = make_download_transfer(
+                server_read,
+                FailingWriter::new(Vec::new(), 1, 8, failure),
+                DownloadTransferFixture {
+                    file_root: &file_root,
+                    shared_root: &shared_root,
+                    file_index: &file_index,
+                    file_activity: &file_activity,
+                    registry: &registry,
+                    egress: None,
+                },
+            );
+            timeout(
+                nexus_common::TRANSFER_IO_PROGRESS_TIMEOUT * 2,
+                handle_download(
+                    &mut transfer,
+                    DownloadParams {
+                        path: "file.txt".into(),
+                        root: false,
+                    },
+                ),
+            )
+            .await
+            .expect("must close after the first write timeout")
+            .unwrap();
+            let writer = transfer.writer().get_ref();
+            assert!(writer.shutdown, "{failure:?}");
+            let mut output = FrameReader::new(writer.inner.as_slice());
+            assert!(matches!(
+                read_server_message(&mut output)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message,
+                ServerMessage::FileDownloadResponse { success: true, .. }
+            ));
+            if matches!(failure, WriteFailure::FlushError | WriteFailure::FlushStall) {
+                assert!(matches!(
+                    read_server_message(&mut output)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .message,
+                    ServerMessage::FileStart { .. }
+                ));
+                assert!(
+                    output.get_ref().is_empty(),
+                    "no TransferComplete after {failure:?}"
+                );
+            } else {
+                assert_eq!(
+                    output.get_ref().len(),
+                    8,
+                    "no bytes after the failed prefix: {failure:?}"
+                );
+            }
+            assert_eq!(fs::read(&target).await.unwrap(), b"original");
+            let _guard = file_activity
+                .try_enter_directory_path(&file_root, &target)
+                .await
+                .unwrap()
+                .unwrap();
+            drop(transfer);
+            assert!(registry.snapshot().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_download_egress_channel_failure_closes_without_completion() {
+        for fail_ack in [false, true] {
+            let temp_dir = TempDir::new().unwrap();
+            let file_root = temp_dir.path().canonicalize().unwrap();
+            let shared_root = file_root.join("shared");
+            fs::create_dir_all(&shared_root).await.unwrap();
+            let target = shared_root.join("file.txt");
+            fs::write(&target, b"original").await.unwrap();
+            let file_index = Arc::new(FileIndex::new(&file_root, &shared_root));
+            let file_activity = Arc::new(FileActivityMap::new());
+            let registry = TransferRegistry::new();
+            let (command_tx, command_rx) = mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
+            let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+            let handle = EgressHandle::new(command_tx.clone(), settings_tx.clone());
+            let mut task = tokio::spawn(
+                EgressTask::new(
+                    EgressManager::new(NonZeroUsize::new(8).unwrap()),
+                    command_rx,
+                    settings_rx,
+                )
+                .run(),
+            );
+            let (transfer_handle, observer) = if fail_ack {
+                // Ack failure must reach the closed scheduler channel directly.
+                drop(command_tx);
+                drop(settings_tx);
+                (handle.clone(), None)
+            } else {
+                let (observed_tx, mut observed_rx) =
+                    mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
+                let observer = tokio::spawn(async move {
+                    let mut frame_attempts = 0;
+                    while let Some(command) = observed_rx.recv().await {
+                        if matches!(
+                            command,
+                            EgressCommand::StageFrame { .. }
+                                | EgressCommand::StagePriorityFrame { .. }
+                        ) {
+                            frame_attempts += 1;
+                        }
+                        if command_tx.send(command).await.is_err() {
+                            break;
+                        }
+                    }
+                    frame_attempts
+                });
+                (EgressHandle::new(observed_tx, settings_tx), Some(observer))
+            };
+            let id = ConnectionId::new(9001);
+            let (dispatch_tx, dispatch_rx) = mpsc::channel(EGRESS_DISPATCH_QUEUE_CAPACITY);
+            assert!(
+                handle
+                    .register_anon(id, ConnectionClass::Bulk, dispatch_tx)
+                    .await
+                    .unwrap()
+            );
+            let transfer_egress = TransferEgress::new(transfer_handle, id, dispatch_rx);
+            let (client, server) = duplex(8192);
+            let (client_read, client_write) = tokio::io::split(client);
+            let (server_read, server_write) = tokio::io::split(server);
+            let (writer, flushed_rx, resume_tx) = PausedFlushWriter::new(server_write);
+            let pause_next_flush = Arc::clone(&writer.pause_next_flush);
+            pause_next_flush.store(false, Ordering::Relaxed);
+            let mut transfer = make_download_transfer(
+                server_read,
+                writer,
+                DownloadTransferFixture {
+                    file_root: &file_root,
+                    shared_root: &shared_root,
+                    file_index: &file_index,
+                    file_activity: &file_activity,
+                    registry: &registry,
+                    egress: Some(transfer_egress),
+                },
+            );
+            let serve = async {
+                handle_download(
+                    &mut transfer,
+                    DownloadParams {
+                        path: "file.txt".into(),
+                        root: false,
+                    },
+                )
+                .await
+                .unwrap();
+                assert!(transfer.writer().get_ref().shutdown);
+                drop(transfer);
+            };
+            let receive = async {
+                let mut reader = FrameReader::new(BufReader::new(client_read));
+                let mut writer = FrameWriter::new(client_write);
+                assert!(matches!(
+                    read_server_message(&mut reader)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .message,
+                    ServerMessage::FileDownloadResponse { success: true, .. }
+                ));
+                assert!(matches!(
+                    read_server_message(&mut reader).await.unwrap().unwrap().message,
+                    ServerMessage::FileStart { path, size: 8 } if path == "file.txt"
+                ));
+                pause_next_flush.store(true, Ordering::Relaxed);
+                send_client_message(
+                    &mut writer,
+                    &ClientMessage::FileStartResponse {
+                        size: 0,
+                        blake3: None,
+                    },
+                )
+                .await
+                .unwrap();
+                flushed_rx.await.unwrap();
+                if fail_ack {
+                    task.abort();
+                    assert!((&mut task).await.unwrap_err().is_cancelled());
+                } else {
+                    handle.unregister(id).await.unwrap();
+                    assert_eq!(
+                        handle
+                            .stage_frame(id, Arc::from(&b"unused"[..]))
+                            .await
+                            .unwrap(),
+                        Err(EgressEnqueueError::UnknownConnection)
+                    );
+                }
+                resume_tx.send(()).unwrap();
+                let mut remaining = Vec::new();
+                reader
+                    .into_inner()
+                    .read_to_end(&mut remaining)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    remaining, b"NX|8|Fil",
+                    "no frame may follow the partial FileData header"
+                );
+            };
+            timeout(Duration::from_secs(5), async {
+                tokio::join!(serve, receive)
+            })
+            .await
+            .expect("egress failure must terminate the download handler");
+            if let Some(observer) = observer {
+                assert_eq!(
+                    timeout(Duration::from_secs(5), observer)
+                        .await
+                        .expect("dropping the transfer must close the observer")
+                        .unwrap(),
+                    2,
+                    "only FileDownloadResponse and FileStart may be staged; a rejected \
+                     TransferComplete would produce no wire bytes but is still forbidden"
+                );
+            }
+            assert!(registry.snapshot().is_empty());
+            assert_eq!(fs::read(&target).await.unwrap(), b"original");
+            let _guard = file_activity
+                .try_enter_directory_path(&file_root, &target)
+                .await
+                .unwrap()
+                .unwrap();
+            if !fail_ack {
+                drop(handle);
+                task.await.unwrap();
+            }
+        }
     }
 
     #[tokio::test]
