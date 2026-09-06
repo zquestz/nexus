@@ -358,7 +358,7 @@ Carries the sender's BLAKE3 hash of the complete file. Sent after `FileData` (no
 
 - Both sides independently compute the hash during streaming (single-pass)
 - The receiver compares its own computed hash against the sender's `FileHash`
-- A mismatch means data corruption — the receiver should delete the `.part` file and report an error
+- A mismatch rejects the file. After streamed uploads, preserve the original resume prefix and discard only appended bytes; delete the `.part` if the upload started fresh. Streamed downloads delete their `.part`.
 - For zero-byte files, the hash is the BLAKE3 of empty input (`af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262`)
 
 **Per-file frame dispatch after `FileStartResponse`:**
@@ -436,7 +436,7 @@ Both sides use a `StreamingHasher` whose `partial_hash()` returns the current di
    - `size: 0` → send entire file (fresh hasher)
 7. Client streams `FileData` from offset, feeding bytes to hasher
 8. Client sends `FileHash { blake3: hasher.finalize() }` — full file hash (0..end)
-9. Server compares its independently computed hash against client's `FileHash`. Mismatch → delete `.part`, return error
+9. Server compares its independently computed hash against client's `FileHash`. On mismatch, truncate `.part` back to offset N for a resumed upload, or delete it for a fresh upload, then return `hash_mismatch`. If cleanup fails, return `io_error` instead.
 
 ### Partial Files
 

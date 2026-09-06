@@ -384,7 +384,9 @@ where
 
             let server_hash = hasher.finalize();
             if server_hash != client_hash {
-                let _ = tokio::fs::remove_file(&part_path).await;
+                discard_failed_upload_bytes(&part_path, offset)
+                    .await
+                    .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
                 return Err(ReceiveFileError::Transfer(TransferError::hash_mismatch(
                     err_upload_hash_mismatch(locale),
                 )));
@@ -871,6 +873,20 @@ async fn finalize_part_file_if_exists(
     Ok(())
 }
 
+/// Discard a failed upload's bytes without destroying an existing resume prefix.
+async fn discard_failed_upload_bytes(part_path: &Path, offset: u64) -> io::Result<()> {
+    if offset == 0 {
+        return tokio::fs::remove_file(part_path).await;
+    }
+
+    let file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(part_path)
+        .await?;
+    file.set_len(offset).await?;
+    file.sync_all().await
+}
+
 async fn stream_to_part_file<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     header: &FrameHeader,
@@ -1023,7 +1039,7 @@ mod tests {
     struct UploadTestResult {
         start_state: Option<(u64, Option<String>)>,
         completion: Result<(), String>,
-        target: Vec<u8>,
+        target: Option<Vec<u8>>,
         part: Option<Vec<u8>>,
     }
 
@@ -1060,7 +1076,41 @@ mod tests {
             fs::write(&part_path, data).await.unwrap();
         }
 
-        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let result = upload_to_test_directory(
+            &file_root,
+            upload_data,
+            data_offset,
+            hash_bytes(upload_data),
+        )
+        .await;
+
+        if let Some(modified) = target_modified {
+            assert_eq!(
+                fs::metadata(&target_path)
+                    .await
+                    .unwrap()
+                    .modified()
+                    .unwrap(),
+                modified,
+                "existing completed destination must not be rewritten"
+            );
+        }
+
+        result
+    }
+
+    async fn upload_to_test_directory(
+        file_root: &Path,
+        upload_data: &[u8],
+        data_offset: Option<usize>,
+        client_hash: String,
+    ) -> UploadTestResult {
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+        let target_path = destination.join("file.txt");
+        let part_path = destination.join("file.txt.part");
+        let file_index = Arc::new(FileIndex::new(file_root, file_root));
         let file_activity = Arc::new(FileActivityMap::new());
         let registry = TransferRegistry::new();
         let (client, server) = duplex(8192);
@@ -1071,7 +1121,7 @@ mod tests {
         let mut transfer = make_upload_transfer(
             server_read,
             server_write,
-            &file_root,
+            file_root,
             &shared_root,
             &file_index,
             &file_activity,
@@ -1135,7 +1185,7 @@ mod tests {
                         send_client_message(
                             &mut client_writer,
                             &ClientMessage::FileHash {
-                                blake3: hash_bytes(upload_data),
+                                blake3: client_hash.clone(),
                             },
                         )
                         .await
@@ -1166,22 +1216,14 @@ mod tests {
         .await
         .expect("upload should complete");
 
-        if let Some(modified) = target_modified {
-            assert_eq!(
-                fs::metadata(&target_path)
-                    .await
-                    .unwrap()
-                    .modified()
-                    .unwrap(),
-                modified,
-                "existing completed destination must not be rewritten"
-            );
-        }
-
         UploadTestResult {
             start_state,
             completion,
-            target: fs::read(&target_path).await.unwrap(),
+            target: if fs::try_exists(&target_path).await.unwrap() {
+                Some(fs::read(&target_path).await.unwrap())
+            } else {
+                None
+            },
             part: if fs::try_exists(&part_path).await.unwrap() {
                 Some(fs::read(&part_path).await.unwrap())
             } else {
@@ -1204,7 +1246,7 @@ mod tests {
             Some((original.len() as u64, Some(hash_bytes(original))))
         );
         assert_eq!(result.completion, Err(ERROR_KIND_HASH_MISMATCH.to_string()));
-        assert_eq!(result.target, original);
+        assert_eq!(result.target.as_deref(), Some(original.as_slice()));
         assert_eq!(result.part.as_deref(), Some(replacement.as_slice()));
     }
 
@@ -1225,7 +1267,7 @@ mod tests {
                 Some((original.len() as u64, Some(hash_bytes(original))))
             );
             assert_eq!(result.completion, Err(ERROR_KIND_EXISTS.to_string()));
-            assert_eq!(result.target, original);
+            assert_eq!(result.target.as_deref(), Some(original.as_slice()));
             assert_eq!(result.part.as_deref(), Some(part));
         }
     }
@@ -1239,7 +1281,7 @@ mod tests {
 
         assert!(result.start_state.is_none());
         assert_eq!(result.completion, Err(ERROR_KIND_EXISTS.to_string()));
-        assert_eq!(result.target, original);
+        assert_eq!(result.target.as_deref(), Some(original.as_slice()));
         assert_eq!(result.part.as_deref(), Some(part.as_slice()));
     }
 
@@ -1253,7 +1295,7 @@ mod tests {
 
         assert!(result.start_state.is_none());
         assert_eq!(result.completion, Err(ERROR_KIND_EXISTS.to_string()));
-        assert_eq!(result.target, original);
+        assert_eq!(result.target.as_deref(), Some(original.as_slice()));
         assert_eq!(result.part.as_deref(), Some(replacement.as_slice()));
     }
 
@@ -1269,7 +1311,7 @@ mod tests {
             Some((original.len() as u64, Some(hash_bytes(original))))
         );
         assert_eq!(result.completion, Ok(()));
-        assert_eq!(result.target, original);
+        assert_eq!(result.target.as_deref(), Some(original.as_slice()));
         assert_eq!(result.part.as_deref(), Some(part.as_slice()));
     }
 
@@ -1281,7 +1323,7 @@ mod tests {
 
         assert_eq!(result.start_state, Some((0, None)));
         assert_eq!(result.completion, Ok(()));
-        assert!(result.target.is_empty());
+        assert_eq!(result.target.as_deref(), Some(b"".as_slice()));
         assert_eq!(result.part.as_deref(), Some(part.as_slice()));
     }
 
@@ -1297,7 +1339,7 @@ mod tests {
             Some((part.len() as u64, Some(hash_bytes(part))))
         );
         assert_eq!(result.completion, Ok(()));
-        assert_eq!(result.target, data);
+        assert_eq!(result.target.as_deref(), Some(data.as_slice()));
         assert!(result.part.is_none());
     }
 
@@ -1312,7 +1354,7 @@ mod tests {
             Some((data.len() as u64, Some(hash_bytes(data))))
         );
         assert_eq!(result.completion, Ok(()));
-        assert_eq!(result.target, data);
+        assert_eq!(result.target.as_deref(), Some(data.as_slice()));
         assert!(result.part.is_none());
     }
 
@@ -1322,8 +1364,99 @@ mod tests {
 
         assert_eq!(result.start_state, Some((0, None)));
         assert_eq!(result.completion, Ok(()));
-        assert!(result.target.is_empty());
+        assert_eq!(result.target.as_deref(), Some(b"".as_slice()));
         assert!(result.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_hash_mismatch_restores_prefix_and_allows_retry() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let destination = file_root.join("shared/uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+        let data = b"original prefix and valid suffix";
+        let prefix = &data[..16];
+        fs::write(destination.join("file.txt.part"), prefix)
+            .await
+            .unwrap();
+
+        // The prefix matches, but bytes appended by this attempt do not match its final hash.
+        let mut corrupt_data = data.to_vec();
+        *corrupt_data.last_mut().unwrap() ^= 1;
+        assert_eq!(&corrupt_data[..prefix.len()], prefix);
+        assert_ne!(hash_bytes(&corrupt_data), hash_bytes(data));
+
+        let failed = upload_to_test_directory(
+            &file_root,
+            &corrupt_data,
+            Some(prefix.len()),
+            hash_bytes(data),
+        )
+        .await;
+
+        assert_eq!(
+            failed.start_state,
+            Some((prefix.len() as u64, Some(hash_bytes(prefix))))
+        );
+        assert_eq!(failed.completion, Err(ERROR_KIND_HASH_MISMATCH.to_string()));
+        assert!(failed.target.is_none());
+        assert_eq!(failed.part.as_deref(), Some(prefix));
+
+        let retried =
+            upload_to_test_directory(&file_root, data, Some(prefix.len()), hash_bytes(data)).await;
+
+        assert_eq!(retried.start_state, failed.start_state);
+        assert_eq!(retried.completion, Ok(()));
+        assert_eq!(retried.target.as_deref(), Some(data.as_slice()));
+        assert!(retried.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_hash_mismatch_removes_fresh_partial_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let data = b"new upload content";
+
+        let result =
+            upload_to_test_directory(&file_root, data, Some(0), hash_bytes(b"different content"))
+                .await;
+
+        assert_eq!(result.start_state, Some((0, None)));
+        assert_eq!(result.completion, Err(ERROR_KIND_HASH_MISMATCH.to_string()));
+        assert!(result.target.is_none());
+        assert!(result.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_restart_conflict_preserves_partial_file() {
+        let prefix = b"original prefix";
+        let data = b"different upload content";
+        assert_ne!(hash_bytes(prefix), hash_bytes(&data[..prefix.len()]));
+
+        let result = upload_with_existing_files(None, Some(prefix), data, Some(0)).await;
+
+        assert_eq!(
+            result.start_state,
+            Some((prefix.len() as u64, Some(hash_bytes(prefix))))
+        );
+        assert_eq!(result.completion, Err(ERROR_KIND_CONFLICT.to_string()));
+        assert!(result.target.is_none());
+        assert_eq!(result.part.as_deref(), Some(prefix.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn test_discard_failed_upload_bytes_missing_file_returns_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let part_path = temp_dir.path().join("missing.part");
+
+        for offset in [0, 4] {
+            let err = discard_failed_upload_bytes(&part_path, offset)
+                .await
+                .unwrap_err();
+
+            assert_eq!(err.kind(), io::ErrorKind::NotFound);
+            assert!(!fs::try_exists(&part_path).await.unwrap());
+        }
     }
 
     #[tokio::test]
