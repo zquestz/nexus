@@ -133,7 +133,7 @@ where
         .await
         {
             Ok(targets) => targets,
-            Err(response) => break 'locked Outcome::Send(Box::new(response)),
+            Err(response) => break 'locked Outcome::Send(response),
         };
 
         let (sessions, transfer_scope) = {
@@ -239,7 +239,7 @@ async fn create_or_update_ban_rules<W>(
     reason: Option<&str>,
     requested_by: &str,
     expires_at: Option<i64>,
-) -> Result<Vec<String>, ServerMessage>
+) -> Result<Vec<String>, Box<ServerMessage>>
 where
     W: AsyncWrite + Unpin,
 {
@@ -258,7 +258,7 @@ where
         .await
         .map_err(|e| {
             error!(user = %requested_by, ip = %ctx.peer_addr, targets = ?targets_to_ban, err = %e, "{}", LOG_BAN_CREATE_DB_ERROR);
-            reject_ban_create(err_database(ctx.locale))
+            Box::new(reject_ban_create(err_database(ctx.locale)))
         })?
         .into_iter()
         .map(|ban| ban.ip_address)
