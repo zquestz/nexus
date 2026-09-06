@@ -14,7 +14,8 @@ use crate::constants::*;
 use crate::files::path::resolve_path;
 
 use nexus_common::framing::{
-    DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader, FrameWriter, MessageId,
+    DEFAULT_FRAME_TIMEOUT, DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader, FrameWriter,
+    MessageId,
 };
 use nexus_common::hash::StreamingHasher;
 use nexus_common::io::read_transfer_client_message_with_full_timeout;
@@ -22,6 +23,7 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::validators;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::time::{Instant, timeout_at};
 
 use crate::db::Permission;
 use crate::files::activity_key;
@@ -803,41 +805,37 @@ where
     R: AsyncReadExt + Unpin,
 {
     loop {
-        let h =
-            match tokio::time::timeout(DEFAULT_PROGRESS_TIMEOUT, frame_reader.read_frame_header())
-                .await
-            {
-                Ok(Ok(Some(h))) => h,
-                Ok(Ok(None)) => {
-                    return Err(TransferError::io_error(err_upload_connection_lost(locale)));
-                }
-                Ok(Err(_)) => {
-                    return Err(TransferError::protocol_error(err_upload_protocol_error(
-                        locale,
-                    )));
-                }
-                Err(_) => {
-                    return Err(TransferError::io_error(err_upload_connection_lost(locale)));
-                }
-            };
+        // Control payloads share the header deadline; only a complete keepalive renews it.
+        let deadline = Instant::now() + DEFAULT_FRAME_TIMEOUT;
+        let h = match timeout_at(deadline, frame_reader.read_frame_header()).await {
+            Ok(Ok(Some(h))) => h,
+            Ok(Ok(None)) => {
+                return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+            }
+            Ok(Err(_)) => {
+                return Err(TransferError::protocol_error(err_upload_protocol_error(
+                    locale,
+                )));
+            }
+            Err(_) => {
+                return Err(TransferError::io_error(err_upload_connection_lost(locale)));
+            }
+        };
 
         match h.message_type.as_str() {
-            "FileHashing" => {
-                // Consume keepalive payload and wait for the next frame.
-                if frame_reader.read_payload_into_vec(&h).await.is_err() {
-                    return Err(TransferError::protocol_error(err_upload_protocol_error(
-                        locale,
-                    )));
-                }
-                continue;
-            }
             "FileData" => {
                 return Ok(ClientFileFrame::FileData(h));
             }
-            "FileHash" => {
-                let payload = frame_reader.read_payload_into_vec(&h).await.map_err(|_| {
-                    TransferError::protocol_error(err_upload_protocol_error(locale))
-                })?;
+            "FileHashing" | "FileHash" => {
+                let payload = timeout_at(deadline, frame_reader.read_payload_into_vec(&h))
+                    .await
+                    .map_err(|_| TransferError::io_error(err_upload_connection_lost(locale)))?
+                    .map_err(|_| {
+                        TransferError::protocol_error(err_upload_protocol_error(locale))
+                    })?;
+                if h.message_type == "FileHashing" {
+                    continue;
+                }
                 let msg: ClientMessage = serde_json::from_slice(&payload).map_err(|_| {
                     TransferError::protocol_error(err_upload_protocol_error(locale))
                 })?;
@@ -1005,6 +1003,16 @@ mod tests {
     use crate::transfers::transfer::{TransferContext, TransferEgress};
 
     const TEST_LOCALE: &str = "en";
+    const TEST_CONTROL_PAYLOADS: [(&str, &[u8]); 2] = [
+        (
+            "FileHash",
+            br#"{"type":"FileHash","blake3":"abc123def456"}"#,
+        ),
+        (
+            "FileHashing",
+            br#"{"type":"FileHashing","file":"test.txt"}"#,
+        ),
+    ];
 
     fn mock_writer() -> FrameWriter<Vec<u8>> {
         FrameWriter::new(Vec::new())
@@ -2968,6 +2976,319 @@ mod tests {
         frame.extend_from_slice(payload);
         frame.push(b'\n');
         frame
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_read_control_frame_stalls_time_out() {
+        for (type_name, payload) in TEST_CONTROL_PAYLOADS {
+            let frame = build_frame(type_name, payload);
+            let header_len = frame.len() - payload.len() - 1;
+            for sent_len in [
+                0,
+                1,
+                header_len,
+                header_len + payload.len() / 2,
+                frame.len() - 1,
+            ] {
+                let (mut sender, receiver) = duplex(8192);
+                sender.write_all(&frame[..sent_len]).await.unwrap();
+                let mut reader = FrameReader::new(BufReader::new(receiver));
+                let started = Instant::now();
+
+                let err = tokio::time::timeout(
+                    DEFAULT_FRAME_TIMEOUT * 2,
+                    read_file_data_or_file_hash(&mut reader, TEST_LOCALE),
+                )
+                .await
+                .expect("control frame must time out even with its connection still open")
+                .unwrap_err();
+
+                assert_eq!(
+                    err.kind, ERROR_KIND_IO_ERROR,
+                    "{type_name}, {sent_len} bytes"
+                );
+                assert!(started.elapsed() >= DEFAULT_FRAME_TIMEOUT);
+                assert!(started.elapsed() < DEFAULT_FRAME_TIMEOUT * 2);
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_read_control_frame_shares_deadline_between_header_and_payload() {
+        for (type_name, payload) in TEST_CONTROL_PAYLOADS {
+            let frame = build_frame(type_name, payload);
+            let header_len = frame.len() - payload.len() - 1;
+            let (mut sender, receiver) = duplex(8192);
+            let mut reader = FrameReader::new(BufReader::new(receiver));
+
+            let read = async {
+                let started = Instant::now();
+                let result = tokio::time::timeout(
+                    DEFAULT_FRAME_TIMEOUT * 2,
+                    read_file_data_or_file_hash(&mut reader, TEST_LOCALE),
+                )
+                .await
+                .expect("partial payload progress must not renew the frame deadline");
+                (result, started.elapsed())
+            };
+            let send = async {
+                tokio::time::sleep(DEFAULT_FRAME_TIMEOUT / 2).await;
+                sender.write_all(&frame[..header_len]).await.unwrap();
+                tokio::time::sleep(DEFAULT_FRAME_TIMEOUT / 4).await;
+                sender
+                    .write_all(&frame[header_len..header_len + 1])
+                    .await
+                    .unwrap();
+                tokio::time::sleep(DEFAULT_FRAME_TIMEOUT / 2).await;
+                sender.write_all(&frame[header_len + 1..]).await.unwrap();
+            };
+
+            let ((result, elapsed), ()) = tokio::join!(read, send);
+
+            assert_eq!(result.unwrap_err().kind, ERROR_KIND_IO_ERROR, "{type_name}");
+            assert!(elapsed >= DEFAULT_FRAME_TIMEOUT);
+            assert!(elapsed < DEFAULT_FRAME_TIMEOUT + DEFAULT_FRAME_TIMEOUT / 4);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_read_complete_keepalives_renew_frame_deadline() {
+        let (mut sender, receiver) = duplex(8192);
+        let mut reader = FrameReader::new(BufReader::new(receiver));
+        let keepalive = build_frame("FileHashing", TEST_CONTROL_PAYLOADS[1].1);
+        let hash = build_frame("FileHash", TEST_CONTROL_PAYLOADS[0].1);
+        let started = Instant::now();
+
+        let read = read_file_data_or_file_hash(&mut reader, TEST_LOCALE);
+        let send = async {
+            for _ in 0..3 {
+                tokio::time::sleep(DEFAULT_FRAME_TIMEOUT * 3 / 4).await;
+                sender.write_all(&keepalive).await.unwrap();
+            }
+            tokio::time::sleep(DEFAULT_FRAME_TIMEOUT * 3 / 4).await;
+            sender.write_all(&hash).await.unwrap();
+        };
+        let (result, ()) = tokio::time::timeout(DEFAULT_FRAME_TIMEOUT * 5, async {
+            tokio::join!(read, send)
+        })
+        .await
+        .expect("complete keepalives must allow a long hashing phase");
+
+        assert!(matches!(
+            result.unwrap(),
+            ClientFileFrame::FileHash { blake3 } if blake3 == "abc123def456"
+        ));
+        assert!(started.elapsed() > DEFAULT_FRAME_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn test_read_control_frame_errors_remain_protocol_errors() {
+        for (type_name, payload) in TEST_CONTROL_PAYLOADS {
+            for terminator in [None, Some(b'!')] {
+                let mut frame = build_frame(type_name, payload);
+                frame.pop();
+                if let Some(terminator) = terminator {
+                    frame.push(terminator);
+                }
+                let mut reader = FrameReader::new(std::io::Cursor::new(frame));
+
+                let err = read_file_data_or_file_hash(&mut reader, TEST_LOCALE)
+                    .await
+                    .unwrap_err();
+
+                assert_eq!(err.kind, ERROR_KIND_PROTOCOL_ERROR);
+            }
+        }
+
+        let frame = build_frame("FileHash", b"not JSON");
+        let mut reader = FrameReader::new(std::io::Cursor::new(frame));
+        let err = read_file_data_or_file_hash(&mut reader, TEST_LOCALE)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, ERROR_KIND_PROTOCOL_ERROR);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_read_file_data_keeps_progress_timeout_for_long_streams() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = Arc::new(FileIndex::new(file_root, file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let (mut client, server) = duplex(8192);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            file_root,
+            file_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+        let data = b"hello";
+        let frame = build_frame("FileData", data);
+        let header_len = frame.len() - data.len() - 1;
+        client.write_all(&frame[..header_len]).await.unwrap();
+
+        let header = tokio::time::timeout(
+            DEFAULT_FRAME_TIMEOUT / 4,
+            read_file_data_or_file_hash(transfer.reader(), TEST_LOCALE),
+        )
+        .await
+        .expect("FileData dispatch must not wait for payload bytes")
+        .unwrap();
+        let ClientFileFrame::FileData(header) = header else {
+            panic!("expected FileData header");
+        };
+
+        let mut output = Vec::new();
+        let started = Instant::now();
+        let read = transfer.stream_file_from_client(&header, &mut output, DEFAULT_PROGRESS_TIMEOUT);
+        let send = async {
+            for byte in data {
+                tokio::time::sleep(DEFAULT_PROGRESS_TIMEOUT * 3 / 4).await;
+                client.write_all(&[*byte]).await.unwrap();
+            }
+            client.write_all(b"\n").await.unwrap();
+        };
+        let (result, ()) = tokio::time::timeout(DEFAULT_PROGRESS_TIMEOUT * 6, async {
+            tokio::join!(read, send)
+        })
+        .await
+        .expect("streaming must continue while each chunk makes progress");
+
+        assert_eq!(result.unwrap(), data.len() as u64);
+        assert_eq!(output, data);
+        assert!(started.elapsed() > DEFAULT_FRAME_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn test_upload_control_timeout_preserves_part_and_releases_reservations() {
+        for (type_name, payload) in TEST_CONTROL_PAYLOADS {
+            let temp_dir = TempDir::new().unwrap();
+            let file_root = temp_dir.path().canonicalize().unwrap();
+            let shared_root = file_root.join("shared");
+            let destination = shared_root.join("uploads [NEXUS-UL]");
+            fs::create_dir_all(&destination).await.unwrap();
+            let target = destination.join("file.txt");
+            let part = destination.join("file.txt.part");
+            let data = b"original prefix and remaining content";
+            let prefix = &data[..15];
+            fs::write(&part, prefix).await.unwrap();
+            let file_index = Arc::new(FileIndex::new(&file_root, &file_root));
+            let file_activity = Arc::new(FileActivityMap::new());
+            let registry = TransferRegistry::new();
+            let (client, server) = duplex(8192);
+            let (client_read, client_write) = tokio::io::split(client);
+            let (server_read, server_write) = tokio::io::split(server);
+            let mut client_reader = FrameReader::new(BufReader::new(client_read));
+            let mut client_writer = FrameWriter::new(client_write);
+            let mut transfer = make_upload_transfer(
+                server_read,
+                server_write,
+                &file_root,
+                &shared_root,
+                &file_index,
+                &file_activity,
+                &registry,
+            );
+
+            let server = handle_upload(
+                &mut transfer,
+                UploadParams {
+                    destination: "uploads [NEXUS-UL]".to_string(),
+                    file_count: 1,
+                    total_size: data.len() as u64,
+                    root: false,
+                },
+            );
+            let client = async {
+                let initial = read_server_message(&mut client_reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                assert!(matches!(
+                    initial,
+                    ServerMessage::FileUploadResponse { success: true, .. }
+                ));
+                send_client_message(
+                    &mut client_writer,
+                    &ClientMessage::FileStart {
+                        path: "file.txt".to_string(),
+                        size: data.len() as u64,
+                    },
+                )
+                .await
+                .unwrap();
+                let response = read_server_message(&mut client_reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                assert!(matches!(
+                    response,
+                    ServerMessage::FileStartResponse { size, blake3 }
+                        if size == prefix.len() as u64 && blake3 == Some(hash_bytes(prefix))
+                ));
+                assert_eq!(registry.snapshot().len(), 1);
+                for path in [&target, &part] {
+                    assert!(
+                        file_activity
+                            .try_enter_child_path(&file_root, path)
+                            .await
+                            .unwrap()
+                            .is_err()
+                    );
+                }
+
+                // Pause only after filesystem setup, so blocking file work cannot advance time.
+                tokio::time::pause();
+                let frame = build_frame(type_name, payload);
+                client_writer
+                    .get_mut()
+                    .write_all(&frame[..frame.len() - 1])
+                    .await
+                    .unwrap();
+                let response = read_server_message(&mut client_reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                tokio::time::resume();
+                assert!(matches!(
+                    response,
+                    ServerMessage::TransferComplete {
+                        success: false,
+                        error: Some(_),
+                        error_kind: Some(kind),
+                    } if kind == ERROR_KIND_IO_ERROR
+                ));
+                assert!(
+                    read_server_message(&mut client_reader)
+                        .await
+                        .unwrap()
+                        .is_none()
+                );
+            };
+            let (result, ()) = tokio::time::timeout(DEFAULT_FRAME_TIMEOUT * 3, async {
+                tokio::join!(server, client)
+            })
+            .await
+            .expect("upload must close after an incomplete control frame");
+            result.unwrap();
+            drop(transfer);
+
+            assert!(registry.snapshot().is_empty());
+            assert!(!fs::try_exists(&target).await.unwrap());
+            assert_eq!(fs::read(&part).await.unwrap(), prefix);
+            let _reservation = file_activity
+                .try_enter_directory_path(&file_root, &destination)
+                .await
+                .unwrap()
+                .expect("upload must release its file and directory reservations");
+        }
     }
 
     #[tokio::test]

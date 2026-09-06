@@ -472,12 +472,14 @@ If an I/O error prevents determining the existing upload size or hash, respond w
 | Connection              | 30 seconds | Normal   | TLS handshake must complete                                                   |
 | Download directory scan | 50 seconds | Normal   | Server-side scan before `FileDownloadResponse` must complete                  |
 | Download response wait  | 60 seconds | Normal   | Client wait for initial `FileDownloadResponse`                                |
-| Control-frame idle      | 30 seconds | Idle     | Time waiting for the next expected non-`FileData` frame to start              |
+| Control-frame idle      | 30 seconds | Idle     | Most control exchanges; upload data/hash waits use the 60-second deadline below |
 | Control-frame read      | 30-60 sec  | Normal   | Small JSON control replies use whole-frame waits; large initial scan gets 60s |
 | Control-frame write     | 30-60 sec  | Progress | Post-login control writes must make socket progress, not finish in one window |
 | `FileData` payload      | 60 seconds | Progress | Raw file bytes must keep flowing; the timeout resets on byte progress         |
 
 **Note:** Unlike port 7500, port 7501 does not allow indefinite idle connections.
+
+During an upload, after `FileStartResponse` and after `FileData`, waiting for the next frame and receiving its header share a 60-second deadline. For `FileHash` and `FileHashing`, that same deadline also covers the complete payload and trailing newline; receiving individual bytes does not extend it. On expiry, reject the upload with `TransferComplete { success: false, error_kind: "io_error" }` and close the transfer connection without accepting the file as complete. A complete `FileHashing` keepalive starts a fresh deadline for the next frame, allowing hashing to continue for longer than 60 seconds. `FileData` payloads retain their separate progress timeout rather than a fixed overall deadline.
 
 ## Permissions
 
