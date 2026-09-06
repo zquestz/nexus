@@ -283,7 +283,7 @@ where
             ReceiveFileError::Transfer(TransferError::conflict(err_upload_conflict(locale)))
         })?;
 
-    // Hasher pre-fed with existing .part for single-pass hashing; sends
+    // Hasher pre-fed with the existing completed file or .part for single-pass hashing; sends
     // FileHashing keepalives while hashing large existing files.
     let (existing_size, existing_hash, mut hasher, complete_file_exists) =
         check_upload_conflicts_and_get_state(
@@ -308,7 +308,9 @@ where
         } => {
             // Client says: zero-byte or already complete — no FileData coming.
             if file_size == 0 {
-                create_empty_file(&target_path, locale).await?;
+                if !complete_file_exists {
+                    create_empty_file(&target_path, locale).await?;
+                }
                 debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_EMPTY_FILE);
             } else {
                 let server_hash = hasher.finalize();
@@ -317,8 +319,10 @@ where
                         err_upload_hash_mismatch(locale),
                     )));
                 }
-                // Edge case: leftover .part alongside the complete file.
-                finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
+                // Never replace a verified completed file with an unrelated leftover .part.
+                if !complete_file_exists {
+                    finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
+                }
                 debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_ALREADY_COMPLETE);
             }
         }
@@ -630,10 +634,8 @@ async fn check_upload_conflicts_and_get_state<W>(
 where
     W: AsyncWriteExt + Unpin,
 {
-    // Complete file already exists, no .part.
-    if tokio::fs::try_exists(target_path).await.unwrap_or(false)
-        && !tokio::fs::try_exists(part_path).await.unwrap_or(false)
-    {
+    // A completed destination takes precedence over any leftover .part.
+    if tokio::fs::try_exists(target_path).await.unwrap_or(false) {
         let existing_metadata = tokio::fs::metadata(target_path).await.ok();
         let existing_len = existing_metadata.map(|m| m.len()).unwrap_or(0);
 
@@ -944,15 +946,19 @@ where
 mod tests {
     use super::super::test_helpers::make_authenticated_user;
     use super::*;
+    use std::fs::File as StdFile;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::Arc;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     use nexus_common::hash::StreamingHasher;
     use nexus_common::io::{
         read_transfer_server_message as read_server_message, send_client_message,
     };
-    use nexus_common::{ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_INVALID};
+    use nexus_common::{
+        ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH,
+        ERROR_KIND_INVALID,
+    };
     use tempfile::TempDir;
     use tokio::fs;
     use tokio::io::{AsyncWriteExt, BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
@@ -1012,6 +1018,312 @@ mod tests {
                 egress: None,
             },
         )
+    }
+
+    struct UploadTestResult {
+        start_state: Option<(u64, Option<String>)>,
+        completion: Result<(), String>,
+        target: Vec<u8>,
+        part: Option<Vec<u8>>,
+    }
+
+    fn hash_bytes(data: &[u8]) -> String {
+        let mut hasher = StreamingHasher::new();
+        hasher.update(data);
+        hasher.finalize()
+    }
+
+    // None sends only FileHash; Some(offset) sends FileData from that offset first.
+    async fn upload_with_existing_files(
+        existing_target: Option<&[u8]>,
+        existing_part: Option<&[u8]>,
+        upload_data: &[u8],
+        data_offset: Option<usize>,
+    ) -> UploadTestResult {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+        let target_path = destination.join("file.txt");
+        let part_path = destination.join("file.txt.part");
+        let target_modified = if let Some(data) = existing_target {
+            fs::write(&target_path, data).await.unwrap();
+            // An old timestamp makes even an empty-to-empty rewrite observable.
+            let file = StdFile::options().write(true).open(&target_path).unwrap();
+            file.set_modified(SystemTime::UNIX_EPOCH).unwrap();
+            Some(file.metadata().unwrap().modified().unwrap())
+        } else {
+            None
+        };
+        if let Some(data) = existing_part {
+            fs::write(&part_path, data).await.unwrap();
+        }
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+
+        let server = async {
+            handle_upload(
+                &mut transfer,
+                UploadParams {
+                    destination: "uploads [NEXUS-UL]".to_string(),
+                    file_count: 1,
+                    total_size: upload_data.len() as u64,
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let initial = read_server_message(&mut client_reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                initial,
+                ServerMessage::FileUploadResponse { success: true, .. }
+            ));
+
+            send_client_message(
+                &mut client_writer,
+                &ClientMessage::FileStart {
+                    path: "file.txt".to_string(),
+                    size: upload_data.len() as u64,
+                },
+            )
+            .await
+            .unwrap();
+
+            let mut start_state = None;
+            loop {
+                let response = read_server_message(&mut client_reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                match response {
+                    ServerMessage::FileHashing { .. } => continue,
+                    ServerMessage::FileStartResponse { size, blake3 } => {
+                        assert!(start_state.is_none(), "unexpected second FileStartResponse");
+                        start_state = Some((size, blake3));
+                        if let Some(offset) = data_offset {
+                            client_writer
+                                .get_mut()
+                                .write_all(&build_frame("FileData", &upload_data[offset..]))
+                                .await
+                                .unwrap();
+                        }
+                        send_client_message(
+                            &mut client_writer,
+                            &ClientMessage::FileHash {
+                                blake3: hash_bytes(upload_data),
+                            },
+                        )
+                        .await
+                        .unwrap();
+                    }
+                    ServerMessage::TransferComplete {
+                        success,
+                        error,
+                        error_kind,
+                    } => {
+                        assert_eq!(success, error.is_none());
+                        let completion = if success {
+                            assert!(error_kind.is_none());
+                            Ok(())
+                        } else {
+                            Err(error_kind.expect("failed upload must report an error kind"))
+                        };
+                        break (start_state, completion);
+                    }
+                    other => panic!("Unexpected upload response: {other:?}"),
+                }
+            }
+        };
+
+        let ((), (start_state, completion)) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(server, client)
+        })
+        .await
+        .expect("upload should complete");
+
+        if let Some(modified) = target_modified {
+            assert_eq!(
+                fs::metadata(&target_path)
+                    .await
+                    .unwrap()
+                    .modified()
+                    .unwrap(),
+                modified,
+                "existing completed destination must not be rewritten"
+            );
+        }
+
+        UploadTestResult {
+            start_state,
+            completion,
+            target: fs::read(&target_path).await.unwrap(),
+            part: if fs::try_exists(&part_path).await.unwrap() {
+                Some(fs::read(&part_path).await.unwrap())
+            } else {
+                None
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_rejects_hash_only_replacement_with_part_collision() {
+        let original = b"original";
+        let replacement = b"replaced";
+        assert_eq!(original.len(), replacement.len());
+
+        let result =
+            upload_with_existing_files(Some(original), Some(replacement), replacement, None).await;
+
+        assert_eq!(
+            result.start_state,
+            Some((original.len() as u64, Some(hash_bytes(original))))
+        );
+        assert_eq!(result.completion, Err(ERROR_KIND_HASH_MISMATCH.to_string()));
+        assert_eq!(result.target, original);
+        assert_eq!(result.part.as_deref(), Some(replacement.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn test_upload_rejects_streamed_replacement_with_part_collision() {
+        let original = b"original";
+        let replacement = b"replaced";
+        let part = &replacement[..3];
+        assert_eq!(original.len(), replacement.len());
+
+        for offset in [0, part.len()] {
+            let result =
+                upload_with_existing_files(Some(original), Some(part), replacement, Some(offset))
+                    .await;
+
+            assert_eq!(
+                result.start_state,
+                Some((original.len() as u64, Some(hash_bytes(original))))
+            );
+            assert_eq!(result.completion, Err(ERROR_KIND_EXISTS.to_string()));
+            assert_eq!(result.target, original);
+            assert_eq!(result.part.as_deref(), Some(part));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_rejects_zero_byte_truncation_with_part_collision() {
+        let original = b"original";
+        let part = b"leftover";
+
+        let result = upload_with_existing_files(Some(original), Some(part), b"", None).await;
+
+        assert!(result.start_state.is_none());
+        assert_eq!(result.completion, Err(ERROR_KIND_EXISTS.to_string()));
+        assert_eq!(result.target, original);
+        assert_eq!(result.part.as_deref(), Some(part.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn test_upload_rejects_different_size_with_part_collision() {
+        let original = b"original";
+        let replacement = b"a longer replacement";
+
+        let result =
+            upload_with_existing_files(Some(original), Some(replacement), replacement, None).await;
+
+        assert!(result.start_state.is_none());
+        assert_eq!(result.completion, Err(ERROR_KIND_EXISTS.to_string()));
+        assert_eq!(result.target, original);
+        assert_eq!(result.part.as_deref(), Some(replacement.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn test_upload_duplicate_preserves_completed_file_and_leftover_part() {
+        let original = b"original";
+        let part = b"leftover";
+
+        let result = upload_with_existing_files(Some(original), Some(part), original, None).await;
+
+        assert_eq!(
+            result.start_state,
+            Some((original.len() as u64, Some(hash_bytes(original))))
+        );
+        assert_eq!(result.completion, Ok(()));
+        assert_eq!(result.target, original);
+        assert_eq!(result.part.as_deref(), Some(part.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn test_upload_empty_duplicate_preserves_leftover_part() {
+        let part = b"leftover";
+
+        let result = upload_with_existing_files(Some(b""), Some(part), b"", None).await;
+
+        assert_eq!(result.start_state, Some((0, None)));
+        assert_eq!(result.completion, Ok(()));
+        assert!(result.target.is_empty());
+        assert_eq!(result.part.as_deref(), Some(part.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn test_upload_resumes_partial_file_without_completed_destination() {
+        let data = b"resumed file content";
+        let part = &data[..7];
+
+        let result = upload_with_existing_files(None, Some(part), data, Some(part.len())).await;
+
+        assert_eq!(
+            result.start_state,
+            Some((part.len() as u64, Some(hash_bytes(part))))
+        );
+        assert_eq!(result.completion, Ok(()));
+        assert_eq!(result.target, data);
+        assert!(result.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_finalizes_complete_part_without_completed_destination() {
+        let data = b"completed partial file";
+
+        let result = upload_with_existing_files(None, Some(data), data, None).await;
+
+        assert_eq!(
+            result.start_state,
+            Some((data.len() as u64, Some(hash_bytes(data))))
+        );
+        assert_eq!(result.completion, Ok(()));
+        assert_eq!(result.target, data);
+        assert!(result.part.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_creates_new_empty_file() {
+        let result = upload_with_existing_files(None, None, b"", None).await;
+
+        assert_eq!(result.start_state, Some((0, None)));
+        assert_eq!(result.completion, Ok(()));
+        assert!(result.target.is_empty());
+        assert!(result.part.is_none());
     }
 
     #[tokio::test]
