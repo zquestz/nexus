@@ -11,6 +11,58 @@
 | Connection Monitor egress visibility | Medium | See feature spec below        |
 | Windows arm64 linear AEC output      | Low    | See feature spec below        |
 
+## Audit Follow-Ups
+
+Deferred items from the code audit. Confirmed fixes and open investigations are
+tracked separately below.
+
+### Confirmed Fixes
+
+- [ ] **Preserve file-URI request ownership.** A delayed listing response can
+  navigate through the newly active tab or download through the newly active
+  connection. Carry the originating connection and tab IDs through the entire
+  continuation, and ignore it if its origin no longer exists.
+  Code: `nexus-client/src/handlers/network/messages/files.rs`.
+  Verification: switch tabs and connections, or close the originating tab,
+  before delivering the response; no action may be redirected to another origin.
+
+- [ ] **Correct last-admin protection for disabled admins.** With one enabled
+  admin and another disabled admin, an unrelated edit to the disabled account
+  can be rejected. Apply enabled-admin protection only to updates that would
+  remove an enabled administrator, retaining atomic authorization and last-admin
+  safeguards.
+  Code: `nexus-server/src/db/sql.rs` (`SQL_UPDATE_USER`) and
+  `nexus-server/src/db/users.rs`.
+  Verification: password and name changes to the disabled admin succeed, while
+  disabling or demoting the last enabled admin remains blocked.
+
+- [ ] **Try alternate DNS addresses for direct connections.** BBS and transfer
+  connections currently select only the first resolved address. Try the resolved
+  alternatives under a bounded overall connection deadline.
+  Code: `nexus-client/src/network/tls.rs` and
+  `nexus-client/src/transfers/executor/connection.rs`.
+  Verification: an unavailable first address followed by a reachable address
+  connects successfully; all-failure cases respect the overall deadline.
+
+- [ ] **Remove workspace formatting from the client build script.** Building
+  currently invokes `cargo fmt --all`, which can modify unrelated source files.
+  Keep formatting an explicit developer or CI step rather than a build side
+  effect.
+  Code: `nexus-client/build.rs`.
+  Verification: building leaves tracked source unchanged and still generates
+  the required icons and platform resources correctly.
+
+### Investigation
+
+- [ ] **Assess tracker password-verification concurrency.** This is an
+  unconfirmed resource-pressure concern, not an established defect. Examine
+  aggregate Argon2 CPU and memory use across concurrent connections, accounting
+  for existing connection limits and rate limits, before deciding whether a
+  shared concurrency gate is needed.
+  Code: `nexus-tracker/src/auth.rs`.
+  Verification: measure peak concurrent password checks and resource use under
+  the current limits, including responsiveness of legitimate authentication.
+
 ## Feature Specs
 
 ### Boards
