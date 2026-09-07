@@ -21,13 +21,13 @@ pub use persistence::TransferManager;
 pub use subscription::{request_cancel, transfer_subscription, update_registry_fingerprint};
 pub use types::{Transfer, TransferDirection, TransferStatus};
 
-/// A download name must remain one normal component on the current platform.
+/// A download name must be one normal component without control characters.
 pub(crate) fn is_safe_download_name(name: &str) -> bool {
     let mut components = Path::new(name).components();
     // Match the original name too: components() normalizes "name/" and "name/.".
     if !matches!(components.next(), Some(Component::Normal(component)) if component == name)
         || components.next().is_some()
-        || name.contains('\0')
+        || name.chars().any(char::is_control)
     {
         return false;
     }
@@ -36,7 +36,7 @@ pub(crate) fn is_safe_download_name(name: &str) -> bool {
     if cfg!(windows)
         && (name
             .chars()
-            .any(|c| c < ' ' || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+            .any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
             || name.ends_with([' ', '.'])
             || is_windows_reserved_name(name))
     {
@@ -105,7 +105,7 @@ mod tests {
             "Uploads [NEXUS-UL]",
             "COM10.txt",
             "CONSOLE",
-            "file\u{85}.txt",
+            "file\u{200d}.txt",
             "\u{6587}\u{4ef6}.txt",
             "donn\u{e9}es.zip",
         ] {
@@ -130,6 +130,15 @@ mod tests {
     }
 
     #[test]
+    fn test_download_names_reject_control_characters_on_every_platform() {
+        for control in ('\0'..='\u{1f}').chain('\u{7f}'..='\u{9f}') {
+            for name in [control.to_string(), format!("file{control}.txt")] {
+                assert!(!is_safe_download_name(&name), "{name:?}");
+            }
+        }
+    }
+
+    #[test]
     fn test_windows_filename_restrictions_only_apply_on_windows() {
         for name in [
             "...",
@@ -144,8 +153,6 @@ mod tests {
             "\\\\server\\share",
             "\\\\?\\C:\\file",
             "file:stream",
-            "file\n.txt",
-            "file\t.txt",
             "file<name",
             "file>name",
             "file\"name",

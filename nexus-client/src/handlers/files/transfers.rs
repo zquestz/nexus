@@ -533,7 +533,6 @@ mod tests {
                 "...",
                 "CON.txt",
                 "COM\u{b9}.txt",
-                "file\n.txt",
             ] {
                 for is_directory in [false, true] {
                     let destination = download_destination(
@@ -725,6 +724,13 @@ mod tests {
             "folder/..",
             "folder/..//",
             "folder/file\0.txt",
+            "folder/file\n.txt",
+            "folder/file\t.txt",
+            "folder/file\r.txt",
+            "folder/file\u{1b}.txt",
+            "folder/file\u{7f}.txt",
+            "folder/file\u{85}.txt",
+            "folder/file\u{9f}.txt",
         ];
         let windows_unsafe_paths = [
             "folder/.. ",

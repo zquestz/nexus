@@ -264,7 +264,7 @@ pub fn is_cancelled(cancel_flag: &Option<Arc<AtomicBool>>) -> bool {
         .is_some_and(|flag| flag.load(Ordering::SeqCst))
 }
 
-/// Validate a relative FileStart path using native filename rules.
+/// Validate a relative FileStart path using native filename rules and rejecting controls.
 pub fn is_safe_path(path: &str) -> bool {
     if path.is_empty() || path.starts_with('/') {
         return false;
@@ -386,7 +386,6 @@ mod tests {
         assert!(is_safe_path("Documents/report.pdf"));
         assert!(is_safe_path("dir//file.txt"));
         assert!(is_safe_path("dir/file.txt/"));
-        assert!(is_safe_path("file\x7f.txt"));
     }
 
     #[test]
@@ -410,10 +409,18 @@ mod tests {
     }
 
     #[test]
-    fn test_is_safe_path_rejects_null_bytes() {
-        assert!(!is_safe_path("foo\0bar"));
-        assert!(!is_safe_path("dir/file\0.txt"));
-        assert!(!is_safe_path("\0"));
+    fn test_is_safe_path_rejects_control_characters_at_every_depth() {
+        for control in ('\0'..='\u{1f}').chain('\u{7f}'..='\u{9f}') {
+            for path in [
+                control.to_string(),
+                format!("file{control}.txt"),
+                format!("dir{control}/album/file.txt"),
+                format!("dir/album{control}/file.txt"),
+                format!("dir/album/file{control}.txt"),
+            ] {
+                assert!(!is_safe_path(&path), "{path:?}");
+            }
+        }
     }
 
     #[test]
@@ -432,11 +439,6 @@ mod tests {
             "dir/file.",
             "dir/file ",
             "dir/file?name",
-            "foo\x01bar",
-            "dir\x1f/file.txt",
-            "\t",
-            "\n",
-            "\r",
         ] {
             assert_eq!(is_safe_path(path), !cfg!(windows), "{path:?}");
         }
