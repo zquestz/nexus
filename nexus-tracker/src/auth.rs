@@ -5,17 +5,19 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use argon2::password_hash::{PasswordHash, SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use nexus_common::secure_file;
 use nexus_common::validators::MAX_PASSWORD_LENGTH;
+use tokio::sync::Semaphore;
 
 use crate::args::PasswordKind;
 use crate::constants::{
-    ERR_DELETE_PASSWORD_FILE, ERR_HASH_PASSWORD, ERR_PARSE_PASSWORD_HASH, ERR_PASSWORD_EMPTY,
-    ERR_PASSWORD_TOO_LONG, ERR_READ_PASSWORD_FILE, ERR_WRITE_PASSWORD_FILE, LISTING_HASH_FILENAME,
-    REGISTRATION_HASH_FILENAME,
+    ERR_ARGON2_SEMAPHORE_CLOSED, ERR_DELETE_PASSWORD_FILE, ERR_HASH_PASSWORD,
+    ERR_PARSE_PASSWORD_HASH, ERR_PASSWORD_EMPTY, ERR_PASSWORD_TOO_LONG, ERR_READ_PASSWORD_FILE,
+    ERR_WRITE_PASSWORD_FILE, LISTING_HASH_FILENAME, REGISTRATION_HASH_FILENAME,
 };
 
 /// Path to the hash file for `kind` under `data_dir`.
@@ -116,18 +118,44 @@ pub fn verify_password(plain: &str, phc_hash: &str) -> Result<bool, String> {
 /// - `Some(_)`, `Some(p)` → pass iff `p` verifies. A malformed stored hash also fails — never
 ///   accept unauthenticated requests.
 ///
-/// Argon2id verification (~50–500ms) runs on the blocking pool so a flood can't pin tokio workers.
+/// Argon2id verification runs on the blocking pool, bounded by the daemon's shared
+/// permits. Excess checks wait asynchronously without submitting blocking work.
 #[must_use]
-pub async fn check_password(provided: Option<&str>, stored_hash: Option<&str>) -> bool {
+pub async fn check_password(
+    provided: Option<&str>,
+    stored_hash: Option<&str>,
+    permits: &Arc<Semaphore>,
+) -> bool {
+    check_password_with_verifier(provided, stored_hash, permits, verify_password).await
+}
+
+async fn check_password_with_verifier<F>(
+    provided: Option<&str>,
+    stored_hash: Option<&str>,
+    permits: &Arc<Semaphore>,
+    verify: F,
+) -> bool
+where
+    F: FnOnce(&str, &str) -> Result<bool, String> + Send + 'static,
+{
     match (provided, stored_hash) {
         (_, None) => true,
         (None, Some(_)) => false,
         (Some(plain), Some(hash)) => {
+            let permit = Arc::clone(permits)
+                .acquire_owned()
+                .await
+                .expect(ERR_ARGON2_SEMAPHORE_CLOSED);
             let plain = plain.to_owned();
             let hash = hash.to_owned();
-            tokio::task::spawn_blocking(move || verify_password(&plain, &hash).unwrap_or(false))
-                .await
-                .unwrap_or(false)
+            tokio::task::spawn_blocking(move || {
+                // Cancelling the caller cannot stop a running blocking task. Keep
+                // its capacity reserved until verification finishes or unwinds.
+                let _permit = permit;
+                verify(&plain, &hash).unwrap_or(false)
+            })
+            .await
+            .unwrap_or(false)
         }
     }
 }
@@ -145,6 +173,220 @@ fn write_hash_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::{Context, Waker};
+    use std::time::Duration;
+
+    use tokio::sync::oneshot;
+    use tokio::time::timeout;
+
+    use crate::constants::MAX_CONCURRENT_ARGON2_OPS;
+
+    const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+    fn assert_pending(future: Pin<&mut impl Future>) {
+        assert!(
+            future
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+    }
+
+    #[tokio::test]
+    async fn verification_concurrency_is_bounded_and_waiters_resume() {
+        let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_ARGON2_OPS));
+        let running = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let mut checks = Vec::new();
+        let mut releases = Vec::new();
+        let mut last_started = None;
+
+        for index in 0..=MAX_CONCURRENT_ARGON2_OPS {
+            let (started_tx, started_rx) = oneshot::channel();
+            let (release_tx, release_rx) = oneshot::channel();
+            let running = Arc::clone(&running);
+            let peak = Arc::clone(&peak);
+            let mut check = Box::pin(check_password_with_verifier(
+                Some("secret"),
+                Some("hash"),
+                &permits,
+                move |plain, hash| {
+                    assert_eq!((plain, hash), ("secret", "hash"));
+                    let active = running.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(active, Ordering::SeqCst);
+                    let _ = started_tx.send(());
+                    // Dropping the sender also unblocks cleanup after a failed assertion.
+                    let _ = release_rx.blocking_recv();
+                    running.fetch_sub(1, Ordering::SeqCst);
+                    Ok(true)
+                },
+            ));
+            assert_pending(check.as_mut());
+            releases.push(release_tx);
+            checks.push(check);
+
+            if index < MAX_CONCURRENT_ARGON2_OPS {
+                timeout(TEST_TIMEOUT, started_rx).await.unwrap().unwrap();
+                assert_eq!(
+                    permits.available_permits(),
+                    MAX_CONCURRENT_ARGON2_OPS - index - 1
+                );
+            } else {
+                last_started = Some(started_rx);
+            }
+        }
+
+        assert_eq!(running.load(Ordering::SeqCst), MAX_CONCURRENT_ARGON2_OPS);
+        releases.remove(0).send(()).unwrap();
+        assert!(timeout(TEST_TIMEOUT, checks.remove(0)).await.unwrap());
+        assert_pending(checks.last_mut().unwrap().as_mut());
+        timeout(TEST_TIMEOUT, last_started.unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(running.load(Ordering::SeqCst), MAX_CONCURRENT_ARGON2_OPS);
+
+        for release in releases {
+            release.send(()).unwrap();
+        }
+        for check in checks {
+            assert!(timeout(TEST_TIMEOUT, check).await.unwrap());
+        }
+        assert_eq!(running.load(Ordering::SeqCst), 0);
+        assert_eq!(peak.load(Ordering::SeqCst), MAX_CONCURRENT_ARGON2_OPS);
+        assert_eq!(permits.available_permits(), MAX_CONCURRENT_ARGON2_OPS);
+    }
+
+    #[tokio::test]
+    async fn cancelling_caller_keeps_running_verification_reserved() {
+        let permits = Arc::new(Semaphore::new(1));
+        let (started_tx, started_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let mut check = Box::pin(check_password_with_verifier(
+            Some("secret"),
+            Some("hash"),
+            &permits,
+            move |_, _| {
+                let _ = started_tx.send(());
+                let _ = release_rx.blocking_recv();
+                Ok(true)
+            },
+        ));
+        assert_pending(check.as_mut());
+        timeout(TEST_TIMEOUT, started_rx).await.unwrap().unwrap();
+
+        drop(check);
+        assert_eq!(permits.available_permits(), 0);
+        let mut next = Box::pin(check_password_with_verifier(
+            Some("secret"),
+            Some("hash"),
+            &permits,
+            |_, _| Ok(true),
+        ));
+        assert_pending(next.as_mut());
+
+        release_tx.send(()).unwrap();
+        assert!(timeout(TEST_TIMEOUT, next).await.unwrap());
+        assert_eq!(permits.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn cancelling_waiter_never_submits_verification() {
+        let permits = Arc::new(Semaphore::new(1));
+        let held = Arc::clone(&permits).acquire_owned().await.unwrap();
+        let (started_tx, started_rx) = oneshot::channel();
+        let mut check = Box::pin(check_password_with_verifier(
+            Some("secret"),
+            Some("hash"),
+            &permits,
+            move |_, _| {
+                let _ = started_tx.send(());
+                Ok(true)
+            },
+        ));
+        assert_pending(check.as_mut());
+        drop(check);
+        assert!(timeout(TEST_TIMEOUT, started_rx).await.unwrap().is_err());
+        assert_eq!(permits.available_permits(), 0);
+
+        drop(held);
+        let next =
+            check_password_with_verifier(Some("secret"), Some("hash"), &permits, |_, _| Ok(true));
+        assert!(timeout(TEST_TIMEOUT, next).await.unwrap());
+        assert_eq!(permits.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn open_and_missing_password_checks_bypass_saturated_permits() {
+        let permits = Arc::new(Semaphore::new(1));
+        let _held = Arc::clone(&permits).acquire_owned().await.unwrap();
+        for (provided, stored, expected) in [
+            (None, None, true),
+            (Some("ignored"), None, true),
+            (None, Some("hash"), false),
+        ] {
+            assert_eq!(
+                timeout(TEST_TIMEOUT, check_password(provided, stored, &permits))
+                    .await
+                    .unwrap(),
+                expected,
+            );
+            assert_eq!(permits.available_permits(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn verification_failures_release_permits_and_fail_closed() {
+        let permits = Arc::new(Semaphore::new(1));
+        let failed =
+            check_password_with_verifier(Some("secret"), Some("hash"), &permits, |_, _| {
+                Err("verify error".to_string())
+            });
+        assert!(!timeout(TEST_TIMEOUT, failed).await.unwrap());
+        assert_eq!(permits.available_permits(), 1);
+
+        let panicked =
+            check_password_with_verifier(Some("secret"), Some("hash"), &permits, |_, _| {
+                panic!("verify panic")
+            });
+        assert!(!timeout(TEST_TIMEOUT, panicked).await.unwrap());
+        assert_eq!(permits.available_permits(), 1);
+
+        let next =
+            check_password_with_verifier(Some("secret"), Some("hash"), &permits, |_, _| Ok(true));
+        assert!(timeout(TEST_TIMEOUT, next).await.unwrap());
+        assert_eq!(permits.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn bounded_password_check_preserves_argon2_results() {
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(b"secret", &salt)
+            .unwrap()
+            .to_string();
+        let permits = Arc::new(Semaphore::new(1));
+
+        for (plain, stored, expected) in [
+            ("secret", hash.as_str(), true),
+            ("wrong", hash.as_str(), false),
+            ("", hash.as_str(), false),
+            ("secret", "not a PHC hash", false),
+        ] {
+            assert_eq!(
+                timeout(
+                    TEST_TIMEOUT,
+                    check_password(Some(plain), Some(stored), &permits)
+                )
+                .await
+                .unwrap(),
+                expected,
+            );
+            assert_eq!(permits.available_permits(), 1);
+        }
+    }
 
     #[test]
     fn test_hash_path_uses_kind_specific_filename() {

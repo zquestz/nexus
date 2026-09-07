@@ -27,6 +27,13 @@ pub const REGISTRATION_HASH_FILENAME: &str = "registration.hash";
 /// Presence of this file gates `TrackerServerList`; absence means open listing.
 pub const LISTING_HASH_FILENAME: &str = "listing.hash";
 
+/// Shared limit for registration, refresh, and listing password verifications.
+/// Excess callers wait asynchronously before submitting blocking-pool work.
+pub const MAX_CONCURRENT_ARGON2_OPS: usize = 8;
+
+/// Panics — the daemon's password-verification semaphore is never closed.
+pub const ERR_ARGON2_SEMAPHORE_CLOSED: &str = "Argon2 semaphore unexpectedly closed";
+
 pub const ERR_HASH_PASSWORD: &str = "Failed to hash password: ";
 pub const ERR_WRITE_PASSWORD_FILE: &str = "Failed to write password file: ";
 pub const ERR_READ_PASSWORD_FILE: &str = "Failed to read password file: ";

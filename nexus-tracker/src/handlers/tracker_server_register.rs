@@ -458,7 +458,13 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    if !check_password(password.as_deref(), stored_hash.as_deref()).await {
+    if !check_password(
+        password.as_deref(),
+        stored_hash.as_deref(),
+        &state.password_verification_permits,
+    )
+    .await
+    {
         if gated {
             state
                 .auth_failure_rate_limiter
@@ -657,19 +663,29 @@ where
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for `validate_address`. These reach what the
-    //! integration harness can't: a public peer IP needs a synthetic
-    //! `SocketAddr` (the harness is TLS-over-loopback, where the LAN
-    //! bypass swallows everything), and `MockResolver` makes DNS
-    //! outcomes deterministic.
+    //! Handler and address-validation tests. Synthetic public peers bypass
+    //! the integration harness's loopback-only restriction, and `MockResolver`
+    //! makes DNS outcomes deterministic.
 
     use super::*;
+    use argon2::password_hash::{SaltString, rand_core::OsRng};
+    use argon2::{Argon2, PasswordHasher};
     use async_trait::async_trait;
+    use nexus_common::framing::FrameReader;
+    use nexus_common::io::{
+        read_tracker_server_message_with_idle_progress_timeout,
+        read_tracker_server_message_with_progress_timeout,
+    };
     use std::collections::HashMap;
+    use std::future::Future;
     use std::pin::Pin;
     use std::sync::{Arc, Mutex};
-    use std::task::{Context, Poll};
+    use std::task::{Context, Poll, Waker};
+    use std::time::Duration;
+    use tokio::time::timeout;
 
+    use crate::constants::MAX_CONCURRENT_ARGON2_OPS;
+    use crate::handlers::tracker_server_list::{ListParams, handle_tracker_server_list};
     use crate::registry::Registry;
 
     /// In-memory resolver keyed by `host → result`. Hosts not in the map
@@ -777,6 +793,162 @@ mod tests {
         resolver: &dyn Resolver,
     ) -> Result<(), &'static str> {
         validate_address(address, peer_ip, resolver, RegisterMode::Initial).await
+    }
+
+    #[tokio::test]
+    async fn registration_listing_and_refresh_share_verification_capacity() {
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(b"secret", &salt)
+            .unwrap()
+            .to_string();
+        let state = Arc::new(TrackerState::new(
+            Registry::new(0, 1),
+            Some(hash.clone()),
+            Some(hash),
+            300,
+            0,
+            1,
+            Duration::ZERO,
+        ));
+        assert_eq!(state.password_verification_permits.available_permits(), 8);
+        let mut held = Arc::clone(&state.password_verification_permits)
+            .acquire_many_owned(MAX_CONCURRENT_ARGON2_OPS as u32)
+            .await
+            .unwrap();
+        let peer_addr = SocketAddr::new(public_peer(), 12345);
+        let (register_client, register_server) = tokio::io::duplex(8192);
+        let (list_client, list_server) = tokio::io::duplex(8192);
+        let mut register_writer = FrameWriter::new(register_server);
+        let mut list_writer = FrameWriter::new(list_server);
+        let mut params = valid_register_params("Bounded");
+        params.password = Some("secret".to_string());
+        let mut register = Box::pin(handle_initial_register(
+            params,
+            &state,
+            &mut register_writer,
+            peer_addr,
+        ));
+        assert!(
+            register
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+
+        // The queued handler must reserve the released permit even while unpolled.
+        // If it bypassed the shared gate, this permit would remain available.
+        drop(held.split(1).unwrap());
+        assert_eq!(state.password_verification_permits.available_permits(), 0);
+        let mut list = Box::pin(handle_tracker_server_list(
+            ListParams {
+                password: Some("secret".to_string()),
+                locale: "en".to_string(),
+                version: "0.8.6".to_string(),
+            },
+            &state,
+            &mut list_writer,
+            peer_addr,
+        ));
+        assert!(
+            list.as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+
+        let outcome = timeout(Duration::from_secs(5), register)
+            .await
+            .unwrap()
+            .unwrap();
+        let InitialRegisterOutcome::Registered(guard) = outcome else {
+            panic!("queued registration should succeed");
+        };
+        // Registration's permit has passed to the listing, not a separate pool.
+        assert_eq!(state.password_verification_permits.available_permits(), 0);
+        timeout(Duration::from_secs(5), list)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.password_verification_permits.available_permits(), 1);
+
+        let mut register_reader = FrameReader::new(register_client);
+        let response =
+            read_tracker_server_message_with_progress_timeout(&mut register_reader, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+        assert!(matches!(
+            response,
+            TrackerServerMessage::TrackerServerRegisterResponse {
+                success: true,
+                error: None,
+                error_kind: None,
+                ..
+            }
+        ));
+        let mut list_reader = FrameReader::new(list_client);
+        let response =
+            read_tracker_server_message_with_idle_progress_timeout(&mut list_reader, None, None)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+        let TrackerServerMessage::TrackerServerListResponse {
+            success,
+            servers,
+            error,
+            error_kind,
+        } = response
+        else {
+            panic!("expected list response");
+        };
+        assert!(success);
+        assert!(error.is_none());
+        assert!(error_kind.is_none());
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "Bounded");
+
+        let last = Arc::clone(&state.password_verification_permits)
+            .acquire_owned()
+            .await
+            .unwrap();
+        let mut params = valid_register_params("Bounded");
+        params.password = Some("secret".to_string());
+        params.user_count = 2;
+        let mut refresh = Box::pin(handle_refresh(
+            params,
+            guard.id(),
+            &state,
+            &mut register_writer,
+            peer_addr,
+        ));
+        assert!(
+            refresh
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+        drop(last);
+        assert_eq!(state.password_verification_permits.available_permits(), 0);
+        assert_eq!(
+            timeout(Duration::from_secs(5), refresh)
+                .await
+                .unwrap()
+                .unwrap(),
+            RefreshOutcome::Refreshed,
+        );
+        assert_eq!(state.registry.lock().unwrap().list()[0].user_count, 2);
+        assert_eq!(state.password_verification_permits.available_permits(), 1);
+        assert_eq!(
+            state.auth_failure_rate_limiter.check_only(peer_addr.ip()),
+            RateCheck::Allowed
+        );
+        drop(held);
+        assert_eq!(
+            state.password_verification_permits.available_permits(),
+            MAX_CONCURRENT_ARGON2_OPS
+        );
     }
 
     #[tokio::test]

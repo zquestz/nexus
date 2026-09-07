@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+use tokio::sync::Semaphore;
 use tracing::{error, info};
 
 use crate::args::PasswordKind;
@@ -12,7 +13,7 @@ use crate::auth;
 use crate::constants::{
     ERR_LISTING_HASH_LOCK_POISONED, ERR_PASSWORD_HASH_LOCK_POISONED,
     ERR_REGISTRATION_HASH_LOCK_POISONED, ERR_REGISTRY_MUTEX_POISONED, LOG_PASSWORD_RELOAD_FAILED,
-    LOG_PASSWORD_RELOADED,
+    LOG_PASSWORD_RELOADED, MAX_CONCURRENT_ARGON2_OPS,
 };
 use crate::registry::{ConnectionId, Registry};
 use crate::resolver::{Resolver, TokioResolver};
@@ -42,6 +43,10 @@ pub struct TrackerState {
     /// Debited only on failed password verify; over-limit attempts get
     /// `rate_limited`.
     pub auth_failure_rate_limiter: RateLimiter,
+
+    /// Shared across both password kinds and all TCP / WebSocket connections.
+    /// Each blocking verifier owns its permit until the work actually finishes.
+    pub password_verification_permits: Arc<Semaphore>,
 
     /// Per-entry minimum between accepted refreshes
     /// (`Duration::ZERO` disables it; tests use this).
@@ -108,6 +113,7 @@ impl TrackerState {
             connection_rate_limiter: RateLimiter::per_minute(connection_rate).key_ipv6_by_prefix(),
             auth_failure_rate_limiter: RateLimiter::per_minute(auth_failure_rate)
                 .key_ipv6_by_prefix(),
+            password_verification_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_ARGON2_OPS)),
             refresh_floor,
             resolver: Box::new(TokioResolver),
         }

@@ -4573,7 +4573,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-tracker"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "argon2",
  "async-trait",

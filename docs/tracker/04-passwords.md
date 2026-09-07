@@ -130,7 +130,7 @@ The window between step 1 and step 2 is the only time the on-disk and in-memory 
 - The old in-memory hash still authenticates registrants/listers.
 - The new on-disk hash is dormant.
 
-Once SIGHUP fires, only the new hash is honored. Existing registered servers will start failing their next refresh until they're reconfigured with the new password — plan the rotation around your operator population.
+After a successful SIGHUP reload, new authentication requests use the new hash. Requests already waiting for or running password verification finish against their original hash snapshot. Existing registered servers will start failing their next refresh until they're reconfigured with the new password — plan the rotation around your operator population.
 
 ## Authentication Failure Rate Limiting
 
@@ -139,6 +139,14 @@ The tracker rate-limits failed authentication attempts per IPv4 address or IPv6 
 Successful auths do **not** debit the bucket. Only failures (wrong password, missing password on a gated flow) count.
 
 Tune the limit with `--rate-auth-failures` (see [Configuration → Rate Limiting](02-configuration.md#rate-limiting)). Setting it to `0` disables the limiter entirely (useful for development; not recommended for production).
+
+## Password Verification Concurrency
+
+The tracker allows at most **8 simultaneous Argon2 password verifications** across registration, refresh, and listing requests, shared by all TCP and WebSocket connections. This fixed limit remains active even when the per-source rate limiters are disabled.
+
+When all slots are occupied, additional checks wait asynchronously before starting verification. Waiting does not count as a failed password attempt or produce a busy rejection; authentication may take longer under contention. Open flows and missing-password checks do not run Argon2 and do not wait for a slot.
+
+The limit bounds concurrent verification work, not the number of waiting connections or the total authentication delay. Existing connection and authentication-failure rate limits still apply. Sustained overload can delay authentication enough for connecting clients or servers to time out.
 
 ## Verifying Current State
 

@@ -127,7 +127,13 @@ where
         )
         .await;
     }
-    if !check_password(password.as_deref(), stored_hash.as_deref()).await {
+    if !check_password(
+        password.as_deref(),
+        stored_hash.as_deref(),
+        &state.password_verification_permits,
+    )
+    .await
+    {
         if gated {
             state
                 .auth_failure_rate_limiter

@@ -11,21 +11,6 @@
 | Connection Monitor egress visibility | Medium | See feature spec below        |
 | Windows arm64 linear AEC output      | Low    | See feature spec below        |
 
-## Audit Follow-Ups
-
-Deferred items from the code audit.
-
-### Investigation
-
-- [ ] **Assess tracker password-verification concurrency.** This is an
-  unconfirmed resource-pressure concern, not an established defect. Examine
-  aggregate Argon2 CPU and memory use across concurrent connections, accounting
-  for existing connection limits and rate limits, before deciding whether a
-  shared concurrency gate is needed.
-  Code: `nexus-tracker/src/auth.rs`.
-  Verification: measure peak concurrent password checks and resource use under
-  the current limits, including responsiveness of legitimate authentication.
-
 ## Feature Specs
 
 ### Boards
