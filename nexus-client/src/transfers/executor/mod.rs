@@ -531,7 +531,16 @@ where
                 transferred_bytes += file_size;
             }
             ServerFileFrame::FileData(header) => {
-                // Server is sending file data — stream to .part file
+                // Complete and zero-byte files require FileHash alone. The hasher
+                // may describe the destination, not the .part we would promote.
+                if local_size == file_size {
+                    return Err(send_failed_event(
+                        event_tx,
+                        id,
+                        TransferError::ProtocolError,
+                        None,
+                    ));
+                }
 
                 // Create parent directories if needed
                 if let Some(parent) = local_file_path.parent() {
@@ -1770,6 +1779,78 @@ mod tests {
             events.last(),
             Some(TransferEvent::Completed { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn empty_file_data_preserves_completed_destination() {
+        let payload = b"complete";
+        for unrelated in [None, Some(b"unrelated progress".as_slice())] {
+            let temp = tempfile::tempdir().unwrap();
+            let destination = temp.path().join("file.bin");
+            let part = destination.with_extension("bin.part");
+            tokio::fs::write(&destination, payload).await.unwrap();
+            if let Some(bytes) = unrelated {
+                tokio::fs::write(&part, bytes).await.unwrap();
+            }
+            let transfer = Transfer::new_download(
+                test_connection_info(),
+                "file.bin".into(),
+                false,
+                false,
+                destination.clone(),
+                None,
+                0,
+            );
+
+            // The peer echoes the completed file's hash after an unexpected empty frame.
+            let (result, events, outgoing) = execute_download_with_file(
+                &transfer,
+                "file.bin",
+                payload.len() as u64,
+                Some(b""),
+                hash_bytes(payload),
+            )
+            .await;
+
+            assert_eq!(tokio::fs::read(&destination).await.unwrap(), payload);
+            if let Some(bytes) = unrelated {
+                assert_eq!(tokio::fs::read(&part).await.unwrap(), bytes);
+            } else {
+                assert!(!part.exists(), "rejection must not create a partial file");
+            }
+            assert_download_failed(result, &events, TransferError::ProtocolError);
+            assert_download_resume_response(
+                &outgoing,
+                payload.len() as u64,
+                Some(hash_bytes(payload)),
+            )
+            .await;
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_file_data_rejects_zero_byte_download_before_file_creation() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-created");
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "empty.bin".into(),
+            false,
+            false,
+            parent.join("empty.bin"),
+            None,
+            0,
+        );
+
+        let (result, events, outgoing) =
+            execute_download_with_file(&transfer, "empty.bin", 0, Some(b""), hash_bytes(b"")).await;
+
+        assert!(
+            !parent.exists(),
+            "rejection must precede filesystem changes"
+        );
+        assert_download_failed(result, &events, TransferError::ProtocolError);
+        assert_download_resume_response(&outgoing, 0, None).await;
     }
 
     #[tokio::test]
