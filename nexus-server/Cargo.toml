@@ -21,11 +21,11 @@ serde_json = "1.0"
 socket2 = "0.6"
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 chrono = "0.4"
-dirs = "6.0"
+dirs = "7.0"
 argon2 = { version = "0.5", features = ["std"] }
 strum = { version = "0.28", features = ["derive"] }
 tokio-rustls = "0.26"
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 futures-util = "0.3"
 sha2 = "0.11"
 fluent = "0.17"
@@ -33,7 +33,7 @@ fluent-bundle = "0.16"
 fs4 = { version = "1", features = ["sync"] }
 hex = "0.4"
 unic-langid = "0.9"
-infer = "0.19"
+infer = "0.22"
 rand = "0.10"
 iprange = "0.6"
 ipnet = "2.11"
