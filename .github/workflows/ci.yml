@@ -229,7 +229,7 @@ jobs:
         working-directory: nexus-client
         run: |
           # Add ICNS icon for macOS builds
-          sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
+          sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico", "assets\/linux\/nexus.svg"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
           # Rename binary to Nexus for macOS builds
           sed -i '' 's/name = "nexus"/name = "Nexus"/' Cargo.toml
 

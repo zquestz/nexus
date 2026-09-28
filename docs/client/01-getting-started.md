@@ -56,8 +56,8 @@ Both x64 and arm64 builds are available.
 **AppImage quick start:**
 
 ```bash
-chmod +x nexus-client-*-linux-x64.AppImage
-./nexus-client-*-linux-x64.AppImage
+chmod +x nexus-client-*-x64.AppImage
+./nexus-client-*-x64.AppImage
 ```
 
 > **Fedora/RHEL users:** Use the AppImage. RPM packages are not currently available due to a limitation in our build tooling.
@@ -170,7 +170,7 @@ All releases include a `SHA256SUMS.txt` file. To verify your download:
 sha256sum -c SHA256SUMS.txt
 
 # Or verify a single file
-sha256sum nexus-client-*-linux-x64.AppImage
+sha256sum nexus-client-*-x64.AppImage
 # Compare output with the value in SHA256SUMS.txt
 ```
 
