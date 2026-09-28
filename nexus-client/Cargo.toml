@@ -31,7 +31,12 @@ osx_url_schemes = ["nexus"]
 windows_url_schemes = ["nexus"]
 
 # Debian package dependencies (runtime libraries)
-deb_depends = ["libasound2"]
+deb_depends = ["libasound2", "libxkbcommon-x11-0"]
+
+# Libraries bundled into the AppImage: winit loads them at runtime for
+# keyboard input, and they aren't on AppImage's excludelist of libraries
+# every host provides. build.rs points the binary's rpath at usr/lib.
+appimage_libs = ["libxkbcommon.so.0", "libxkbcommon-x11.so.0", "libxcb-xkb.so.1"]
 
 [dependencies]
 nexus-common = { path = "../nexus-common", features = ["image-decode"] }

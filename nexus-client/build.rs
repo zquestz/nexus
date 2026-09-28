@@ -22,4 +22,13 @@ fn main() {
         // The icon will be included in the app bundle via Info.plist
         // For cargo-bundle, place nexus.icns in assets/macos/
     }
+
+    // Linux (target OS, not the build host): search `$ORIGIN/../lib` for
+    // shared libraries first. In the AppImage that's usr/lib, where
+    // cargo-bundle copies `appimage_libs`. `--disable-new-dtags` emits
+    // DT_RPATH instead of DT_RUNPATH so the path also covers those libraries'
+    // own dependencies. In the .deb it resolves to /usr/lib, which is harmless.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
+        println!("cargo::rustc-link-arg-bins=-Wl,--disable-new-dtags,-rpath,$ORIGIN/../lib");
+    }
 }

@@ -76,7 +76,8 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/microsoft*.list
           sudo rm -f /etc/apt/sources.list.d/azure*.list
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev pkg-config
+          # libxkbcommon-x11-0 provides the libraries bundled into the AppImage (appimage_libs)
+          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev libxkbcommon-x11-0 pkg-config
           pip install meson ninja
 
       - name: Install Rust
@@ -111,7 +112,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-linux-${{ matrix.arch }}-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-linux-${{ matrix.arch }}-v4
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
