@@ -79,7 +79,8 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/azure*.list
           sudo apt-get update
           # libxkbcommon-x11-0 and patchelf: bundling libraries into the AppImage (appimage_libs)
-          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev libxkbcommon-x11-0 patchelf pkg-config
+          # zsync: the AppImage's .zsync update file
+          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev libxkbcommon-x11-0 patchelf pkg-config zsync
           pip install meson ninja
 
       - name: Install Rust
@@ -137,6 +138,25 @@ jobs:
           mkdir -p dist
           mv target/release/bundle/deb/nexus_${{ steps.version.outputs.VERSION }}_*.deb dist/nexus-client-${{ steps.version.outputs.VERSION }}-linux-${{ matrix.arch }}.deb
           mv target/release/bundle/appimage/nexus_${{ steps.version.outputs.VERSION }}_*.AppImage dist/nexus-client-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.AppImage
+
+      - name: Embed AppImage update information
+        run: |
+          # AppImageUpdate and similar tools read this to update in place from the
+          # newest release or pre-release (latest-all) via the matching .zsync file.
+          APPIMAGE="dist/nexus-client-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.AppImage"
+          UPDATE_INFO="gh-releases-zsync|zquestz|nexus|latest-all|nexus-client-*-${{ matrix.arch }}.AppImage.zsync"
+          read -r SIZE OFFSET <<< "$(objdump -h "$APPIMAGE" | awk '$2 == ".upd_info" { print $3, $6 }')"
+          if [ -z "$OFFSET" ] || [ "${#UPDATE_INFO}" -ge $((16#$SIZE)) ]; then
+            echo "::error::AppImage runtime has no .upd_info section large enough for the update information" >&2
+            exit 1
+          fi
+          printf '%s' "$UPDATE_INFO" | dd of="$APPIMAGE" bs=1 seek=$((16#$OFFSET)) conv=notrunc status=none
+          if [ "$("$APPIMAGE" --appimage-updateinformation | tr -d '\0')" != "$UPDATE_INFO" ]; then
+            echo "::error::AppImage update information was not embedded" >&2
+            exit 1
+          fi
+          cd dist
+          zsyncmake -u "$(basename "$APPIMAGE")" "$(basename "$APPIMAGE")"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
