@@ -46,10 +46,10 @@ You only need to do this once. Future launches will work normally.
 
 Choose the format that works best for your distribution:
 
-| Format       | Best For             | Installation                                           |
-| ------------ | -------------------- | ------------------------------------------------------ |
-| **AppImage** | Any distro           | Download, `chmod +x`, run                              |
-| **Deb**      | Debian, Ubuntu, Mint | `sudo dpkg -i nexus-client-{version}-linux-{arch}.deb` |
+| Format       | Best For             | Installation                                                 |
+| ------------ | -------------------- | ------------------------------------------------------------ |
+| **AppImage** | Any distro           | Download, `chmod +x`, run                                    |
+| **Deb**      | Debian, Ubuntu, Mint | `sudo apt install ./nexus-client-{version}-linux-{arch}.deb` |
 
 Both x64 and arm64 builds are available.
 

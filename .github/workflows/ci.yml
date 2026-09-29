@@ -21,6 +21,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+  # zquestz/cargo-bundle commit the bundle jobs install; also part of their cache keys
+  CARGO_BUNDLE_REV: a3bb182ce412ec4767683e7ee5e657bdbd99e151
 
 jobs:
   test:
@@ -219,17 +221,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-macos-arm64-v3
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-macos-arm64-${{ env.CARGO_BUNDLE_REV }}
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
-        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --rev ${{ env.CARGO_BUNDLE_REV }} --force
 
       - name: Configure for macOS bundle
         working-directory: nexus-client
         run: |
           # Add ICNS icon for macOS builds
-          sed -i '' 's/icon = \["assets\/macos\/nexus.png", "assets\/windows\/nexus.ico", "assets\/linux\/nexus.svg"\]/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
+          sed -i '' 's/^icon = .*/icon = ["assets\/macos\/nexus.png", "assets\/macos\/nexus.icns", "assets\/windows\/nexus.ico"]/' Cargo.toml
           # Rename binary to Nexus for macOS builds
           sed -i '' 's/name = "nexus"/name = "Nexus"/' Cargo.toml
 
@@ -403,11 +405,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-linux-${{ matrix.arch }}-v5
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-linux-${{ matrix.arch }}-${{ env.CARGO_BUNDLE_REV }}
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
-        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --rev ${{ env.CARGO_BUNDLE_REV }} --force
 
       - name: Build deb bundle
         working-directory: nexus-client
@@ -468,11 +470,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle.exe
-          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-${{ matrix.arch }}-v4
+          key: ${{ steps.cache-prefix.outputs.prefix }}-cargo-bundle-windows-${{ matrix.arch }}-${{ env.CARGO_BUNDLE_REV }}
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
-        run: cargo install --git https://github.com/zquestz/cargo-bundle --force
+        run: cargo install --git https://github.com/zquestz/cargo-bundle --rev ${{ env.CARGO_BUNDLE_REV }} --force
 
       - name: Configure license-file for Windows installer
         shell: bash
