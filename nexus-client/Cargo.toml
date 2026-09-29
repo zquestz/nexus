@@ -35,7 +35,7 @@ deb_depends = ["libasound2", "libxkbcommon-x11-0"]
 
 # Libraries bundled into the AppImage: winit loads them at runtime for
 # keyboard input, and they aren't on AppImage's excludelist of libraries
-# every host provides. build.rs points the binary's rpath at usr/lib.
+# every host provides. cargo-bundle sets the AppImage binary's rpath.
 appimage_libs = ["libxkbcommon.so.0", "libxkbcommon-x11.so.0", "libxcb-xkb.so.1"]
 
 [dependencies]
