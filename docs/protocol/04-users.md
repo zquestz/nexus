@@ -598,7 +598,7 @@ Response to `UserBack` request.
 
 ### UserStatus (Client → Server)
 
-Set or clear a status message without changing away state.
+Set or clear a status message. This always clears the away flag, so a null `status` has the same effect as `UserBack`.
 
 | Field    | Type   | Required | Description                                        |
 | -------- | ------ | -------- | -------------------------------------------------- |
@@ -638,7 +638,7 @@ Response to `UserStatus` request.
 ### Away/Status Behavior
 
 - **Session-only**: Away and status are cleared on disconnect
-- **Multi-session inheritance**: New sessions for regular accounts inherit away/status from the latest existing session
+- **New sessions start present**: A login never inherits away. For regular accounts, the new session carries over the status of the latest existing session, unless that session is away
 - **Shared accounts**: No inheritance; each session starts fresh
 - **No restrictions**: Away users can still chat, send messages, and transfer files
 - **Broadcasts**: Changes trigger `UserUpdated` broadcast to all users with `user_list` permission

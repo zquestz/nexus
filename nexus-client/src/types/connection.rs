@@ -16,9 +16,9 @@ use nexus_common::protocol::ChannelJoinInfo;
 
 use super::{
     ActivePanel, ChannelState, ChatMessage, ChatTab, ConnectionMonitorState, DisconnectDialogState,
-    FilesManagementState, MessageType, NewsManagementState, PasswordChangeState, ResponseRouting,
-    ScrollState, ServerInfoEditState, ServerInfoTab, TrackerManagementState, UserInfo,
-    UserManagementState, VoiceState,
+    FilesManagementState, MessageType, NewsManagementState, PasswordChangeState, PendingRequests,
+    ResponseRouting, ScrollState, ServerInfoEditState, ServerInfoTab, TrackerManagementState,
+    UserInfo, UserManagementState, VoiceState,
 };
 use crate::i18n::t;
 use crate::image::CachedImage;
@@ -316,12 +316,15 @@ pub struct ServerConnection {
     /// DM peers currently in voice (folded nickname).
     /// Tracked even when we're not in voice, so a DM tab can show that the peer is waiting.
     pub user_message_voiced: HashSet<String>,
-    /// Last known activity time for this connection (reset on keyboard events only)
+    /// Last activity on this connection, for the auto-away idle timer. Reset by
+    /// deliberate input while it's the active connection (see
+    /// `user_activity_filter`), by switching to it, when a call on it ends, and
+    /// by `mark_back`.
     pub last_activity: std::time::Instant,
     /// Our session's away state — updated only from our own AwayResponse/BackResponse,
     /// never from UserUpdated (avoids aggregated vs per-session mismatch)
     pub is_away: bool,
-    /// Whether we set this away via auto-away (controls auto-back on activity)
+    /// Whether we set this away via auto-away (only auto-away is cleared by `mark_back`)
     pub is_auto_away: bool,
 }
 
@@ -623,6 +626,41 @@ impl ServerConnection {
         Ok(message_id)
     }
 
+    /// Mark the user back on this server after they participate in it
+    ///
+    /// Called when something other users can see goes out (a chat message,
+    /// DM, `/me`, topic change, broadcast, or news post) and when the server
+    /// accepts a channel or voice join. Resets the idle timer and, if this
+    /// connection is auto-away, sends `UserBack` unless a pending request
+    /// already settles the away state. A manual away stays until the user
+    /// sends `/back` or `/status`.
+    pub fn mark_back(&mut self) {
+        self.last_activity = std::time::Instant::now();
+        let pending = |f: fn(&ResponseRouting) -> bool| self.pending_requests.values().any(f);
+        // An auto-away still awaiting its response counts too: the server
+        // handles requests in order, so this UserBack lands after it
+        let auto_away_in_flight = pending(|r| matches!(r, ResponseRouting::AutoAwayResult(_)));
+        // A pending UserBack, or a manual /away, /back, or /status, settles the
+        // away state itself. A UserBack behind a manual request would undo the
+        // away or wipe the new status.
+        let settled_by_pending = pending(|r| {
+            matches!(
+                r,
+                ResponseRouting::AutoBackResult
+                    | ResponseRouting::AwayResult(_)
+                    | ResponseRouting::BackResult
+                    | ResponseRouting::StatusResult(_)
+            )
+        });
+        if (self.is_auto_away || auto_away_in_flight)
+            && !settled_by_pending
+            && let Ok(message_id) = self.send(ClientMessage::UserBack)
+        {
+            self.pending_requests
+                .track(message_id, ResponseRouting::AutoBackResult);
+        }
+    }
+
     /// Create a new ServerConnection with the given parameters
     pub fn new(params: ServerConnectionParams) -> Self {
         Self {
@@ -778,6 +816,8 @@ mod tests {
     use super::*;
     use chrono::{Local, TimeZone};
     use nexus_common::protocol::ChatAction;
+
+    use crate::testing::support::{one_second_ago, test_connection_with_receiver};
 
     /// Minimal connection for exercising the DM-tab helpers. The command channel's
     /// receiver is dropped (these tests never send); our own identity is "me" so a
@@ -1137,5 +1177,67 @@ mod tests {
         assert!(msgs.iter().any(|m| m.message == "b"));
         assert!(msgs.iter().any(|m| m.message == "c"));
         assert_eq!(msgs.len(), 5);
+    }
+
+    #[test]
+    fn mark_back_sends_one_user_back_when_auto_away() {
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        let idle_since = one_second_ago();
+        conn.last_activity = idle_since;
+
+        conn.mark_back();
+        conn.mark_back();
+
+        assert!(conn.last_activity > idle_since);
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        // The second call sees the pending UserBack and doesn't send another
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn mark_back_leaves_manual_away_alone() {
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        let idle_since = one_second_ago();
+        conn.last_activity = idle_since;
+
+        conn.mark_back();
+
+        assert!(conn.last_activity > idle_since);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn mark_back_lets_a_pending_away_back_or_status_settle_the_state() {
+        for routing in [
+            ResponseRouting::AwayResult(None),
+            ResponseRouting::BackResult,
+            ResponseRouting::StatusResult(Some("In a meeting".to_string())),
+        ] {
+            let (mut conn, mut rx) = test_connection_with_receiver(1);
+            conn.is_away = true;
+            conn.is_auto_away = true;
+            conn.pending_requests.track(MessageId::new(), routing);
+
+            conn.mark_back();
+
+            // A UserBack behind these would undo the away or wipe the status
+            assert!(rx.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn mark_back_undoes_an_auto_away_still_in_flight() {
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.pending_requests
+            .track(MessageId::new(), ResponseRouting::AutoAwayResult(None));
+
+        conn.mark_back();
+        conn.mark_back();
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(rx.try_recv().is_err());
     }
 }

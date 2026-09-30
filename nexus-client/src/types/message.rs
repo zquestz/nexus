@@ -292,6 +292,8 @@ pub enum Message {
     ChatHistoryRetentionSelected(crate::config::settings::ChatHistoryRetention),
     /// Auto-away: periodic timer tick (every 30s when auto-away enabled)
     AutoAwayTick,
+    /// Auto-away: deliberate input in the window (see `user_activity_filter`)
+    UserActivity,
     /// Settings panel: Auto-away timeout selected from picker
     AutoAwayTimeoutSelected(crate::config::settings::AutoAwayTimeout),
     /// Settings panel: Auto-away message changed

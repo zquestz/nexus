@@ -4,13 +4,10 @@ use iced::keyboard::{self, key};
 use iced::window;
 use iced::{Event, Task};
 
-use nexus_common::protocol::ClientMessage;
-
 use crate::NexusApp;
 use crate::types::{
     ActivePanel, BookmarkEditMode, ChatTab, GroupManagementMode, InputId, Message,
-    NewsManagementMode, PendingRequests, ResponseRouting, TrackerManagementMode,
-    UserManagementMode,
+    NewsManagementMode, TrackerManagementMode, UserManagementMode,
 };
 use crate::views::constants::PERMISSION_TRACKER_LIST;
 use crate::voice::ptt::build_hotkey_string;
@@ -119,40 +116,6 @@ impl NexusApp {
             // While capturing, consume all key events to prevent other actions
             if matches!(event, Event::Keyboard(keyboard::Event::KeyPressed { .. })) {
                 return Task::none();
-            }
-        }
-
-        // Auto-away: bump last_activity on key releases only
-        // - Excludes ModifiersChanged (fires on window focus, would falsely trigger auto-back)
-        // - KeyReleased isn't consumed by PTT capture (which only intercepts KeyPressed)
-        if matches!(event, Event::Keyboard(keyboard::Event::KeyReleased { .. })) {
-            let now = std::time::Instant::now();
-            for conn in self.connections.values_mut() {
-                conn.last_activity = now;
-            }
-
-            // Auto-back: send UserBack for connections that were auto-awayed
-            let auto_away_conn_ids: Vec<usize> = self
-                .connections
-                .values()
-                .filter(|conn| {
-                    conn.is_auto_away
-                        && !conn
-                            .pending_requests
-                            .values()
-                            .any(|r| matches!(r, ResponseRouting::AutoBackResult))
-                })
-                .map(|conn| conn.connection_id)
-                .collect();
-
-            for conn_id in auto_away_conn_ids {
-                if let Some(conn) = self.connections.get_mut(&conn_id) {
-                    let msg = ClientMessage::UserBack;
-                    if let Ok(message_id) = conn.send(msg) {
-                        conn.pending_requests
-                            .track(message_id, ResponseRouting::AutoBackResult);
-                    }
-                }
             }
         }
 
@@ -1091,6 +1054,7 @@ mod tests {
 
     use iced::keyboard::key::{Code, Physical};
     use nexus_common::framing::MessageId;
+    use nexus_common::protocol::ClientMessage;
     use nexus_common::validators::{self, PasswordStrength};
     use tokio::sync::{Mutex, mpsc};
 
@@ -1101,7 +1065,8 @@ mod tests {
     use crate::testing::support::test_connection_with_receiver;
     use crate::types::{
         BookmarkEditMode, ConnectionInfo, DisconnectDialogState, FileTab, FingerprintMismatch,
-        ReconnectAction, ServerBookmark, ServerConnection, ServerConnectionParams,
+        PendingRequests, ReconnectAction, ResponseRouting, ServerBookmark, ServerConnection,
+        ServerConnectionParams,
     };
 
     fn key_press(named: key::Named, code: Code) -> Event {
@@ -1612,5 +1577,30 @@ mod tests {
                 ChatTab::Channel("#general".to_string())
             );
         }
+    }
+
+    #[test]
+    fn key_release_does_not_mark_back() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        app.connections.insert(1, conn);
+
+        // Letting go of a shortcut pressed in another window, like the one that
+        // switches workspaces onto Nexus, must not bring you back
+        let _ = app.handle_keyboard_event(Event::Keyboard(keyboard::Event::KeyReleased {
+            key: keyboard::Key::Named(key::Named::Super),
+            modified_key: keyboard::Key::Named(key::Named::Super),
+            physical_key: Physical::Code(Code::SuperLeft),
+            location: keyboard::Location::Left,
+            modifiers: keyboard::Modifiers::default(),
+        }));
+
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].is_auto_away);
     }
 }

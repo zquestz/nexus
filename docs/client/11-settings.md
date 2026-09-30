@@ -170,7 +170,14 @@ This affects all chat tabs: Console, channels, and user messages. Note that user
 
 ### Auto-Away
 
-Automatically sets you as away after a period of inactivity. When you interact with the client again (keyboard input), your away status is automatically cleared.
+Automatically sets you as away after a period of inactivity. Auto-away clears when you do something other users on that server can see:
+
+- Send a chat message, user message, or `/me` action
+- Join a channel or voice chat
+- Set or clear a channel topic
+- Set or clear your status with `/status`
+- Send a broadcast
+- Post or edit news
 
 | Setting        | Description                    |
 | -------------- | ------------------------------ |
@@ -184,11 +191,12 @@ Automatically sets you as away after a period of inactivity. When you interact w
 
 **Notes:**
 
-- If you manually use `/away`, auto-away will not override it — you must manually `/back`
-- The server tracks idle time per session, so multiple connections are handled independently
-- If you're logged in from two computers, the server ensures the user list accurately reflects your most recently active session
-- Only keyboard input counts as activity — mouse movement and clicks do not reset the idle timer
-- Active voice sessions prevent auto-away entirely — you won't be marked idle while in voice chat
+- A manual `/away` stays until you use `/back` or `/status`. Auto-away never replaces it, and participating doesn't clear it
+- Each connection has its own idle timer, and auto-away only clears on the server where you acted
+- If you're logged in from two computers, the user list shows the state of your most recently active session. A new login always starts present, even if your other session is away
+- Typing, clicking, scrolling, touch, and dropping files reset the idle timer for the connection on screen, as does switching to a connection, but they don't clear auto-away on their own
+- Mouse movement, key releases, and window focus changes don't count as activity, so switching workspaces doesn't reset the timer
+- Being in voice chat on a server keeps auto-away off for that server. The idle timer restarts when you leave voice.
 
 ### Font Size
 

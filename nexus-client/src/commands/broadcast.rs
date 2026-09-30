@@ -23,7 +23,7 @@ pub fn execute(
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
-    let Some(conn) = app.connections.get(&connection_id) else {
+    let Some(conn) = app.connections.get_mut(&connection_id) else {
         return Task::none();
     };
 
@@ -48,10 +48,35 @@ pub fn execute(
 
     let msg = ClientMessage::UserBroadcast { message };
 
+    // Broadcasting marks you back on this server, with UserBack first
+    conn.mark_back();
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::support::test_connection_with_receiver;
+
+    #[test]
+    fn broadcast_marks_back_before_it_goes_out() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        app.connections.insert(1, conn);
+
+        let _ = execute(&mut app, 1, "broadcast", &["hello".to_string()]);
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((_, ClientMessage::UserBroadcast { .. }))
+        ));
+    }
 }

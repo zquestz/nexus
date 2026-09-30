@@ -79,7 +79,7 @@ impl NexusApp {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
-        let Some(conn) = self.connections.get(&conn_id) else {
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
 
@@ -104,6 +104,8 @@ impl NexusApp {
 
         let msg = ClientMessage::UserBroadcast { message };
 
+        // Broadcasting marks you back on this server, with UserBack first
+        conn.mark_back();
         if let Err(e) = conn.send(msg) {
             let error_msg = format!("{}: {}", t("err-broadcast-send-failed"), e);
             return self.add_broadcast_error(conn_id, error_msg);
@@ -122,5 +124,32 @@ impl NexusApp {
     /// Add a broadcast-specific error to chat
     fn add_broadcast_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
         self.add_active_tab_message(connection_id, ChatMessage::error(message))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::support::test_connection_with_receiver;
+
+    #[test]
+    fn broadcast_panel_marks_back_before_it_goes_out() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        conn.broadcast_message = "hello".to_string();
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_send_broadcast_pressed();
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((_, ClientMessage::UserBroadcast { .. }))
+        ));
     }
 }

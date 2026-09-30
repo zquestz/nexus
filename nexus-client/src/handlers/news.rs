@@ -356,6 +356,8 @@ impl NexusApp {
                 };
 
                 conn.news_management.is_submitting = true;
+                // Posting news marks you back on this server, with UserBack first
+                conn.mark_back();
                 match conn.send(msg) {
                     Ok(message_id) => {
                         conn.pending_requests
@@ -382,6 +384,7 @@ impl NexusApp {
                 let msg = ClientMessage::NewsUpdate { id, body, image };
 
                 conn.news_management.is_submitting = true;
+                conn.mark_back();
                 match conn.send(msg) {
                     Ok(message_id) => {
                         conn.pending_requests
@@ -483,5 +486,55 @@ mod tests {
             }
             other => panic!("expected NewsCreate, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn posting_news_marks_back_before_the_post_goes_out() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        conn.news_management.mode = NewsManagementMode::Create;
+        app.connections.insert(1, conn);
+        app.news_body_content
+            .insert(1, text_editor::Content::with_text("hello"));
+
+        let _ = app.handle_news_submit_pressed();
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((_, ClientMessage::NewsCreate { .. }))
+        ));
+    }
+
+    #[test]
+    fn editing_news_marks_back_before_the_update_goes_out() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        conn.news_management.mode = NewsManagementMode::Edit {
+            id: 1,
+            original_body: "old".to_string(),
+            original_image: String::new(),
+        };
+        app.connections.insert(1, conn);
+        app.news_body_content
+            .insert(1, text_editor::Content::with_text("new"));
+
+        let _ = app.handle_news_submit_pressed();
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((_, ClientMessage::NewsUpdate { .. }))
+        ));
     }
 }

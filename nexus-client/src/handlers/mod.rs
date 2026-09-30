@@ -26,3 +26,4 @@ mod user_management;
 mod voice;
 
 pub(crate) use files::FilesOpenIntent;
+pub(crate) use settings::user_activity_filter;

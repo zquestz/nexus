@@ -1,13 +1,17 @@
 //! Settings panel handlers
 
+use std::sync::{Mutex, PoisonError};
+use std::time::Instant;
+
 use iced_toasts::{ToastLevel, toast};
 
 use crate::config::audio::PttReleaseDelay;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, ImageDecodeProfile};
 
-use iced::Task;
+use iced::advanced::input_method;
 use iced::widget::Id;
+use iced::{Event, Task, event, keyboard, mouse, touch, window};
 use nexus_common::voice::VoiceQuality;
 use rfd::AsyncFileDialog;
 
@@ -18,6 +22,7 @@ use crate::config::events::{EventType, NotificationContent, SoundChoice};
 use crate::config::settings::{
     AVATAR_MAX_SIZE, CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, default_download_path,
 };
+use crate::constants::USER_ACTIVITY_THROTTLE;
 use crate::i18n::{t, t_args};
 use crate::image::{ImagePickerError, decode_data_uri_square, pick_image};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
@@ -158,7 +163,7 @@ impl NexusApp {
     ///
     /// For each connection that has been idle long enough, sends UserAway
     /// with the configured message. Checks: elapsed >= timeout, not already away,
-    /// not already auto-awayed, no pending auto-away request.
+    /// not already auto-awayed, not in voice, no pending auto-away request.
     pub fn handle_auto_away_tick(&mut self) -> Task<Message> {
         let Some(timeout) = self.config.settings.auto_away_timeout.as_duration() else {
             return Task::none();
@@ -201,6 +206,21 @@ impl NexusApp {
             }
         }
 
+        Task::none()
+    }
+
+    /// Handle deliberate input in the window (see `user_activity_filter`)
+    ///
+    /// Resets the idle timer of the active connection only, so other
+    /// connections keep counting toward auto-away. Input alone never clears
+    /// auto-away; that takes participating (see `ServerConnection::mark_back`).
+    pub fn handle_user_activity(&mut self) -> Task<Message> {
+        if let Some(conn) = self
+            .active_connection
+            .and_then(|id| self.connections.get_mut(&id))
+        {
+            conn.last_activity = Instant::now();
+        }
         Task::none()
     }
 
@@ -928,9 +948,73 @@ fn persist_settings_config(
     }
 }
 
+/// Rate limit for `UserActivity` messages
+struct ActivityThrottle {
+    last_sent: Option<Instant>,
+}
+
+impl ActivityThrottle {
+    const fn new() -> Self {
+        Self { last_sent: None }
+    }
+
+    /// Whether activity at `now` should send a message, recording it if so
+    fn due(&mut self, now: Instant) -> bool {
+        let due = self
+            .last_sent
+            .is_none_or(|last| now.saturating_duration_since(last) >= USER_ACTIVITY_THROTTLE);
+        if due {
+            self.last_sent = Some(now);
+        }
+        due
+    }
+}
+
+/// Throttle state for `user_activity_filter`, which iced requires to be a
+/// plain `fn`
+static ACTIVITY_THROTTLE: Mutex<ActivityThrottle> = Mutex::new(ActivityThrottle::new());
+
+/// Event filter feeding the auto-away idle timer
+///
+/// Sees every event, including input a widget captured (typing in chat), and
+/// sends at most one `UserActivity` per `USER_ACTIVITY_THROTTLE`.
+pub(crate) fn user_activity_filter(
+    event: Event,
+    _status: event::Status,
+    _window: window::Id,
+) -> Option<Message> {
+    if !is_deliberate_input(&event) {
+        return None;
+    }
+    ACTIVITY_THROTTLE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .due(Instant::now())
+        .then_some(Message::UserActivity)
+}
+
+/// Whether an event is deliberate input that resets the idle timer
+///
+/// Key releases, cursor movement, and focus changes don't count: switching
+/// workspaces produces them. Neither does an empty IME preedit, which some
+/// platforms send when the window merely gains focus.
+fn is_deliberate_input(event: &Event) -> bool {
+    match event {
+        Event::Keyboard(keyboard::Event::KeyPressed { repeat, .. }) => !repeat,
+        Event::Mouse(mouse::Event::ButtonPressed(_) | mouse::Event::WheelScrolled { .. })
+        | Event::Touch(touch::Event::FingerPressed { .. })
+        | Event::Window(window::Event::FileDropped(_)) => true,
+        Event::InputMethod(
+            input_method::Event::Preedit(text, _) | input_method::Event::Commit(text),
+        ) => !text.is_empty(),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::support::{one_second_ago, test_connection_with_receiver};
 
     #[test]
     fn settings_save_failure_stores_error_in_visible_form_slot() {
@@ -975,5 +1059,100 @@ mod tests {
 
         assert!(saved);
         assert!(settings_form.is_none());
+    }
+
+    #[test]
+    fn user_activity_resets_only_the_active_connection() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let idle_since = one_second_ago();
+        for id in [1, 2] {
+            let (mut conn, _rx) = test_connection_with_receiver(id);
+            conn.last_activity = idle_since;
+            app.connections.insert(id, conn);
+        }
+
+        let _ = app.handle_user_activity();
+
+        assert!(app.connections[&1].last_activity > idle_since);
+        assert_eq!(app.connections[&2].last_activity, idle_since);
+    }
+
+    #[test]
+    fn only_deliberate_input_counts_as_activity() {
+        let key_press = |repeat| {
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Character("a".into()),
+                modified_key: keyboard::Key::Character("a".into()),
+                physical_key: keyboard::key::Physical::Code(keyboard::key::Code::KeyA),
+                location: keyboard::Location::Standard,
+                modifiers: keyboard::Modifiers::default(),
+                text: Some("a".into()),
+                repeat,
+            })
+        };
+        let preedit =
+            |text: &str| Event::InputMethod(input_method::Event::Preedit(text.to_string(), None));
+
+        assert!(is_deliberate_input(&key_press(false)));
+        assert!(is_deliberate_input(&Event::Mouse(
+            mouse::Event::ButtonPressed(mouse::Button::Left)
+        )));
+        assert!(is_deliberate_input(&Event::Mouse(
+            mouse::Event::WheelScrolled {
+                delta: mouse::ScrollDelta::Lines { x: 0.0, y: 1.0 },
+            }
+        )));
+        assert!(is_deliberate_input(&Event::Touch(
+            touch::Event::FingerPressed {
+                id: touch::Finger(0),
+                position: iced::Point::ORIGIN,
+            }
+        )));
+        assert!(is_deliberate_input(&preedit("ni")));
+        assert!(is_deliberate_input(&Event::InputMethod(
+            input_method::Event::Commit("你".to_string())
+        )));
+        assert!(is_deliberate_input(&Event::Window(
+            window::Event::FileDropped("notes.txt".into())
+        )));
+
+        // What switching workspaces onto Nexus can produce
+        assert!(!is_deliberate_input(&key_press(true)));
+        assert!(!is_deliberate_input(&Event::Keyboard(
+            keyboard::Event::KeyReleased {
+                key: keyboard::Key::Named(keyboard::key::Named::Super),
+                modified_key: keyboard::Key::Named(keyboard::key::Named::Super),
+                physical_key: keyboard::key::Physical::Code(keyboard::key::Code::SuperLeft),
+                location: keyboard::Location::Left,
+                modifiers: keyboard::Modifiers::default(),
+            }
+        )));
+        assert!(!is_deliberate_input(&Event::Keyboard(
+            keyboard::Event::ModifiersChanged(keyboard::Modifiers::default())
+        )));
+        assert!(!is_deliberate_input(&Event::Mouse(
+            mouse::Event::CursorMoved {
+                position: iced::Point::ORIGIN,
+            }
+        )));
+        assert!(!is_deliberate_input(&Event::Window(window::Event::Focused)));
+        assert!(!is_deliberate_input(&Event::InputMethod(
+            input_method::Event::Opened
+        )));
+        assert!(!is_deliberate_input(&preedit("")));
+    }
+
+    #[test]
+    fn activity_throttle_sends_one_message_per_interval() {
+        let mut throttle = ActivityThrottle::new();
+        let start = Instant::now();
+
+        assert!(throttle.due(start));
+        assert!(!throttle.due(start + USER_ACTIVITY_THROTTLE / 2));
+        assert!(throttle.due(start + USER_ACTIVITY_THROTTLE));
+        assert!(!throttle.due(start + USER_ACTIVITY_THROTTLE));
     }
 }

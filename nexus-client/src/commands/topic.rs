@@ -148,7 +148,7 @@ fn set_topic(
     channel: &str,
     topic: String,
 ) -> Task<Message> {
-    let Some(conn) = app.connections.get(&connection_id) else {
+    let Some(conn) = app.connections.get_mut(&connection_id) else {
         return Task::none();
     };
 
@@ -157,10 +157,41 @@ fn set_topic(
         channel: channel.to_string(),
     };
 
+    // Changing the topic marks you back on this server, with UserBack first
+    conn.mark_back();
     if let Err(e) = conn.send(msg) {
         let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
     Task::none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::support::test_connection_with_receiver;
+
+    #[test]
+    fn topic_change_marks_back_before_it_goes_out() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        conn.active_chat_tab = ChatTab::Channel("#general".to_string());
+        app.connections.insert(1, conn);
+
+        let _ = execute(
+            &mut app,
+            1,
+            "topic",
+            &[t("cmd-topic-arg-set"), "hello".to_string()],
+        );
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((_, ClientMessage::ChatTopicUpdate { .. }))
+        ));
+    }
 }

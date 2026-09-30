@@ -100,7 +100,8 @@ pub enum ResponseRouting {
     AutoAwayResult(Option<String>),
     /// Back command result
     BackResult,
-    /// Auto-back result - set by auto-back on activity, retries on error
+    /// Auto-back result - set by `ServerConnection::mark_back`, which retries on
+    /// the next participation after an error
     AutoBackResult,
     /// Status command result - contains optional status message for display
     StatusResult(Option<String>),

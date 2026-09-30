@@ -1050,6 +1050,7 @@ impl NexusApp {
                 self.handle_chat_history_retention_selected(retention)
             }
             Message::AutoAwayTick => self.handle_auto_away_tick(),
+            Message::UserActivity => self.handle_user_activity(),
             Message::AutoAwayTimeoutSelected(timeout) => {
                 self.config.settings.auto_away_timeout = timeout;
                 Task::none()
@@ -1718,6 +1719,8 @@ impl NexusApp {
         let mut subscriptions = vec![
             // Keyboard and general events
             iced::event::listen().map(Message::Event),
+            // Deliberate input for the auto-away idle timer
+            iced::event::listen_with(handlers::user_activity_filter),
             // Window close requests (we handle saving before exit)
             iced::window::close_requests().map(Message::WindowCloseRequested),
             // IPC listener for receiving URIs from other instances

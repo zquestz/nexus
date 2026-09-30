@@ -438,9 +438,11 @@ impl NexusApp {
     /// Used when the server already knows we're leaving (e.g., VoiceLeaveResponse,
     /// VoiceUserLeft for self, or TCP disconnect).
     pub fn cleanup_voice_session(&mut self, connection_id: usize) {
-        // Clear voice session from connection
+        // Clear voice session from connection. Auto-away skips connections in
+        // voice, so the idle countdown restarts when the call ends.
         if let Some(conn) = self.connections.get_mut(&connection_id) {
             conn.voice_session = None;
+            conn.last_activity = std::time::Instant::now();
         }
 
         // Clear active voice connection if it was this one
@@ -645,6 +647,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
+    use crate::testing::support::one_second_ago;
     use crate::types::{ChannelState, ConnectionInfo, ServerConnection, ServerConnectionParams};
     use crate::views::constants::PERMISSION_VOICE_TALK;
 
@@ -957,5 +960,20 @@ mod tests {
             &proxy(true, false),
             "127.0.0.1"
         ));
+    }
+
+    #[test]
+    fn ending_a_call_restarts_the_idle_countdown() {
+        let mut app = NexusApp::default();
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.voice_session = Some(VoiceState::new("#general".to_string(), Vec::new()));
+        let idle_since = one_second_ago();
+        conn.last_activity = idle_since;
+        app.connections.insert(1, conn);
+
+        app.cleanup_voice_session(1);
+
+        assert!(app.connections[&1].voice_session.is_none());
+        assert!(app.connections[&1].last_activity > idle_since);
     }
 }

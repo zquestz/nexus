@@ -350,10 +350,12 @@ impl NexusApp {
 
     /// Switch active view to a different connection
     pub fn handle_switch_to_connection(&mut self, connection_id: usize) -> Task<Message> {
-        if !self.connections.contains_key(&connection_id) {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
         };
 
+        // Selecting a connection counts as activity on it
+        conn.last_activity = std::time::Instant::now();
         self.active_connection = Some(connection_id);
 
         // Scroll chat and focus input (app-wide panels like Settings/About persist)
@@ -745,7 +747,7 @@ impl NexusApp {
                 }
 
                 // Re-borrow conn after potential mutable borrow above
-                let Some(conn) = self.connections.get(&conn_id) else {
+                let Some(conn) = self.connections.get_mut(&conn_id) else {
                     return Task::none();
                 };
 
@@ -778,6 +780,8 @@ impl NexusApp {
                     ),
                 };
 
+                // Sending marks you back on this server, with UserBack ahead of the message
+                conn.mark_back();
                 let send_result = conn.send(msg);
 
                 match send_result {
@@ -912,6 +916,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
+    use crate::testing::support::one_second_ago;
     use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams, VoiceState};
 
     fn test_connection_with_receiver(
@@ -1147,5 +1152,81 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].message, t("err-no-chat-permission"));
         assert_eq!(conn.message_input, "hello");
+    }
+
+    /// Connection 1 active on `#general` with chat allowed, auto-away, and
+    /// `message` typed in the input
+    fn setup_auto_away_channel_send(
+        message: &str,
+    ) -> (
+        NexusApp,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, rx) = test_connection_with_receiver(1);
+        conn.features = vec![FEATURE_CHAT.to_string()];
+        conn.permissions = vec![PERMISSION_CHAT_SEND.to_string()];
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        conn.message_input = message.to_string();
+        conn.active_chat_tab = ChatTab::Channel("#general".to_string());
+        conn.channels.insert(
+            fold_name("#general"),
+            crate::types::ChannelState::new(None, None, false, vec!["me".to_string()]),
+        );
+        app.connections.insert(1, conn);
+        (app, rx)
+    }
+
+    #[test]
+    fn sending_a_chat_message_marks_back_only_on_that_server() {
+        let (mut app, mut rx) = setup_auto_away_channel_send("hello");
+        let (mut other, mut other_rx) = test_connection_with_receiver(2);
+        other.is_away = true;
+        other.is_auto_away = true;
+        app.connections.insert(2, other);
+
+        let _ = app.handle_send_message_pressed();
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((_, ClientMessage::ChatSend { .. }))
+        ));
+        assert!(other_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_rejected_chat_message_does_not_mark_back() {
+        let too_long = "x".repeat(validators::MAX_MESSAGE_LENGTH + 1);
+        let (mut app, mut rx) = setup_auto_away_channel_send(&too_long);
+
+        let _ = app.handle_send_message_pressed();
+
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].is_auto_away);
+    }
+
+    #[test]
+    fn switching_connections_resets_only_the_new_connections_timer() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let idle_since = one_second_ago();
+        for id in [1, 2] {
+            let (mut conn, _rx) = test_connection_with_receiver(id);
+            conn.last_activity = idle_since;
+            app.connections.insert(id, conn);
+        }
+
+        let _ = app.handle_switch_to_connection(2);
+
+        assert_eq!(app.active_connection, Some(2));
+        assert!(app.connections[&2].last_activity > idle_since);
+        assert_eq!(app.connections[&1].last_activity, idle_since);
     }
 }

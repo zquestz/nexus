@@ -612,23 +612,22 @@ where
         let has_chat_feature = activated_features.iter().any(|f| f == FEATURE_CHAT);
         let has_voice_feature = activated_features.iter().any(|f| f == FEATURE_VOICE);
 
-        // Regular accounts inherit is_away/status from the latest existing
-        // session so a multi-device login doesn't clear away state.
-        let (inherited_is_away, inherited_status) = if !user_snapshot.account.is_shared {
+        // A new session always starts present: logging in is activity, so it
+        // never inherits away. Regular accounts carry over the latest existing
+        // session's status, unless that session is away, where the status is
+        // its away message.
+        let inherited_status = if !user_snapshot.account.is_shared {
             let existing_sessions = ctx
                 .user_manager
                 .get_sessions_by_user_id(user_snapshot.account.id)
                 .await;
-            if let Some(latest) = existing_sessions
+            existing_sessions
                 .iter()
                 .max_by_key(|s| (s.login_time, s.session_id))
-            {
-                (latest.is_away, latest.status.clone())
-            } else {
-                (false, None)
-            }
+                .filter(|latest| !latest.is_away)
+                .and_then(|latest| latest.status.clone())
         } else {
-            (false, None)
+            None
         };
 
         // Re-check username_exists under the lock: a rename may have committed
@@ -679,7 +678,7 @@ where
                 nickname: validated_nickname
                     .clone()
                     .unwrap_or_else(|| user_snapshot.account.username.clone()),
-                is_away: inherited_is_away,
+                is_away: false,
                 status: inherited_status,
                 group_id: user_snapshot.account.group_id,
                 group_name: user_snapshot.group_name.clone(),
@@ -4065,7 +4064,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_login_inherits_away_status_from_existing_session() {
+    async fn test_login_does_not_inherit_away_from_existing_session() {
         use crate::users::user::NewSessionParams;
         use std::time::Instant;
 
@@ -4091,7 +4090,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Existing session is away with a status set; a new session should inherit both.
+        // Existing session is away with an away message; a new login must start
+        // present, without that message.
         let _session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -4142,14 +4142,10 @@ mod tests {
             .await
             .expect("New session should exist");
 
-        assert!(
-            new_session.is_away,
-            "New session should inherit is_away=true from existing session"
-        );
+        assert!(!new_session.is_away, "New session should start present");
         assert_eq!(
-            new_session.status,
-            Some("grabbing lunch".to_string()),
-            "New session should inherit status from existing session"
+            new_session.status, None,
+            "New session should not inherit an away message"
         );
     }
 
@@ -4299,7 +4295,7 @@ mod tests {
         // Sleep so the two sessions get distinct login timestamps.
         tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
 
-        // Newer session with a different away status — this is the one to inherit from.
+        // Newer, present session with a custom status: the one to inherit from.
         let _session2 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -4350,10 +4346,7 @@ mod tests {
             .await
             .expect("New session should exist");
 
-        assert!(
-            !new_session.is_away,
-            "Should inherit is_away=false from latest session"
-        );
+        assert!(!new_session.is_away, "New session should start present");
         assert_eq!(
             new_session.status,
             Some("new status".to_string()),

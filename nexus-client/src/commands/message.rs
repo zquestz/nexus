@@ -25,7 +25,7 @@ pub fn execute(
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }
 
-    let Some(conn) = app.connections.get(&connection_id) else {
+    let Some(conn) = app.connections.get_mut(&connection_id) else {
         return Task::none();
     };
 
@@ -68,6 +68,8 @@ pub fn execute(
         action: ChatAction::Normal,
     };
 
+    // Sending marks you back on this server, with UserBack ahead of the message
+    conn.mark_back();
     let message_id = match conn.send(msg) {
         Ok(id) => id,
         Err(e) => {
@@ -85,4 +87,32 @@ pub fn execute(
     }
 
     Task::none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::support::test_connection_with_receiver;
+
+    #[test]
+    fn message_marks_back_before_the_dm_goes_out() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        app.connections.insert(1, conn);
+
+        let _ = execute(
+            &mut app,
+            1,
+            "msg",
+            &["alice".to_string(), "hello".to_string()],
+        );
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((_, ClientMessage::UserMessage { .. }))
+        ));
+    }
 }

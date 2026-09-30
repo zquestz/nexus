@@ -157,7 +157,7 @@ mod tests {
             .get_user_by_session_id(session_id)
             .await
             .unwrap();
-        assert!(!user.is_away); // Should not change away status
+        assert!(!user.is_away); // Setting a status leaves you present
         assert_eq!(user.status, Some("working on project".to_string()));
     }
 

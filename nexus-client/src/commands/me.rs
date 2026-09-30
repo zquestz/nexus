@@ -64,6 +64,8 @@ pub fn execute(
                 action: ChatAction::Me,
                 channel: channel.clone(),
             };
+            // Sending marks you back on this server, with UserBack ahead of the message
+            conn.mark_back();
             if let Err(e) = conn.send(msg) {
                 return app.add_active_tab_message(connection_id, ChatMessage::error(e));
             }
@@ -75,6 +77,7 @@ pub fn execute(
                 message,
                 action: ChatAction::Me,
             };
+            conn.mark_back();
             if let Err(e) = conn.send(msg) {
                 return app.add_active_tab_message(connection_id, ChatMessage::error(e));
             }
@@ -82,4 +85,34 @@ pub fn execute(
     }
 
     Task::none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::support::test_connection_with_receiver;
+
+    #[test]
+    fn me_marks_back_before_the_action_goes_out() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        conn.active_chat_tab = ChatTab::Channel("#general".to_string());
+        app.connections.insert(1, conn);
+
+        let _ = execute(&mut app, 1, "me", &["waves".to_string()]);
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok((
+                _,
+                ClientMessage::ChatSend {
+                    action: ChatAction::Me,
+                    ..
+                }
+            ))
+        ));
+    }
 }

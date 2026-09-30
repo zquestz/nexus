@@ -69,6 +69,9 @@ impl NexusApp {
             return Task::none();
         };
 
+        // Joining a channel marks you back on this server
+        conn.mark_back();
+
         // Check if we're already in this channel (shouldn't happen, but handle gracefully)
         if let Some(channel_state) = conn.get_channel_state_mut(&channel_name) {
             // Update existing channel state with fresh data
@@ -510,5 +513,49 @@ impl NexusApp {
         } else {
             Task::none()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nexus_common::protocol::ClientMessage;
+
+    use super::*;
+    use crate::testing::support::test_connection_with_receiver;
+
+    fn join_response(success: bool) -> ChatJoinResponseData {
+        ChatJoinResponseData {
+            success,
+            error: (!success).then(|| "denied".to_string()),
+            channel: success.then(|| "#general".to_string()),
+            topic: None,
+            topic_set_by: None,
+            secret: None,
+            members: None,
+            voiced: None,
+        }
+    }
+
+    #[test]
+    fn channel_join_marks_back_only_on_that_server_once_accepted() {
+        let mut app = NexusApp::default();
+        app.config.settings.sound_enabled = false;
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        app.connections.insert(1, conn);
+        let (mut other, mut other_rx) = test_connection_with_receiver(2);
+        other.is_away = true;
+        other.is_auto_away = true;
+        app.connections.insert(2, other);
+
+        // A rejected join doesn't count
+        let _ = app.handle_chat_join_response(1, join_response(false));
+        assert!(rx.try_recv().is_err());
+
+        let _ = app.handle_chat_join_response(1, join_response(true));
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(other_rx.try_recv().is_err());
     }
 }

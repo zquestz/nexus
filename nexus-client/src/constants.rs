@@ -2,6 +2,8 @@
 //!
 //! Shared constants used across multiple modules.
 
+use std::time::Duration;
+
 /// Application display name (used in window title, notifications, etc.)
 pub const APP_NAME: &str = "Nexus BBS";
 
@@ -13,6 +15,11 @@ pub const CONFIG_FILE_NAME: &str = "config.json";
 
 /// Transfers file name
 pub const TRANSFERS_FILE_NAME: &str = "transfers.json";
+
+/// Minimum spacing between `UserActivity` messages. The auto-away idle timer
+/// needs no finer precision, and each message rebuilds the view, so a burst
+/// of typing or scrolling sends one message instead of dozens.
+pub const USER_ACTIVITY_THROTTLE: Duration = Duration::from_secs(1);
 
 // =============================================================================
 // Panic messages (programmer-error invariants and unrecoverable conditions)

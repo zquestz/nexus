@@ -418,7 +418,7 @@ Displays:
 
 ### /status
 
-Set or clear your status message without changing your away state.
+Set or clear your status message. This also clears your away status, so `/status` with no message works like `/back`.
 
 **Aliases:** `/s`
 

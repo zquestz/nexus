@@ -100,7 +100,7 @@ deliberately left out of scope.
 | URI scheme             |   ❌    | ❌  |  ❌   |  ✅   | `nexus://` deep links                           |
 | Voice chat             |   ❌    | ✅  |  ❌   |  ⚡   | PTT with Opus/DTLS + WebRTC audio processing    |
 | System tray            |   ❌    | ❌  |  ✅   |  ✅   | Windows/Linux; minimize to tray, status icons   |
-| Auto-away              |   ❌    | ✅  |  ✅   |  ⚡   | Server-assisted idle tracking, per-session away |
+| Auto-away              |   ❌    | ✅  |  ✅   |  ⚡   | Per-server idle timer; back on visible activity |
 
 ## Unique to Nexus
 

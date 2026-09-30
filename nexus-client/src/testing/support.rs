@@ -59,3 +59,12 @@ pub(crate) fn test_connection_with_receiver(
     });
     (conn, rx)
 }
+
+/// An instant one second in the past, for asserting whether an idle timer was
+/// reset. One second stays clear of the start of the monotonic clock even on a
+/// freshly booted CI machine.
+pub(crate) fn one_second_ago() -> std::time::Instant {
+    std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(1))
+        .expect("monotonic clock has run for at least a second")
+}

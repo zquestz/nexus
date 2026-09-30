@@ -10,7 +10,7 @@ use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 
 /// Execute the /status command
 ///
-/// Sets or clears a status message without changing away status.
+/// Sets or clears a status message. The server also clears away status.
 ///
 /// Usage:
 /// - /status <message> - Set status message

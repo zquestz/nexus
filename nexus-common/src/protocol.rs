@@ -544,7 +544,7 @@ pub enum ClientMessage {
         #[serde(default, skip_serializing_if = "is_normal_action")]
         action: ChatAction,
     },
-    /// Set status message without changing away status
+    /// Set or clear the status message; always clears the away flag
     UserStatus {
         /// Status message (None to clear)
         #[serde(default, skip_serializing_if = "Option::is_none")]

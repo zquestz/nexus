@@ -39,8 +39,12 @@ impl NexusApp {
         let existing_conn = self.find_connection_for_uri(&uri);
 
         if let Some(connection_id) = existing_conn {
-            // Found existing connection - switch to it and navigate
+            // Found existing connection - switch to it and navigate. Opening a
+            // link to it counts as activity on it, like picking it in the list.
             self.active_connection = Some(connection_id);
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                conn.last_activity = std::time::Instant::now();
+            }
 
             // Navigate to path intent if present
             if let Some(ref path) = uri.path {
@@ -423,6 +427,7 @@ mod tests {
 
     use super::*;
     use crate::network::types::{ConnectError, ConnectionParams};
+    use crate::testing::support::one_second_ago;
     use crate::types::{
         ActivePanel, ConnectionInfo, NewsManagementMode, ResponseRouting, ServerBookmark,
         ServerConnection, ServerConnectionParams, UserInfo,
@@ -531,6 +536,34 @@ mod tests {
             "err-uri-connection-failed",
             &[("host", host), ("error", error)],
         )
+    }
+
+    #[test]
+    fn opening_a_link_to_an_existing_connection_resets_its_idle_timer() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let idle_since = one_second_ago();
+        for id in [1, 2] {
+            let (mut conn, _rx) = test_connection_with_receiver(id);
+            conn.connection_info.address = format!("10.0.0.{id}");
+            conn.connection_info.port = 7500;
+            conn.last_activity = idle_since;
+            app.connections.insert(id, conn);
+        }
+
+        let _ = app.handle_nexus_uri(NexusUri {
+            user: None,
+            password: None,
+            host: "10.0.0.2".to_string(),
+            port: 7500,
+            path: None,
+        });
+
+        assert_eq!(app.active_connection, Some(2));
+        assert!(app.connections[&2].last_activity > idle_since);
+        assert_eq!(app.connections[&1].last_activity, idle_since);
     }
 
     #[test]

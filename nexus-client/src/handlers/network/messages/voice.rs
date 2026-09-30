@@ -157,6 +157,9 @@ impl NexusApp {
                 can_transmit,
             ));
 
+            // Joining voice marks you back on this server
+            conn.mark_back();
+
             (
                 conn.connection_info.address.clone(),
                 conn.connection_info.port,
@@ -841,5 +844,45 @@ mod tests {
         assert!(rx.try_recv().is_err());
         assert!(app.connections[&1].voice_session.is_some());
         assert_eq!(app.active_voice_connection, Some(1));
+    }
+
+    #[test]
+    fn voice_join_marks_back_only_on_that_server_once_accepted() {
+        let mut app = NexusApp::default();
+        app.config.settings.sound_enabled = false;
+        let (mut conn, mut rx) = test_connection_with_receiver(1, "me", "#general");
+        conn.is_away = true;
+        conn.is_auto_away = true;
+        app.connections.insert(1, conn);
+        let (mut other, mut other_rx) = test_connection_with_receiver(2, "me", "#general");
+        other.voice_session = None;
+        other.is_away = true;
+        other.is_auto_away = true;
+        app.connections.insert(2, other);
+
+        // A rejected join doesn't count
+        let _ =
+            app.handle_voice_join_response(1, false, None, None, None, Some("denied".to_string()));
+        assert!(rx.try_recv().is_err());
+
+        // A retried join that the server accepts does
+        app.connections
+            .get_mut(&1)
+            .expect("connection 1 exists")
+            .voice_session = Some(VoiceState::new(
+            "#general".to_string(),
+            vec!["me".to_string()],
+        ));
+        let _ = app.handle_voice_join_response(
+            1,
+            true,
+            Some(Uuid::new_v4()),
+            Some("#general".to_string()),
+            Some(vec!["me".to_string()]),
+            None,
+        );
+
+        assert!(matches!(rx.try_recv(), Ok((_, ClientMessage::UserBack))));
+        assert!(other_rx.try_recv().is_err());
     }
 }
