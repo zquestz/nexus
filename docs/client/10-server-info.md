@@ -140,16 +140,16 @@ lets you add, edit, or remove tracker registrations.
 
 The tracker list is a sortable table with three columns:
 
-| Column      | Notes                                                                                                                  |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Status**  | Themed indicator bullet — green = connected, yellow = fingerprint mismatch pending review, red = disconnected or error |
-| **Name**    | Admin-set tracker name                                                                                                 |
-| **Address** | Tracker hostname/IP. Shows `host:port` when the tracker uses a non-default port; otherwise just the host               |
+| Column      | Notes                                                                                                                                  |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**  | Themed indicator bullet: green = connected, yellow = fingerprint mismatch pending review, red = disconnected or error, gray = disabled |
+| **Name**    | Admin-set tracker name                                                                                                                 |
+| **Address** | Tracker hostname/IP. Shows `host:port` when the tracker uses a non-default port; otherwise just the host                               |
 
 Hovering the status bullet shows a tooltip with the most recent
-operational error (or "Connected" / "Fingerprint mismatch — review and
-accept" for the corresponding states). Sort by clicking any column
-header. Default sort is **Name ascending**.
+operational error ("Disconnected" if there isn't one), or "Connected",
+"Fingerprint Mismatch", or "Disabled" for the other states. Sort by
+clicking any column header. Default sort is **Name ascending**.
 
 The toolbar above the table has **Add Tracker** and **Refresh** icons.
 Add is disabled without `tracker_add`. Refresh re-fetches the list from
@@ -192,8 +192,8 @@ fingerprint observation), then opens an Edit Tracker subview prefilled
 with current values.
 
 The form is identical to Add Tracker. If the registration recently
-failed, the form shows the most recent error in an informational banner
-above the fields, so you have operational context while editing.
+failed, the form shows the most recent error in a banner above the
+fields, so you have operational context while editing.
 
 ### Accept Fingerprint dialog
 

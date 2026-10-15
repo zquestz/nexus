@@ -1248,6 +1248,7 @@ placeholder-tracker-password = 비밀번호 (선택 사항)
 # Tooltips
 tooltip-tracker-add = 트래커 추가
 tooltip-tracker-connected = 연결됨
+tooltip-tracker-disabled = 비활성화
 tooltip-tracker-disconnected = 연결 끊김
 tooltip-tracker-fingerprint-pending = 지문 불일치
 

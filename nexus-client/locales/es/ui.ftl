@@ -1323,6 +1323,7 @@ placeholder-tracker-password = Contraseña (opcional)
 # Tooltips
 tooltip-tracker-add = Agregar tracker
 tooltip-tracker-connected = Conectado
+tooltip-tracker-disabled = Desactivado
 tooltip-tracker-disconnected = Desconectado
 tooltip-tracker-fingerprint-pending = Huella No Coincide
 

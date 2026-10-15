@@ -1322,6 +1322,7 @@ placeholder-tracker-password = Wachtwoord (optioneel)
 # Tooltips
 tooltip-tracker-add = Tracker toevoegen
 tooltip-tracker-connected = Verbonden
+tooltip-tracker-disabled = Uitgeschakeld
 tooltip-tracker-disconnected = Verbroken
 tooltip-tracker-fingerprint-pending = Vingerafdruk Komt Niet Overeen
 

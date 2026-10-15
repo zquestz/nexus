@@ -38,7 +38,7 @@ use crate::style::{
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, context_menu_container_style, error_text_style,
     menu_button_danger_style, menu_button_style, muted_text_style, panel_title, separator_style,
-    shaped_text, shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    shaped_text, shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style, ui,
 };
 use crate::types::{
     InputId, Message, ServerConnection, TrackerManagementMode, TrackerManagementSortColumn,
@@ -59,10 +59,16 @@ enum TrackerStatus {
     PendingFingerprint,
     /// Disconnected, last_error set, or Stage-2 mismatch.
     Error,
+    /// Turned off by an admin, so no tracker task is running.
+    Disabled,
 }
 
 fn classify_tracker_status(t: &TrackerInfo) -> TrackerStatus {
-    if t.pending_fingerprint.is_some()
+    // A disabled row has every runtime field empty, so nothing below it
+    // can apply.
+    if !t.enabled {
+        TrackerStatus::Disabled
+    } else if t.pending_fingerprint.is_some()
         && t.last_error_kind.as_deref() != Some(ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED)
     {
         TrackerStatus::PendingFingerprint
@@ -80,16 +86,18 @@ fn status_tooltip(status: TrackerStatus, last_error: Option<&str>) -> String {
         TrackerStatus::Error => last_error
             .map(|s| s.to_string())
             .unwrap_or_else(|| t("tooltip-tracker-disconnected")),
+        TrackerStatus::Disabled => t("tooltip-tracker-disabled"),
     }
 }
 
-/// Sort priority for the Status column: Connected > PendingFingerprint > Error.
-/// Smaller is "earlier" in ascending order.
+/// Sort priority for the Status column: Connected > PendingFingerprint >
+/// Error > Disabled. Smaller is "earlier" in ascending order.
 fn status_sort_key(status: TrackerStatus) -> u8 {
     match status {
         TrackerStatus::Connected => 0,
         TrackerStatus::PendingFingerprint => 1,
         TrackerStatus::Error => 2,
+        TrackerStatus::Disabled => 3,
     }
 }
 
@@ -133,6 +141,7 @@ struct TrackerTableDeps {
     success_color: iced::Color,
     warning_color: iced::Color,
     danger_color: iced::Color,
+    muted_color: iced::Color,
 }
 
 impl Hash for TrackerTableDeps {
@@ -148,6 +157,7 @@ impl Hash for TrackerTableDeps {
             success_color,
             warning_color,
             danger_color,
+            muted_color,
         } = self;
         trackers.len().hash(state);
         for TrackerInfo {
@@ -155,6 +165,7 @@ impl Hash for TrackerTableDeps {
             name,
             address,
             port,
+            enabled,
             connected,
             last_error,
             last_error_kind,
@@ -169,7 +180,6 @@ impl Hash for TrackerTableDeps {
             last_connected_at: _,
             fingerprint: _,
             password: _,
-            enabled: _,
             created_at: _,
             updated_at: _,
             refresh_interval: _,
@@ -179,6 +189,7 @@ impl Hash for TrackerTableDeps {
             name.hash(state);
             address.hash(state);
             port.hash(state);
+            enabled.hash(state);
             connected.hash(state);
             last_error.hash(state);
             last_error_kind.hash(state);
@@ -191,6 +202,7 @@ impl Hash for TrackerTableDeps {
         hash_color(*success_color, state);
         hash_color(*warning_color, state);
         hash_color(*danger_color, state);
+        hash_color(*muted_color, state);
     }
 }
 
@@ -297,6 +309,7 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
         let success_color = deps.success_color;
         let warning_color = deps.warning_color;
         let danger_color = deps.danger_color;
+        let muted_color = deps.muted_color;
 
         // Status column cell — bullet with tooltip.
         let status_column = table::column(status_header, move |tracker: TrackerInfo| {
@@ -305,6 +318,7 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
                 TrackerStatus::Connected => success_color,
                 TrackerStatus::PendingFingerprint => warning_color,
                 TrackerStatus::Error => danger_color,
+                TrackerStatus::Disabled => muted_color,
             };
             let tooltip_text = status_tooltip(status, tracker.last_error.as_deref());
 
@@ -532,6 +546,7 @@ pub fn trackers_tab_view<'a>(
                     success_color: palette.success.base.color,
                     warning_color: palette.warning.base.color,
                     danger_color: palette.danger.base.color,
+                    muted_color: ui::muted_text_color(theme),
                 };
 
                 scrollable(lazy_tracker_table(deps)).height(Fill).into()
@@ -772,18 +787,15 @@ pub fn edit_tracker_view(state: &TrackerManagementState) -> Element<'_, Message>
         );
         items.push(Space::new().height(SPACER_SIZE_SMALL).into());
     } else if let Some(err) = last_error {
-        // Show last operational error as informational context. Uses
-        // muted styling (not the danger color) because this banner is
-        // historical — it describes what failed on the previous
-        // registration cycle, not anything the admin entered just now.
-        // The form-error path above keeps the danger color for actual
-        // validation/rejection errors that block saving.
+        // The tracker's last registration error, in the danger color like
+        // every other tracker error (the Tracker Browser shows the same
+        // failures in red).
         items.push(
             shaped_text_wrapped(err.clone())
                 .size(TEXT_SIZE)
                 .width(Fill)
                 .align_x(Center)
-                .style(muted_text_style)
+                .style(error_text_style)
                 .into(),
         );
         items.push(Space::new().height(SPACER_SIZE_SMALL).into());
@@ -1152,6 +1164,7 @@ mod tests {
             success_color: iced::Color::from_rgb(0.0, 1.0, 0.0),
             warning_color: iced::Color::from_rgb(1.0, 1.0, 0.0),
             danger_color: iced::Color::from_rgb(1.0, 0.0, 0.0),
+            muted_color: iced::Color::from_rgb(0.5, 0.5, 0.5),
         }
     }
 
@@ -1174,6 +1187,7 @@ mod tests {
         assert_hash_changes(|d| d.trackers[0].name = "Backup".to_string());
         assert_hash_changes(|d| d.trackers[0].address = "other.example".to_string());
         assert_hash_changes(|d| d.trackers[0].port = 7511);
+        assert_hash_changes(|d| d.trackers[0].enabled = false);
         assert_hash_changes(|d| d.trackers[0].connected = false);
         assert_hash_changes(|d| d.trackers[0].last_error = Some("failed".to_string()));
         assert_hash_changes(|d| d.trackers[0].last_error_kind = Some("unauthorized".to_string()));
@@ -1185,6 +1199,7 @@ mod tests {
         assert_hash_changes(|d| d.success_color = iced::Color::from_rgb(0.0, 0.5, 0.0));
         assert_hash_changes(|d| d.warning_color = iced::Color::from_rgb(0.5, 0.5, 0.0));
         assert_hash_changes(|d| d.danger_color = iced::Color::from_rgb(0.5, 0.0, 0.0));
+        assert_hash_changes(|d| d.muted_color = iced::Color::from_rgb(0.3, 0.3, 0.3));
     }
 
     #[test]
@@ -1194,7 +1209,6 @@ mod tests {
 
         deps.trackers[0].fingerprint = Some("CC:DD".to_string());
         deps.trackers[0].password = Some("secret".to_string());
-        deps.trackers[0].enabled = false;
         deps.trackers[0].created_at = 200;
         deps.trackers[0].updated_at = 300;
         deps.trackers[0].last_connected_at = Some(400);
@@ -1202,5 +1216,24 @@ mod tests {
         deps.trackers[0].refresh_interval = Some(600);
 
         assert_eq!(deps_hash(&deps), base);
+    }
+
+    #[test]
+    fn a_disabled_tracker_is_disabled_not_an_error() {
+        // A disabled row reports connected: false with no runtime fields
+        let tracker = TrackerInfo {
+            enabled: false,
+            connected: false,
+            last_connected_at: None,
+            last_attempted_at: None,
+            refresh_interval: None,
+            ..sample_tracker()
+        };
+
+        let status = classify_tracker_status(&tracker);
+
+        assert!(status == TrackerStatus::Disabled);
+        assert_eq!(status_tooltip(status, None), t("tooltip-tracker-disabled"));
+        assert!(status_sort_key(status) > status_sort_key(TrackerStatus::Error));
     }
 }

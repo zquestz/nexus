@@ -1325,6 +1325,7 @@ placeholder-tracker-password = Password (opzionale)
 # Tooltips
 tooltip-tracker-add = Aggiungi tracker
 tooltip-tracker-connected = Connesso
+tooltip-tracker-disabled = Disabilitato
 tooltip-tracker-disconnected = Disconnesso
 tooltip-tracker-fingerprint-pending = Impronta Non Corrispondente
 

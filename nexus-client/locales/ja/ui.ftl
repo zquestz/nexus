@@ -1248,6 +1248,7 @@ placeholder-tracker-password = パスワード（任意）
 # Tooltips
 tooltip-tracker-add = トラッカー追加
 tooltip-tracker-connected = 接続済み
+tooltip-tracker-disabled = 無効
 tooltip-tracker-disconnected = 未接続
 tooltip-tracker-fingerprint-pending = フィンガープリント不一致
 
