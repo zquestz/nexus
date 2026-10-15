@@ -441,6 +441,8 @@ jobs:
     needs: [build-macos-client-arm64, build-macos-client-x64]
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download app bundle
         uses: actions/download-artifact@v4
         with:
@@ -475,22 +477,19 @@ jobs:
       - name: Clear extended attributes
         run: xattr -cr "Nexus BBS.app"
 
-      # Ad-hoc signing provides a valid signature without an Apple Developer account.
-      # It helps with some Gatekeeper checks but isn't notarized.
-      # For full Gatekeeper bypass, use a Developer ID ($99/year):
-      #   codesign --force --options runtime --sign "Developer ID Application: Name (TEAMID)" ...
-      #   xcrun notarytool submit *.dmg --apple-id "..." --password "..." --team-id "..." --wait
-      #   xcrun stapler staple *.dmg
-      - name: Ad-hoc code sign
+      # Ad-hoc signature with the hardened runtime and entitlements, so the
+      # app already runs under the restrictions notarization requires.
+      # Developer ID signing will swap "-" for the certificate identity and
+      # add --timestamp, then notarize and staple the DMG.
+      - name: Ad-hoc code sign (hardened runtime)
         run: |
-          # Sign all nested components first (inside-out signing)
-          find "Nexus BBS.app" -type f -perm +111 -exec codesign --force --deep --sign - {} \; 2>/dev/null || true
-          # Sign the main binary
-          codesign --force --sign - "Nexus BBS.app/Contents/MacOS/Nexus"
-          # Sign the app bundle
-          codesign --force --sign - "Nexus BBS.app"
-          # Verify the signature
-          codesign --verify --verbose "Nexus BBS.app"
+          codesign --force --options runtime \
+            --entitlements nexus-client/assets/macos/nexus.entitlements \
+            --sign - "Nexus BBS.app"
+          codesign --verify --strict --verbose=2 "Nexus BBS.app"
+          # Fail the build if the runtime flag or the microphone entitlement is missing
+          codesign --display --verbose=2 "Nexus BBS.app" 2>&1 | grep -E 'flags=.*runtime'
+          codesign --display --entitlements - "Nexus BBS.app" | grep com.apple.security.device.audio-input
 
       - name: Install create-dmg
         run: brew install create-dmg
