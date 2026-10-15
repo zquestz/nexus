@@ -6,6 +6,7 @@ This directory contains macOS-specific application assets for Nexus BBS.
 
 - `nexus.png` - 1024×1024px PNG icon
 - `nexus.icns` - macOS icon bundle (generated from PNG)
+- `nexus.entitlements` - Code-signing entitlements (microphone access for voice chat under the hardened runtime)
 - `generate_assets.sh` - Script to generate macOS assets from SVG source
 
 ## Generating Assets
