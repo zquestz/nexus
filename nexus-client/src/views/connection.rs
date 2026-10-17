@@ -5,6 +5,7 @@ use iced::widget::{Id, Space, button, checkbox, column, row, text, text_input};
 use iced::{Center, Element, Fill};
 use iced_aw::NumberInput;
 
+use super::helpers::password_field_row;
 use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
@@ -70,13 +71,17 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
-    let password_input = text_input(&t("placeholder-password-optional"), &form.password)
-        .on_input(Message::PasswordChanged)
-        .on_submit(submit_action.clone())
-        .id(Id::from(InputId::Password))
-        .secure(true)
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+    let password_input = password_field_row(
+        text_input(&t("placeholder-password-optional"), &form.password)
+            .on_input(Message::PasswordChanged)
+            .on_submit(submit_action.clone())
+            .id(Id::from(InputId::Password))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE),
+        InputId::Password,
+        form.password_revealed,
+        true,
+    );
 
     let nickname_input = text_input(&t("placeholder-nickname-optional"), &form.nickname)
         .on_input(Message::NicknameChanged)
@@ -139,7 +144,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         server_address_input.into(),
         port_input.into(),
         username_input.into(),
-        password_input.into(),
+        password_input,
         nickname_input.into(),
         fingerprint_input.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),

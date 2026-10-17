@@ -118,6 +118,9 @@ pub struct BookmarkEditState {
     pub mode: BookmarkEditMode,
     /// The bookmark being edited
     pub bookmark: ServerBookmark,
+    /// Whether the password field shows plain text instead of dots. Lives
+    /// here rather than on `ServerBookmark` so it is never saved.
+    pub password_revealed: bool,
     /// Error message for bookmark operations
     pub error: Option<String>,
     /// Whether the edit form has been invalidated by an external bookmark update.
@@ -133,6 +136,7 @@ impl Default for BookmarkEditState {
         Self {
             mode: BookmarkEditMode::None,
             bookmark: ServerBookmark::default(),
+            password_revealed: false,
             error: None,
             edit_stale: false,
             is_submitting: false,

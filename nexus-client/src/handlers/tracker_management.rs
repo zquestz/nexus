@@ -995,6 +995,7 @@ mod tests {
             port: 7510,
             fingerprint: String::new(),
             password: "   ".to_string(),
+            password_revealed: false,
             enabled: true,
         };
         app.connections.insert(1, conn);
@@ -1036,6 +1037,7 @@ mod tests {
             port: 7510,
             fingerprint: String::new(),
             password: " secret ".to_string(),
+            password_revealed: false,
             enabled: false,
         };
         app.connections.insert(1, conn);
@@ -1083,6 +1085,7 @@ mod tests {
             port: 7510,
             fingerprint: format!("  {VALID_FINGERPRINT}  "),
             password: String::new(),
+            password_revealed: false,
             enabled: true,
         };
         app.connections.insert(1, conn);
@@ -1129,6 +1132,7 @@ mod tests {
             port: 7510,
             fingerprint: String::new(),
             password: "  secret  ".to_string(),
+            password_revealed: false,
             enabled: true,
         };
         app.connections.insert(1, conn);

@@ -61,7 +61,7 @@ pub(crate) const DEFAULT_USER_PERMISSIONS: &[&str] = &[
 ];
 
 /// User management panel mode
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default)]
 pub enum UserManagementMode {
     /// Showing list of all users
     #[default]
@@ -78,6 +78,8 @@ pub enum UserManagementMode {
         new_username: String,
         /// New password (optional, empty = don't change)
         new_password: String,
+        /// Whether the new password field shows plain text instead of dots
+        new_password_revealed: bool,
         /// Is admin flag (editable)
         is_admin: bool,
         /// Original admin flag at time of edit.
@@ -120,6 +122,67 @@ pub enum UserManagementMode {
         /// Username to delete (for display in confirmation dialog)
         username: String,
     },
+}
+
+// Manual Debug so the edit form's new password never reaches logs. The
+// full destructure means a new field won't compile until it's listed here.
+impl std::fmt::Debug for UserManagementMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::List => f.write_str("List"),
+            Self::Create => f.write_str("Create"),
+            Self::Edit {
+                id,
+                original_username,
+                new_username,
+                new_password: _,
+                new_password_revealed,
+                is_admin,
+                original_is_admin,
+                is_shared,
+                enabled,
+                original_enabled,
+                permissions,
+                original_permissions,
+                original_group_id,
+                group_id,
+                group_permissions,
+                revoked_permissions,
+                bandwidth_weight_override,
+                bandwidth_weight_inherit,
+                original_bandwidth_weight_override,
+            } => f
+                .debug_struct("Edit")
+                .field("id", id)
+                .field("original_username", original_username)
+                .field("new_username", new_username)
+                .field("new_password", &nexus_common::REDACTED)
+                .field("new_password_revealed", new_password_revealed)
+                .field("is_admin", is_admin)
+                .field("original_is_admin", original_is_admin)
+                .field("is_shared", is_shared)
+                .field("enabled", enabled)
+                .field("original_enabled", original_enabled)
+                .field("permissions", permissions)
+                .field("original_permissions", original_permissions)
+                .field("original_group_id", original_group_id)
+                .field("group_id", group_id)
+                .field("group_permissions", group_permissions)
+                .field("revoked_permissions", revoked_permissions)
+                .field("bandwidth_weight_override", bandwidth_weight_override)
+                .field("bandwidth_weight_inherit", bandwidth_weight_inherit)
+                .field(
+                    "original_bandwidth_weight_override",
+                    original_bandwidth_weight_override,
+                )
+                .finish(),
+            Self::ConfirmDelete { id, username } => f
+                .debug_struct("ConfirmDelete")
+                .field("id", id)
+                .field("username", username)
+                .finish(),
+        }
+    }
 }
 
 /// Sparse `UserUpdate` payload computed from an edit baseline.
@@ -323,6 +386,8 @@ pub struct UserManagementState {
     pub username: String,
     /// Password for create user form
     pub password: String,
+    /// Whether the create form's password field shows plain text instead of dots
+    pub password_revealed: bool,
     /// Admin flag for create user form
     pub is_admin: bool,
     /// Shared account flag for create user form
@@ -380,6 +445,7 @@ impl Default for UserManagementState {
             return_to_panel: None,
             username: String::new(),
             password: String::new(),
+            password_revealed: false,
             is_admin: false,
             is_shared: false,
             enabled: true, // Default to enabled
@@ -420,6 +486,7 @@ impl std::fmt::Debug for UserManagementState {
             .field("return_to_panel", &self.return_to_panel)
             .field("username", &self.username)
             .field("password", &nexus_common::REDACTED)
+            .field("password_revealed", &self.password_revealed)
             .field("is_admin", &self.is_admin)
             .field("is_shared", &self.is_shared)
             .field("enabled", &self.enabled)
@@ -478,6 +545,7 @@ impl UserManagementState {
     pub fn clear_create_form(&mut self) {
         self.username.clear();
         self.password.clear();
+        self.password_revealed = false;
         self.is_admin = false;
         self.is_shared = false;
         self.enabled = true; // Reset to default enabled
@@ -533,6 +601,7 @@ impl UserManagementState {
             original_username: username.clone(),
             new_username: username,
             new_password: String::new(),
+            new_password_revealed: false,
             is_admin,
             original_is_admin: is_admin,
             is_shared,
@@ -625,6 +694,21 @@ mod tests {
 
     fn edit_mode_mut(state: &mut UserManagementState) -> &mut UserManagementMode {
         &mut state.mode
+    }
+
+    #[test]
+    fn debug_redacts_the_edit_forms_new_password() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        if let UserManagementMode::Edit { new_password, .. } = edit_mode_mut(&mut state) {
+            *new_password = "super-secret".to_string();
+        }
+
+        // The panel state's own Debug prints the mode, so check both
+        for debug in [format!("{:?}", state.mode), format!("{:?}", state)] {
+            assert!(!debug.contains("super-secret"));
+            assert!(debug.contains(nexus_common::REDACTED));
+        }
     }
 
     #[test]

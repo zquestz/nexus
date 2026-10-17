@@ -99,6 +99,8 @@ pub enum TrackerBrowserMode {
         port: u16,
         /// Editable registration password (empty = open tracker).
         password: String,
+        /// Whether the password field shows plain text instead of dots.
+        password_revealed: bool,
         /// Editable fingerprint pin (empty = unpinned).
         fingerprint: String,
     },
@@ -144,6 +146,7 @@ impl std::fmt::Debug for TrackerBrowserMode {
                 address,
                 port,
                 password: _,
+                password_revealed,
                 fingerprint,
             } => f
                 .debug_struct("Edit")
@@ -153,6 +156,7 @@ impl std::fmt::Debug for TrackerBrowserMode {
                 .field("address", address)
                 .field("port", port)
                 .field("password", &nexus_common::REDACTED)
+                .field("password_revealed", password_revealed)
                 .field("fingerprint", fingerprint)
                 .finish(),
             Self::ConfirmRemove { id, name } => f
@@ -244,6 +248,8 @@ pub struct TrackerBrowserState {
     pub add_port: u16,
     /// Add form: registration password field (empty = open tracker).
     pub add_password: String,
+    /// Add form: whether the password field shows plain text instead of dots.
+    pub add_password_revealed: bool,
     /// Add form: fingerprint pin field (empty = unpinned).
     pub add_fingerprint: String,
 }
@@ -267,6 +273,7 @@ impl Default for TrackerBrowserState {
             add_address: String::new(),
             add_port: DEFAULT_TRACKER_PORT,
             add_password: String::new(),
+            add_password_revealed: false,
             add_fingerprint: String::new(),
         }
     }
@@ -294,6 +301,7 @@ impl std::fmt::Debug for TrackerBrowserState {
             .field("add_address", &self.add_address)
             .field("add_port", &self.add_port)
             .field("add_password", &nexus_common::REDACTED)
+            .field("add_password_revealed", &self.add_password_revealed)
             .field("add_fingerprint", &self.add_fingerprint)
             .finish()
     }
@@ -318,6 +326,7 @@ impl TrackerBrowserState {
         self.add_address.clear();
         self.add_port = DEFAULT_TRACKER_PORT;
         self.add_password.clear();
+        self.add_password_revealed = false;
         self.add_fingerprint.clear();
         self.form_error = None;
         self.is_submitting = false;
@@ -338,6 +347,7 @@ impl TrackerBrowserState {
             address: init.address,
             port: init.port,
             password: init.password.unwrap_or_default(),
+            password_revealed: false,
             fingerprint: init.fingerprint.unwrap_or_default(),
         };
         self.form_error = None;

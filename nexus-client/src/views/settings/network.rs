@@ -8,9 +8,13 @@ use crate::config::settings::ProxySettings;
 use crate::i18n::t;
 use crate::style::{ELEMENT_SPACING, INPUT_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE, shaped_text};
 use crate::types::{InputId, Message};
+use crate::views::helpers::password_field_row;
 
 /// Build the Network tab content (proxy configuration)
-pub(super) fn network_tab_content(proxy: &ProxySettings) -> Element<'_, Message> {
+pub(super) fn network_tab_content(
+    proxy: &ProxySettings,
+    password_revealed: bool,
+) -> Element<'_, Message> {
     let mut items: Vec<Element<'_, Message>> = Vec::new();
 
     // Space between tab bar and first content
@@ -84,15 +88,18 @@ pub(super) fn network_tab_content(proxy: &ProxySettings) -> Element<'_, Message>
             .id(Id::from(InputId::ProxyPassword))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
-            .secure(true)
     } else {
         text_input(&t("placeholder-proxy-password"), proxy_password_value)
             .id(Id::from(InputId::ProxyPassword))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
-            .secure(true)
     };
-    items.push(proxy_password_input.into());
+    items.push(password_field_row(
+        proxy_password_input,
+        InputId::ProxyPassword,
+        password_revealed,
+        proxy.enabled,
+    ));
 
     // Allow voice bypass (non-interactive when proxy is disabled). Voice uses
     // direct UDP, so enabling this exposes the user's real IP to the server.

@@ -20,7 +20,9 @@ use super::constants::{
     GUEST_USERNAME, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT,
 };
 use super::groups::{group_form_view, group_list_content};
-use super::helpers::{hash_color, sort_icon_or_placeholder, t_args, tab_toolbar_icon_button};
+use super::helpers::{
+    hash_color, password_field_row, sort_icon_or_placeholder, t_args, tab_toolbar_icon_button,
+};
 use super::layout::scrollable_panel;
 use super::password_strength::password_strength_bar;
 use crate::i18n::{t, translate_permission};
@@ -211,6 +213,8 @@ struct EditUserContext<'a> {
     new_username: &'a str,
     /// New password (optional, empty = don't change)
     new_password: &'a str,
+    /// Whether the new password field shows plain text instead of dots
+    new_password_revealed: bool,
     /// Is admin flag
     is_admin: bool,
     /// Is shared account flag (immutable - display only)
@@ -773,13 +777,17 @@ fn create_view<'a>(
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
-    let password_input = text_input(&t("placeholder-password"), &user_management.password)
-        .on_input(Message::UserManagementPasswordChanged)
-        .on_submit(submit_action)
-        .id(Id::from(InputId::AdminPassword))
-        .secure(true)
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE);
+    let password_input = password_field_row(
+        text_input(&t("placeholder-password"), &user_management.password)
+            .on_input(Message::UserManagementPasswordChanged)
+            .on_submit(submit_action)
+            .id(Id::from(InputId::AdminPassword))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE),
+        InputId::AdminPassword,
+        user_management.password_revealed,
+        true,
+    );
 
     // Admin checkbox - disabled when is_shared is checked (shared accounts can't be admin)
     let admin_checkbox = if conn.is_admin && !user_management.is_shared {
@@ -908,7 +916,7 @@ fn create_view<'a>(
     }
 
     items.push(username_input.into());
-    items.push(password_input.into());
+    items.push(password_input);
 
     // Password strength bar (only shown when password is non-empty)
     if let Some(bar) = password_strength_bar(
@@ -993,10 +1001,10 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
     // Password input - disabled for guest account (password cannot be changed)
     // and for self-edit (Change Password dialog is the only path that
     // carries current_password verification).
-    let password_input = if ctx.is_guest || is_self_edit {
+    let password_read_only = ctx.is_guest || is_self_edit;
+    let password_text_input = if password_read_only {
         text_input(&t("placeholder-password-keep-current"), ctx.new_password)
             .id(Id::from(InputId::EditNewPassword))
-            .secure(true)
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
     } else {
@@ -1004,10 +1012,15 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
             .on_input(Message::UserManagementEditPasswordChanged)
             .on_submit(submit_action)
             .id(Id::from(InputId::EditNewPassword))
-            .secure(true)
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
     };
+    let password_input = password_field_row(
+        password_text_input,
+        InputId::EditNewPassword,
+        ctx.new_password_revealed,
+        !password_read_only,
+    );
 
     // Admin checkbox - disabled when shared (shared accounts can't be admin)
     // or when self-editing (server rejects self-demotion).
@@ -1134,7 +1147,7 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
     }
 
     items.push(username_input.into());
-    items.push(password_input.into());
+    items.push(password_input);
 
     // Password strength bar (only shown when password is non-empty)
     if let Some(bar) = password_strength_bar(
@@ -1259,6 +1272,7 @@ pub fn users_view<'a>(
                 original_username,
                 new_username,
                 new_password,
+                new_password_revealed,
                 is_admin,
                 is_shared,
                 enabled,
@@ -1275,6 +1289,7 @@ pub fn users_view<'a>(
                     original_username,
                     new_username,
                     new_password,
+                    new_password_revealed: *new_password_revealed,
                     is_admin: *is_admin,
                     is_shared: *is_shared,
                     is_guest: fold_name(original_username) == GUEST_USERNAME,

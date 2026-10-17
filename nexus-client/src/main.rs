@@ -800,6 +800,9 @@ impl NexusApp {
             // Connection form fields
             Message::AddBookmarkToggled(enabled) => self.handle_add_bookmark_toggled(enabled),
             Message::PasswordChanged(password) => self.handle_password_changed(password),
+            Message::PasswordVisibilityToggled(field) => {
+                self.handle_password_visibility_toggled(field)
+            }
             Message::PortChanged(port) => self.handle_port_changed(port),
             Message::ServerAddressChanged(addr) => self.handle_server_address_changed(addr),
             Message::ServerNameChanged(name) => self.handle_server_name_changed(name),

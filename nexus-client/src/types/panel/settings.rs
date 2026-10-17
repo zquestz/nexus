@@ -60,6 +60,10 @@ pub struct SettingsFormState {
     pub mic_level: f32,
     /// Microphone test error message (e.g., device initialization failure)
     pub mic_error: Option<String>,
+    /// Whether the proxy password field shows plain text instead of dots.
+    /// Lives here rather than in the saved proxy settings so it is never
+    /// persisted.
+    pub proxy_password_revealed: bool,
     /// Cached output audio devices (populated once when settings opens)
     pub output_devices: Vec<crate::voice::audio::AudioDevice>,
     /// Cached input audio devices (populated once when settings opens)
@@ -82,6 +86,7 @@ impl std::fmt::Debug for SettingsFormState {
             .field("mic_testing", &self.mic_testing)
             .field("mic_level", &self.mic_level)
             .field("mic_error", &self.mic_error)
+            .field("proxy_password_revealed", &self.proxy_password_revealed)
             .field("output_devices", &self.output_devices.len())
             .field("input_devices", &self.input_devices.len())
             .finish()
@@ -139,6 +144,7 @@ impl SettingsFormState {
             mic_testing: false,
             mic_level: 0.0,
             mic_error: None,
+            proxy_password_revealed: false,
             output_devices,
             input_devices,
         }

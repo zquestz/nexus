@@ -21,6 +21,8 @@ pub struct ConnectionFormState {
     pub username: String,
     /// Password for authentication
     pub password: String,
+    /// Whether the password field shows plain text instead of dots
+    pub password_revealed: bool,
     /// Nickname for shared account authentication
     pub nickname: String,
     /// Optional TLS certificate fingerprint pin (canonical 95-char form).
@@ -49,6 +51,7 @@ impl Default for ConnectionFormState {
             port: DEFAULT_PORT,
             username: String::new(),
             password: String::new(),
+            password_revealed: false,
             nickname: String::new(),
             fingerprint: String::new(),
             error: None,
@@ -67,6 +70,7 @@ impl std::fmt::Debug for ConnectionFormState {
             .field("port", &self.port)
             .field("username", &self.username)
             .field("password", &nexus_common::REDACTED)
+            .field("password_revealed", &self.password_revealed)
             .field("nickname", &self.nickname)
             .field("fingerprint", &self.fingerprint)
             .field("error", &self.error)
@@ -95,6 +99,7 @@ impl ConnectionFormState {
         self.port = DEFAULT_PORT;
         self.username.clear();
         self.password.clear();
+        self.password_revealed = false;
         self.nickname.clear();
         self.fingerprint.clear();
         self.error = None;

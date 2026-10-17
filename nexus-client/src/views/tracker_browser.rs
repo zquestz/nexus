@@ -28,7 +28,7 @@ use nexus_common::tracker_protocol::ServerEntry;
 use uuid::Uuid;
 
 use super::fingerprint::format_fingerprint_multiline;
-use super::helpers::{sort_icon_or_placeholder, t_args};
+use super::helpers::{password_field_row, sort_icon_or_placeholder, t_args};
 use super::layout::{scrollable_modal, scrollable_panel};
 use crate::i18n::t;
 use crate::icon;
@@ -894,14 +894,18 @@ fn add_tracker_view<'a>(state: &'a TrackerBrowserState) -> Element<'a, Message> 
     );
 
     // Password (optional)
-    let password_input = text_input(&t("placeholder-tracker-password"), &state.add_password)
-        .on_input(Message::TrackerBrowserAddPasswordChanged)
-        .on_submit(submit_action.clone())
-        .id(Id::from(InputId::TrackerBrowserAddPassword))
-        .secure(true)
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .width(Fill);
+    let password_input = password_field_row(
+        text_input(&t("placeholder-tracker-password"), &state.add_password)
+            .on_input(Message::TrackerBrowserAddPasswordChanged)
+            .on_submit(submit_action.clone())
+            .id(Id::from(InputId::TrackerBrowserAddPassword))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+            .width(Fill),
+        InputId::TrackerBrowserAddPassword,
+        state.add_password_revealed,
+        true,
+    );
     items.push(
         row![
             shaped_text(t("label-tracker-password")).size(TEXT_SIZE),
@@ -976,6 +980,7 @@ fn edit_tracker_view<'a>(state: &'a TrackerBrowserState) -> Element<'a, Message>
         address,
         port,
         password,
+        password_revealed,
         fingerprint,
         ..
     } = &state.mode
@@ -1065,14 +1070,18 @@ fn edit_tracker_view<'a>(state: &'a TrackerBrowserState) -> Element<'a, Message>
         .into(),
     );
 
-    let password_input = text_input(&t("placeholder-tracker-password"), password)
-        .on_input(Message::TrackerBrowserEditPasswordChanged)
-        .on_submit(submit_action.clone())
-        .id(Id::from(InputId::TrackerBrowserEditPassword))
-        .secure(true)
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .width(Fill);
+    let password_input = password_field_row(
+        text_input(&t("placeholder-tracker-password"), password)
+            .on_input(Message::TrackerBrowserEditPasswordChanged)
+            .on_submit(submit_action.clone())
+            .id(Id::from(InputId::TrackerBrowserEditPassword))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+            .width(Fill),
+        InputId::TrackerBrowserEditPassword,
+        *password_revealed,
+        true,
+    );
     items.push(
         row![
             shaped_text(t("label-tracker-password")).size(TEXT_SIZE),

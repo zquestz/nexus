@@ -17,6 +17,12 @@ pub struct PasswordChangeState {
     pub new_password: String,
     /// Confirm new password (must match new_password)
     pub confirm_password: String,
+    /// Whether the current password field shows plain text instead of dots
+    pub current_password_revealed: bool,
+    /// Whether the new password field shows plain text instead of dots
+    pub new_password_revealed: bool,
+    /// Whether the confirm password field shows plain text instead of dots
+    pub confirm_password_revealed: bool,
     /// Error message to display
     pub error: Option<String>,
     /// Panel to return to after cancel/success (e.g., UserInfo)
@@ -31,6 +37,9 @@ impl std::fmt::Debug for PasswordChangeState {
             .field("current_password", &nexus_common::REDACTED)
             .field("new_password", &nexus_common::REDACTED)
             .field("confirm_password", &nexus_common::REDACTED)
+            .field("current_password_revealed", &self.current_password_revealed)
+            .field("new_password_revealed", &self.new_password_revealed)
+            .field("confirm_password_revealed", &self.confirm_password_revealed)
             .field("error", &self.error)
             .field("return_to_panel", &self.return_to_panel)
             .field("is_submitting", &self.is_submitting)
@@ -45,6 +54,9 @@ impl PasswordChangeState {
             current_password: String::new(),
             new_password: String::new(),
             confirm_password: String::new(),
+            current_password_revealed: false,
+            new_password_revealed: false,
+            confirm_password_revealed: false,
             error: None,
             return_to_panel,
             is_submitting: false,

@@ -17,7 +17,7 @@ use super::panel::{
     TrackerBrowserSortColumn, TrackerManagementSortColumn, UserManagementSortColumn,
     UserManagementTab,
 };
-use super::{ChatTab, NetworkConnection, ServerMessage};
+use super::{ChatTab, InputId, NetworkConnection, ServerMessage};
 use crate::config::audio::{PttMode, PttReleaseDelay};
 use crate::config::events::{EventType, NotificationContent, SoundChoice};
 use crate::image::ImagePickerError;
@@ -241,6 +241,8 @@ pub enum Message {
     NetworkError(usize, String),
     /// Connection form: Password field changed
     PasswordChanged(String),
+    /// Any masked password field: show/hide button pressed (the field's input id)
+    PasswordVisibilityToggled(InputId),
     /// Connection form: Port field changed
     PortChanged(u16),
     /// Keyboard: Navigate to previous chat tab (Ctrl+Shift+Tab)

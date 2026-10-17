@@ -10,6 +10,7 @@ use nexus_common::protocol::UserInfoDetailed;
 use nexus_common::validators::PasswordStrength;
 
 use super::constants::{GUEST_USERNAME, PERMISSION_USER_EDIT};
+use super::helpers::password_field_row;
 use super::layout::scrollable_panel;
 use super::password_strength::password_strength_bar;
 use crate::avatar::{avatar_cache_key, generate_identicon};
@@ -161,24 +162,31 @@ pub fn password_change_view<'a>(
     };
 
     // Current password field
-    let current_password_input =
+    let current_password_input = password_field_row(
         text_input(&t("placeholder-current-password"), &state.current_password)
             .id(Id::from(InputId::ChangePasswordCurrent))
             .on_input(Message::ChangePasswordCurrentChanged)
             .on_submit(submit_action.clone())
-            .secure(true)
             .padding(BUTTON_PADDING)
-            .width(Fill);
+            .width(Fill),
+        InputId::ChangePasswordCurrent,
+        state.current_password_revealed,
+        true,
+    );
     content = content.push(current_password_input);
 
     // New password field
-    let new_password_input = text_input(&t("placeholder-new-password"), &state.new_password)
-        .id(Id::from(InputId::ChangePasswordNew))
-        .on_input(Message::ChangePasswordNewChanged)
-        .on_submit(submit_action.clone())
-        .secure(true)
-        .padding(BUTTON_PADDING)
-        .width(Fill);
+    let new_password_input = password_field_row(
+        text_input(&t("placeholder-new-password"), &state.new_password)
+            .id(Id::from(InputId::ChangePasswordNew))
+            .on_input(Message::ChangePasswordNewChanged)
+            .on_submit(submit_action.clone())
+            .padding(BUTTON_PADDING)
+            .width(Fill),
+        InputId::ChangePasswordNew,
+        state.new_password_revealed,
+        true,
+    );
     content = content.push(new_password_input);
 
     // Password strength bar (only shown when new password is non-empty)
@@ -187,14 +195,17 @@ pub fn password_change_view<'a>(
     }
 
     // Confirm password field
-    let confirm_password_input =
+    let confirm_password_input = password_field_row(
         text_input(&t("placeholder-confirm-password"), &state.confirm_password)
             .id(Id::from(InputId::ChangePasswordConfirm))
             .on_input(Message::ChangePasswordConfirmChanged)
             .on_submit(submit_action)
-            .secure(true)
             .padding(BUTTON_PADDING)
-            .width(Fill);
+            .width(Fill),
+        InputId::ChangePasswordConfirm,
+        state.confirm_password_revealed,
+        true,
+    );
     content = content.push(confirm_password_input);
 
     content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));

@@ -66,6 +66,8 @@ pub enum TrackerManagementMode {
         fingerprint: String,
         /// Editable password field (empty = open tracker).
         password: String,
+        /// Whether the password field shows plain text instead of dots.
+        password_revealed: bool,
         /// Editable enabled flag.
         enabled: bool,
     },
@@ -222,6 +224,7 @@ impl std::fmt::Debug for TrackerManagementMode {
                 port,
                 fingerprint,
                 password: _,
+                password_revealed,
                 enabled,
             } => f
                 .debug_struct("Edit")
@@ -233,6 +236,7 @@ impl std::fmt::Debug for TrackerManagementMode {
                 .field("port", port)
                 .field("fingerprint", fingerprint)
                 .field("password", &nexus_common::REDACTED)
+                .field("password_revealed", password_revealed)
                 .field("enabled", enabled)
                 .finish(),
             Self::ConfirmRemove { id, name } => f
@@ -313,6 +317,8 @@ pub struct TrackerManagementState {
     pub add_fingerprint: String,
     /// Add form: registration password field (empty = open tracker).
     pub add_password: String,
+    /// Add form: whether the password field shows plain text instead of dots.
+    pub add_password_revealed: bool,
     /// Add form: enabled flag (default true).
     pub add_enabled: bool,
 }
@@ -336,6 +342,7 @@ impl Default for TrackerManagementState {
             add_port: DEFAULT_TRACKER_PORT,
             add_fingerprint: String::new(),
             add_password: String::new(),
+            add_password_revealed: false,
             add_enabled: true,
         }
     }
@@ -363,6 +370,7 @@ impl std::fmt::Debug for TrackerManagementState {
             .field("add_port", &self.add_port)
             .field("add_fingerprint", &self.add_fingerprint)
             .field("add_password", &nexus_common::REDACTED)
+            .field("add_password_revealed", &self.add_password_revealed)
             .field("add_enabled", &self.add_enabled)
             .finish()
     }
@@ -401,6 +409,7 @@ impl TrackerManagementState {
         self.add_port = DEFAULT_TRACKER_PORT;
         self.add_fingerprint.clear();
         self.add_password.clear();
+        self.add_password_revealed = false;
         self.add_enabled = true;
         self.form_error = None;
         self.is_submitting = false;
@@ -428,6 +437,7 @@ impl TrackerManagementState {
             port: init.port,
             fingerprint: init.fingerprint.unwrap_or_default(),
             password: init.password.unwrap_or_default(),
+            password_revealed: false,
             enabled: init.enabled,
         };
         self.form_error = None;

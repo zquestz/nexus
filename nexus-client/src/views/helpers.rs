@@ -3,17 +3,18 @@
 use std::hash::{Hash, Hasher};
 
 use chrono::{DateTime, Local, TimeZone, Utc};
-use iced::widget::{Space, Text, button, container, tooltip};
-use iced::{Color, Element, alignment};
+use iced::widget::{Space, Text, TextInput, button, container, row, tooltip};
+use iced::{Center, Color, Element, Fill, alignment};
 
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    ICON_SIZE, SORT_ICON_SIZE, TOOLBAR_BUTTON_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, disabled_icon_button_style, muted_text_style, shaped_text,
-    tooltip_container_style, transparent_icon_button_style,
+    ICON_SIZE, SORT_ICON_SIZE, SPACER_SIZE_SMALL, TOOLBAR_BUTTON_PADDING,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    disabled_icon_button_style, muted_text_style, shaped_text, tooltip_container_style,
+    transparent_icon_button_style,
 };
-use crate::types::Message;
+use crate::types::{InputId, Message};
 
 /// Bytes per kilobyte.
 const BYTES_PER_KB: u64 = 1024;
@@ -114,6 +115,36 @@ pub fn tab_toolbar_icon_button<'a>(
             .style(disabled_icon_button_style)
             .into()
     }
+}
+
+/// A password input followed by its show/hide button.
+///
+/// Masks the input unless `revealed`, so the dots and the button always
+/// agree. Like the Files panel's hidden-files toggle, the icon shows the
+/// current state (eye = visible, crossed-out eye = masked) and the tooltip
+/// names the action. The button is disabled along with a read-only field.
+pub fn password_field_row<'a>(
+    input: TextInput<'a, Message>,
+    field: InputId,
+    revealed: bool,
+    enabled: bool,
+) -> Element<'a, Message> {
+    let (icon, tooltip_key) = if revealed {
+        (icon::eye(), "tooltip-hide-password")
+    } else {
+        (icon::eye_off(), "tooltip-show-password")
+    };
+    let toggle = tab_toolbar_icon_button(
+        icon,
+        tooltip_key,
+        Message::PasswordVisibilityToggled(field),
+        enabled,
+    );
+    row![input.secure(!revealed), toggle]
+        .spacing(SPACER_SIZE_SMALL)
+        .align_y(Center)
+        .width(Fill)
+        .into()
 }
 
 /// Build the sort indicator for a sortable table column header.

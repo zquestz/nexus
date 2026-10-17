@@ -5,6 +5,7 @@ use iced::widget::{Id, Row, Space, button, checkbox, column, row, text, text_inp
 use iced::{Center, Element, Fill};
 use iced_aw::NumberInput;
 
+use super::helpers::password_field_row;
 use super::layout::scrollable_panel;
 use crate::i18n::{t, t_args};
 use crate::style::{
@@ -118,17 +119,20 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .into(),
-        text_input(
-            &t("placeholder-password-optional"),
-            &state.bookmark.password,
-        )
-        .on_input(Message::BookmarkPasswordChanged)
-        .on_submit(submit_action.clone())
-        .id(Id::from(InputId::BookmarkPassword))
-        .secure(true)
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .into(),
+        password_field_row(
+            text_input(
+                &t("placeholder-password-optional"),
+                &state.bookmark.password,
+            )
+            .on_input(Message::BookmarkPasswordChanged)
+            .on_submit(submit_action.clone())
+            .id(Id::from(InputId::BookmarkPassword))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE),
+            InputId::BookmarkPassword,
+            state.password_revealed,
+            true,
+        ),
         text_input(
             &t("placeholder-nickname-optional"),
             &state.bookmark.nickname,

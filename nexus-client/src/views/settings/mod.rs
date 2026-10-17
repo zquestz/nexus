@@ -215,7 +215,10 @@ pub fn settings_view<'a>(data: SettingsViewData<'a>) -> Element<'a, Message> {
         auto_away_timeout: data.auto_away_timeout,
         auto_away_message: data.auto_away_message,
     });
-    let network_content = network::network_tab_content(data.proxy);
+    let proxy_password_revealed = data
+        .settings_form
+        .is_some_and(|form| form.proxy_password_revealed);
+    let network_content = network::network_tab_content(data.proxy, proxy_password_revealed);
 
     let files_content = files::files_tab_content(
         data.download_path,

@@ -6,7 +6,10 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, InputId, Message, PendingRequests};
+use crate::types::{
+    ActivePanel, InputId, Message, PendingRequests, TrackerBrowserMode, TrackerManagementMode,
+    UserManagementMode,
+};
 
 impl NexusApp {
     // ==================== Active Panel Helpers ====================
@@ -254,5 +257,158 @@ impl NexusApp {
     pub fn handle_toggle_user_list(&mut self) -> Task<Message> {
         self.ui_state.show_user_list = !self.ui_state.show_user_list;
         self.scroll_chat_if_visible(false)
+    }
+
+    // ==================== Password Fields ====================
+
+    /// Show or hide a masked password field, then return focus to it so
+    /// typing can continue
+    pub fn handle_password_visibility_toggled(&mut self, field: InputId) -> Task<Message> {
+        let Some(revealed) = self.password_revealed_mut(field) else {
+            return Task::none();
+        };
+        *revealed = !*revealed;
+        self.focus_field(field)
+    }
+
+    /// The show/hide flag for a password field. Each flag lives next to its
+    /// password value, so it resets to hidden whenever that form resets.
+    /// `None` when the field's form isn't open.
+    fn password_revealed_mut(&mut self, field: InputId) -> Option<&mut bool> {
+        match field {
+            InputId::Password => Some(&mut self.connection_form.password_revealed),
+            InputId::BookmarkPassword => Some(&mut self.bookmark_edit.password_revealed),
+            InputId::ProxyPassword => self
+                .settings_form
+                .as_mut()
+                .map(|form| &mut form.proxy_password_revealed),
+            InputId::TrackerBrowserAddPassword => {
+                Some(&mut self.tracker_browser.add_password_revealed)
+            }
+            InputId::TrackerBrowserEditPassword => match &mut self.tracker_browser.mode {
+                TrackerBrowserMode::Edit {
+                    password_revealed, ..
+                } => Some(password_revealed),
+                _ => None,
+            },
+            _ => {
+                let conn = self
+                    .active_connection
+                    .and_then(|id| self.connections.get_mut(&id))?;
+                match field {
+                    InputId::ChangePasswordCurrent => conn
+                        .password_change_state
+                        .as_mut()
+                        .map(|state| &mut state.current_password_revealed),
+                    InputId::ChangePasswordNew => conn
+                        .password_change_state
+                        .as_mut()
+                        .map(|state| &mut state.new_password_revealed),
+                    InputId::ChangePasswordConfirm => conn
+                        .password_change_state
+                        .as_mut()
+                        .map(|state| &mut state.confirm_password_revealed),
+                    InputId::AdminPassword => Some(&mut conn.user_management.password_revealed),
+                    InputId::EditNewPassword => match &mut conn.user_management.mode {
+                        UserManagementMode::Edit {
+                            new_password_revealed,
+                            ..
+                        } => Some(new_password_revealed),
+                        _ => None,
+                    },
+                    InputId::AddTrackerPassword => {
+                        Some(&mut conn.tracker_management.add_password_revealed)
+                    }
+                    InputId::EditTrackerPassword => match &mut conn.tracker_management.mode {
+                        TrackerManagementMode::Edit {
+                            password_revealed, ..
+                        } => Some(password_revealed),
+                        _ => None,
+                    },
+                    // Not a password field
+                    _ => None,
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::support::test_connection_with_receiver;
+    use crate::types::{PasswordChangeState, TrackerManagementState, UserManagementState};
+
+    #[test]
+    fn password_toggle_flips_only_that_field() {
+        let mut app = NexusApp::default();
+
+        let _ = app.handle_password_visibility_toggled(InputId::Password);
+        assert!(app.connection_form.password_revealed);
+        assert!(!app.bookmark_edit.password_revealed);
+
+        let _ = app.handle_password_visibility_toggled(InputId::Password);
+        assert!(!app.connection_form.password_revealed);
+    }
+
+    #[test]
+    fn password_toggle_reaches_the_active_connections_forms() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.password_change_state = Some(PasswordChangeState::new(None));
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_password_visibility_toggled(InputId::ChangePasswordNew);
+
+        let state = app.connections[&1]
+            .password_change_state
+            .as_ref()
+            .expect("change password form is open");
+        assert!(state.new_password_revealed);
+        assert!(!state.current_password_revealed);
+        assert!(!state.confirm_password_revealed);
+    }
+
+    #[test]
+    fn password_toggle_ignores_a_form_that_is_not_open() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (conn, _rx) = test_connection_with_receiver(1);
+        app.connections.insert(1, conn);
+
+        // The Trackers tab is showing its list, so there's no edit form
+        let _ = app.handle_password_visibility_toggled(InputId::EditTrackerPassword);
+
+        assert!(
+            app.password_revealed_mut(InputId::EditTrackerPassword)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn reopened_password_forms_start_masked() {
+        let mut app = NexusApp::default();
+        app.connection_form.password_revealed = true;
+        app.dismiss_connection_form();
+        assert!(!app.connection_form.password_revealed);
+
+        let mut users = UserManagementState {
+            password_revealed: true,
+            ..UserManagementState::default()
+        };
+        users.enter_create_mode();
+        assert!(!users.password_revealed);
+
+        let mut trackers = TrackerManagementState {
+            add_password_revealed: true,
+            ..TrackerManagementState::default()
+        };
+        trackers.enter_add_mode();
+        assert!(!trackers.add_password_revealed);
     }
 }
